@@ -1,0 +1,12 @@
+{
+  "name": "@laporan-proyek/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"TODO: initialize NestJS app\"",
+    "build": "echo \"TODO: initialize NestJS app\"",
+    "lint": "echo \"TODO: initialize NestJS app\"",
+    "typecheck": "echo \"TODO: initialize NestJS app\"",
+    "test": "echo \"No tests yet\""
+  }
+}

@@ -1,0 +1,35 @@
+# File Manifest
+
+- `.env.example`
+- `.gitignore`
+- `AGENTS.md`
+- `README.md`
+- `apps/api/README.md`
+- `apps/api/package.json`
+- `apps/web/README.md`
+- `apps/web/package.json`
+- `docker-compose.yml`
+- `docs/ACCEPTANCE_TESTS.md`
+- `docs/AI_EXTRACTION.md`
+- `docs/API.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DATABASE.md`
+- `docs/DECISIONS.md`
+- `docs/EXCEL_MAPPING.md`
+- `docs/PRD.md`
+- `docs/ROADMAP.md`
+- `docs/SECURITY.md`
+- `docs/START_HERE.md`
+- `docs/UI_UX.md`
+- `docs/VIBE_CODING_GUIDE.md`
+- `package.json`
+- `packages/calc/README.md`
+- `packages/calc/package.json`
+- `packages/config/README.md`
+- `packages/config/package.json`
+- `packages/shared/README.md`
+- `packages/shared/package.json`
+- `prisma/README.md`
+- `storage/exports/.gitkeep`
+- `storage/projects/.gitkeep`
+- `storage/temp/.gitkeep`

@@ -1,0 +1,12 @@
+{
+  "name": "@laporan-proyek/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"TODO: initialize Next.js app\"",
+    "build": "echo \"TODO: initialize Next.js app\"",
+    "lint": "echo \"TODO: initialize Next.js app\"",
+    "typecheck": "echo \"TODO: initialize Next.js app\"",
+    "test": "echo \"No tests yet\""
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@laporan-proyek/shared",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"TODO: configure shared package\"",
+    "lint": "echo \"TODO: configure shared package\"",
+    "typecheck": "echo \"TODO: configure shared package\"",
+    "test": "echo \"No tests yet\""
+  }
+}

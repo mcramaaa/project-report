@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+storage/projects/*
+storage/exports/*
+storage/temp/*
+!storage/projects/.gitkeep
+!storage/exports/.gitkeep
+!storage/temp/.gitkeep
+*.log
+.DS_Store
+.idea/
+.vscode/

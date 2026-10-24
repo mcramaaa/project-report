@@ -1,0 +1,11 @@
+{
+  "name": "@laporan-proyek/calc",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"TODO: configure calc package\"",
+    "lint": "echo \"TODO: configure calc package\"",
+    "typecheck": "echo \"TODO: configure calc package\"",
+    "test": "echo \"TODO: configure calc tests\""
+  }
+}
