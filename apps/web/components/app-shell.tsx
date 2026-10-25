@@ -14,16 +14,17 @@ type NavItem = { href: string; label: string; icon: IconName; group: string };
 export function AppShell({ user, children }: { user: ShellUser; children: ReactNode }) {
   const pathname = usePathname();
   const drawer = useRef<HTMLDialogElement>(null);
+  // One entry for access management; delegates land on their first permitted tab.
+  const accessHref = can(user, 'users.read') ? '/admin/users' : can(user, 'roles.read') ? '/admin/roles' : can(user, 'assignments.read') ? '/admin/projects' : undefined;
   const items: NavItem[] = [
     { href: '/', label: 'Proyek saya', icon: 'grid', group: 'Ruang kerja' },
     // UX only: the API checks each permission (docs/PERMISSIONS.md).
-    ...(can(user, 'users.read') ? [{ href: '/admin/users', label: 'Pengguna', icon: 'users' as const, group: 'Manajemen akses' }] : []),
-    ...(can(user, 'roles.read') ? [{ href: '/admin/roles', label: 'Role & permission', icon: 'lock' as const, group: 'Manajemen akses' }] : []),
-    ...(can(user, 'assignments.read') ? [{ href: '/admin/projects', label: 'Akses proyek', icon: 'shield' as const, group: 'Manajemen akses' }] : []),
+    ...(accessHref ? [{ href: accessHref, label: 'Pengguna', icon: 'users' as const, group: 'Manajemen akses' }] : []),
     { href: '/profile', label: 'Profil & keamanan', icon: 'user', group: 'Akun' },
   ];
-  const active = (href: string) => href === '/' ? pathname === '/' || pathname.startsWith('/projects/') : pathname === href || pathname.startsWith(`${href}/`);
+  const active = (href: string) => href === accessHref ? pathname.startsWith('/admin/') : href === '/' ? pathname === '/' || pathname.startsWith('/projects/') : pathname === href || pathname.startsWith(`${href}/`);
   const current = items.find((item) => active(item.href));
+  const currentLabel = pathname.startsWith('/admin/roles') ? 'Role & permission' : pathname.startsWith('/admin/projects') ? 'Akses proyek' : current?.label ?? 'Informasi proyek';
   const initials = user.name.trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase();
 
   function navigation(mobile = false) {
@@ -44,7 +45,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
     </aside>
     <div className="app-main">
       <header className="topbar">
-        <div className="flex min-w-0 items-center gap-3"><button type="button" className="icon-button mobile-menu-trigger" aria-label="Buka menu navigasi" aria-haspopup="dialog" onClick={() => drawer.current?.showModal()}><Icon name="menu" /></button><div className="breadcrumb"><Icon name="building" size={16} /><span>Workspace</span><Icon name="chevron" size={12} /><strong>{current?.label ?? 'Informasi proyek'}</strong></div></div>
+        <div className="flex min-w-0 items-center gap-3"><button type="button" className="icon-button mobile-menu-trigger" aria-label="Buka menu navigasi" aria-haspopup="dialog" onClick={() => drawer.current?.showModal()}><Icon name="menu" /></button><div className="breadcrumb"><Icon name="building" size={16} /><span>Workspace</span><Icon name="chevron" size={12} /><strong>{currentLabel}</strong></div></div>
         <div className="flex items-center gap-4"><Link href="/profile" className="topbar-account"><span className="account-caption"><strong>{user.name}</strong><small>{user.isSystemAdmin ? 'Super admin' : user.permissions.length ? 'Admin akses' : 'Anggota proyek'}</small></span><span className="avatar avatar-small">{initials}</span></Link><span className="topbar-divider" /><LogoutButton /></div>
       </header>
       <main id="main-content" className="app-content" tabIndex={-1}>{children}</main>

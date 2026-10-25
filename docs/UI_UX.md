@@ -77,7 +77,8 @@ Pengaturan
 
 Aturan UX:
 
-- menu "Manajemen akses" (Pengguna, Role & permission, Akses proyek) dan tab di halaman admin hanya tampil sesuai permission; backend tetap memeriksa
+- Sidebar, drawer, dan navigasi bawah hanya memiliki satu menu "Pengguna" untuk manajemen akses. "Role & permission" dan "Akses proyek" dibuka melalui tab pada halaman admin, tanpa menu navigasi terpisah.
+- Menu "Pengguna" tampil bila akun memiliki salah satu permission baca: `users.read`, `roles.read`, atau `assignments.read`. Tujuannya adalah tab pertama yang diizinkan dalam urutan tersebut; tab lain tetap mengikuti permission masing-masing. Menu tetap aktif pada seluruh halaman manajemen akses dan breadcrumb menunjukkan bagian yang sedang dibuka. Backend tetap memeriksa izin.
 - setiap daftar memiliki loading, empty state, dan pesan error
 - form menampilkan pesan validasi per field / pesan error dari server
 - konfirmasi wajib sebelum menonaktifkan user, mencabut super admin/role/akses, dan menyimpan permission role
