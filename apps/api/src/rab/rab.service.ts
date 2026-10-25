@@ -412,28 +412,61 @@ export class RabService {
     return this.get(projectId, versionId);
   }
 
-  /** ITEM rows matched by permanent work item (PRD §9-10); group rows are not compared. */
+  /**
+   * ITEM rows matched by permanent work item (PRD §9-10). A row also counts as MODIFIED when it moved to
+   * another group: groups are identified by their copy lineage (previous_version_item_id back to the row
+   * they were first created as), so the new ids a copy gets are not a change by themselves.
+   */
   async compare(projectId: string, baseId: string, targetId: string): Promise<RabCompareDto> {
     const [base, target] = await Promise.all([this.get(projectId, baseId), this.get(projectId, targetId)]);
+    const groups = await this.prisma.rabVersionItem.findMany({
+      where: { rabVersion: { projectId }, rowType: { not: 'ITEM' } },
+      select: { id: true, previousVersionItemId: true },
+    });
+    const previous = new Map(groups.map((g) => [g.id, g.previousVersionItemId]));
+    const origin = (id: string): string => {
+      const seen = new Set<string>();
+      let current = id;
+      for (let p = previous.get(current); p && !seen.has(p); p = previous.get(current)) {
+        seen.add(current);
+        current = p;
+      }
+      return current;
+    };
+    const lineage = (rows: RabRowDto[]) => {
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      return (row: RabRowDto) => {
+        const ancestors: RabRowDto[] = [];
+        for (let p = row.parentId ? byId.get(row.parentId) : undefined; p; p = p.parentId ? byId.get(p.parentId) : undefined) ancestors.unshift(p);
+        return { key: ancestors.map((a) => origin(a.id)).join('>'), label: ancestors.map((a) => a.displayNumber || a.description).join(' › ') };
+      };
+    };
+    const baseLineage = lineage(base.rows);
+    const targetLineage = lineage(target.rows);
+
     const baseItems = new Map(base.rows.filter((r) => r.rowType === 'ITEM').map((r) => [r.workItemId!, r]));
     const targetItems = target.rows.filter((r) => r.rowType === 'ITEM');
     const rows: RabCompareDto['rows'] = targetItems.map((t) => {
       const b = baseItems.get(t.workItemId!) ?? null;
-      const change: RabChangeType = !b
-        ? 'NEW'
-        : b.description !== t.description ||
-            b.unit !== t.unit ||
-            b.analysisCode !== t.analysisCode ||
-            !sameDecimal(b.volume, t.volume) ||
-            !sameDecimal(b.unitPrice, t.unitPrice) ||
-            !sameDecimal(b.taxPercent, t.taxPercent)
-          ? 'MODIFIED'
-          : 'UNCHANGED';
-      return { workItemId: t.workItemId!, workItemCode: t.workItemCode!, change, base: b, target: t };
+      const tg = targetLineage(t);
+      if (!b) return { workItemId: t.workItemId!, workItemCode: t.workItemCode!, change: 'NEW', changes: [], baseGroup: null, targetGroup: tg.label, base: null, target: t };
+      const bg = baseLineage(b);
+      const changes: RabCompareDto['rows'][number]['changes'] = [];
+      if (b.description !== t.description) changes.push('description');
+      if (b.unit !== t.unit) changes.push('unit');
+      if (b.analysisCode !== t.analysisCode) changes.push('analysisCode');
+      if (!sameDecimal(b.volume, t.volume)) changes.push('volume');
+      if (!sameDecimal(b.unitPrice, t.unitPrice)) changes.push('unitPrice');
+      if (!sameDecimal(b.taxPercent, t.taxPercent)) changes.push('taxPercent');
+      if (bg.key !== tg.key) changes.push('group');
+      const change: RabChangeType = changes.length ? 'MODIFIED' : 'UNCHANGED';
+      return { workItemId: t.workItemId!, workItemCode: t.workItemCode!, change, changes, baseGroup: bg.label, targetGroup: tg.label, base: b, target: t };
     });
     const inTarget = new Set(targetItems.map((t) => t.workItemId));
     for (const b of baseItems.values()) {
-      if (!inTarget.has(b.workItemId)) rows.push({ workItemId: b.workItemId!, workItemCode: b.workItemCode!, change: 'REMOVED', base: b, target: null });
+      if (!inTarget.has(b.workItemId)) {
+        rows.push({ workItemId: b.workItemId!, workItemCode: b.workItemCode!, change: 'REMOVED', changes: [], baseGroup: baseLineage(b).label, targetGroup: null, base: b, target: null });
+      }
     }
     return { base: base.version, target: target.version, rows };
   }
@@ -526,9 +559,21 @@ export class RabService {
 
   /** WI-0001, WI-0002, … per project; the project row lock makes the sequence safe. */
   private async newWorkItem(tx: Db, projectId: string, description: string): Promise<string> {
-    const last = await tx.workItem.findFirst({ where: { projectId }, orderBy: { internalCode: 'desc' }, select: { internalCode: true } });
-    const next = (last ? Number(last.internalCode.slice(3)) : 0) + 1;
-    const workItem = await tx.workItem.create({ data: { projectId, internalCode: `WI-${String(next).padStart(4, '0')}`, canonicalDescription: description } });
+    const workItem = await tx.workItem.create({
+      data: { projectId, internalCode: workItemCode(await nextWorkItemNumber(tx, projectId)), canonicalDescription: description },
+    });
     return workItem.id;
   }
+}
+
+export const workItemCode = (n: number) => `WI-${String(n).padStart(4, '0')}`;
+
+/**
+ * Next work item number by numeric maximum: ordering the codes as text puts "WI-9999" after "WI-10000"
+ * and would hand out WI-10000 twice.
+ */
+export async function nextWorkItemNumber(tx: Db, projectId: string): Promise<number> {
+  const [row] = await tx.$queryRaw<{ last: bigint | number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING(internal_code, 4) AS UNSIGNED)) AS last FROM work_items WHERE project_id = ${projectId}`;
+  return Number(row?.last ?? 0) + 1;
 }

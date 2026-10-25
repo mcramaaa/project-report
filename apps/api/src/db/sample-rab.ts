@@ -6,7 +6,7 @@ import { AccessService } from '../auth/access.service';
 import type { AuthUser } from '../auth/auth-context';
 import type { PrismaService } from '../prisma/prisma.service';
 import { ProjectsService } from '../projects/projects.service';
-import { RabService } from '../rab/rab.service';
+import { nextWorkItemNumber, RabService, workItemCode } from '../rab/rab.service';
 
 /**
  * Development sample (D-044): project SDN 2 Serangan with RAB Kontrak and MC-0 from the office
@@ -206,8 +206,9 @@ async function insertContractRows(prisma: PrismaService, projectId: string, vers
   const workItems = new Map(items.map((r) => [r.key, randomUUID()]));
   const order = new Map<number | null, number>();
   await prisma.$transaction(async (tx) => {
+    const first = await nextWorkItemNumber(tx, projectId);
     await tx.workItem.createMany({
-      data: items.map((r, i) => ({ id: workItems.get(r.key)!, projectId, internalCode: `WI-${String(i + 1).padStart(4, '0')}`, canonicalDescription: r.description })),
+      data: items.map((r, i) => ({ id: workItems.get(r.key)!, projectId, internalCode: workItemCode(first + i), canonicalDescription: r.description })),
     });
     await tx.rabVersionItem.createMany({
       data: rows.map((r) => {
@@ -256,14 +257,13 @@ async function applyMc0(prisma: PrismaService, projectId: string, versionId: str
       }
     }
 
-    let workItemCount = await tx.workItem.count({ where: { projectId } });
     for (const r of versionRows(rows, (x) => x.mc0)) {
       if (mc0Ids.has(r.key)) continue;
       const parentItemId = r.parentKey === null ? null : mc0Ids.get(r.parentKey)!;
       const last = await tx.rabVersionItem.aggregate({ where: { rabVersionId: versionId, parentItemId }, _max: { sortOrder: true } });
       const workItemId =
         r.rowType === 'ITEM'
-          ? (await tx.workItem.create({ data: { projectId, internalCode: `WI-${String(++workItemCount).padStart(4, '0')}`, canonicalDescription: r.description } })).id
+          ? (await tx.workItem.create({ data: { projectId, internalCode: workItemCode(await nextWorkItemNumber(tx, projectId)), canonicalDescription: r.description } })).id
           : null;
       const created = await tx.rabVersionItem.create({
         data: {

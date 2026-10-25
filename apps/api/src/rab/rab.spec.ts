@@ -285,3 +285,62 @@ describe('versions and work item identity', () => {
     expect((await admin.get(`${base}/${v.id}`)).status).toBe(200);
   });
 });
+
+describe('regressions from review', () => {
+  it('an approved version shows exactly the numbers its draft had (precision beyond 20 digits)', async () => {
+    const v = await ok(admin.post(base, { versionType: 'CONTRACT' }));
+    const items = `${base}/${v.version.id}/items`;
+    // 561.972461257442 × (155413.45 × 1.11) has 26 significant digits; the decimal.js default keeps 20.
+    await ok(admin.post(items, { rowType: 'SECTION', description: 'Halaman' }));
+    const section = (await admin.get(`${base}/${v.version.id}`)).body.rows[0].id;
+    await ok(admin.post(items, { rowType: 'ITEM', parentId: section, description: 'Paving', volume: '561.972461257442', unit: 'm2', unitPrice: '155413.45', taxPercent: '11' }));
+    await ok(admin.post(items, { rowType: 'ITEM', parentId: section, description: 'Kanstin', volume: '123.456789012345', unit: 'm', unitPrice: '98765.43', taxPercent: '11' }));
+    const draft = (await admin.get(`${base}/${v.version.id}`)).body;
+    expect(draft.rows.find((r: { description: string }) => r.description === 'Paving').subtotal).toBe('96945267.700001543328339');
+
+    const approved = await ok(approve(v.version.id), 200);
+    const pick = (d: { rows: Record<string, unknown>[] }) =>
+      d.rows.map(({ id, unitPriceWithTax, subtotalBeforeTax, subtotal, weight }) => ({ id, unitPriceWithTax, subtotalBeforeTax, subtotal, weight }));
+    expect(pick(approved)).toEqual(pick(draft));
+    expect(approved.totals).toEqual(draft.totals);
+    expect((await admin.get(`${base}/${v.version.id}`)).body.totals).toEqual(draft.totals);
+    expect((await admin.get(base)).body[0].totals).toEqual(draft.totals);
+  });
+
+  it('compare detects moves between groups but not the new ids a copy gets, across several versions', async () => {
+    const c = await contract();
+    await ok(approve(c.id), 200);
+    const mc0 = await ok(admin.post(base, { versionType: 'MC0' }));
+    const row = (detail: { rows: { id: string; description: string }[] }, d: string) => detail.rows.find((r) => r.description === d)!.id;
+
+    // A plain copy changes every parent id, yet nothing moved.
+    const untouched = (await admin.get(`${base}/${c.id}/compare/${mc0.version.id}`)).body;
+    expect(untouched.rows.every((r: { change: string }) => r.change === 'UNCHANGED')).toBe(true);
+
+    // Move the parent item "Pembersihan" (with its item) from section I to section II.
+    await ok(admin.patch(`${base}/${mc0.version.id}/items/${row(mc0, 'Pembersihan')}`, { parentId: row(mc0, 'Pekerjaan Struktur') }), 200);
+    await ok(approve(mc0.version.id), 200);
+    const a1 = await ok(admin.post(base, { versionType: 'ADDENDUM' }));
+
+    for (const target of [mc0.version.id, a1.version.id]) {
+      const cmp = (await admin.get(`${base}/${c.id}/compare/${target}`)).body;
+      const galian = cmp.rows.find((r: { target: { description: string } }) => r.target.description === 'Galian tanah');
+      expect(galian).toMatchObject({ change: 'MODIFIED', changes: ['group'], baseGroup: 'I › 2', targetGroup: 'II › 2' });
+      expect(cmp.rows.filter((r: { change: string }) => r.change !== 'UNCHANGED')).toHaveLength(1);
+    }
+    // MC-0 -> Addendum 1 is a plain copy again.
+    const copy = (await admin.get(`${base}/${mc0.version.id}/compare/${a1.version.id}`)).body;
+    expect(copy.rows.every((r: { change: string; changes: string[] }) => r.change === 'UNCHANGED' && r.changes.length === 0)).toBe(true);
+  });
+
+  it('numbers work items past WI-9999 without reusing WI-10000', async () => {
+    const v = await ok(admin.post(base, { versionType: 'CONTRACT' }));
+    await t.prisma.workItem.create({ data: { projectId: project.id, internalCode: 'WI-9999', canonicalDescription: 'Lama' } });
+    const items = `${base}/${v.version.id}/items`;
+    for (const description of ['Baru 1', 'Baru 2', 'Baru 3']) await ok(admin.post(items, { rowType: 'ITEM', description }));
+    const codes = (await admin.get(`${base}/${v.version.id}`)).body.rows.map((r: { workItemCode: string }) => r.workItemCode);
+    // As text "WI-9999" sorts after "WI-10000"; numbering must use the numeric maximum.
+    expect(codes).toEqual(['WI-10000', 'WI-10001', 'WI-10002']);
+  });
+});
+

@@ -75,6 +75,9 @@ Gunakan ini sebagai checklist saat vibe coding.
 
 - [x] item yang sama antar baseline tetap work_item_id yang sama
 - [x] item baru mendapat work_item_id baru
+- [x] kode work item tetap unik setelah WI-9999 (WI-10000, WI-10001, …)
+- [x] perbandingan mendeteksi pindah kelompok tanpa menganggap ID salinan sebagai perubahan
+- [x] angka versi approved sama persis dengan draft-nya (presisi > 20 digit)
 - [ ] item removed tidak menghapus histori progress (progress di M9; work item tidak pernah dihapus)
 
 ## D. Baseline Change

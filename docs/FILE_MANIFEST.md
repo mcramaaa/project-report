@@ -133,6 +133,7 @@
 - `packages/calc/eslint.config.js`
 - `packages/calc/package.json`
 - `packages/calc/README.md`
+- `packages/calc/src/decimal.ts`
 - `packages/calc/src/decimal.test.ts`
 - `packages/calc/src/index.ts`
 - `packages/calc/src/project-calendar.ts`

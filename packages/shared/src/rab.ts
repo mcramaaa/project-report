@@ -143,10 +143,18 @@ export interface RabVersionDetailDto {
   issues: { errors: RabIssue[]; warnings: RabIssue[] };
 }
 
+export const RAB_COMPARE_FIELDS = ['description', 'unit', 'analysisCode', 'volume', 'unitPrice', 'taxPercent', 'group'] as const;
+export type RabCompareField = (typeof RAB_COMPARE_FIELDS)[number];
+
 export interface RabCompareRowDto {
   workItemId: string;
   workItemCode: string;
   change: RabChangeType;
+  /** What differs for MODIFIED rows; 'group' = moved to another section/sub-section/parent item. */
+  changes: RabCompareField[];
+  /** Ancestor path such as "B › B.II" in each version. */
+  baseGroup: string | null;
+  targetGroup: string | null;
   base: RabRowDto | null;
   target: RabRowDto | null;
 }

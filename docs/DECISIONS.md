@@ -316,9 +316,10 @@ Disetujui 2026-10-25 ("sesuai roadmap", mengikuti rekomendasi yang diajukan).
 - Status: `DRAFT` → `APPROVED`, atau `DRAFT` → `DISCARDED` (alasan wajib). Tidak ada tahap diajukan/ditolak. Versi APPROVED terkunci permanen dan tidak dihapus; DISCARDED tidak dihapus.
 - Urutan versi linear per proyek: CONTRACT dahulu; MC0 hanya setelah CONTRACT approved dan sebelum Addendum; ADDENDUM n setelah versi approved terakhir. Hanya satu DRAFT per proyek.
 - CONTRACT dibuat kosong. MC0/ADDENDUM dibuat sebagai salinan versi approved terakhir: baris disalin, `work_item_id` terbawa, `previous_version_item_id` menunjuk baris asal.
-- Perbandingan (NEW/MODIFIED/REMOVED/UNCHANGED) dihitung dari `work_item_id` baris ITEM, tidak disimpan.
+- Perbandingan (NEW/MODIFIED/REMOVED/UNCHANGED) dihitung dari `work_item_id` baris ITEM, tidak disimpan. MODIFIED juga mencakup perpindahan ke kelompok lain: identitas kelompok mengikuti rantai salinan ke baris asalnya, jadi ID induk baru hasil salinan bukan perubahan.
 - Aktivasi baseline, tanggal efektif, dan `baseline_assignments` ditunda ke M6. Approved belum berarti berlaku.
 - Jenis baris yang disimpan: `SECTION`, `SUBSECTION`, `PARENT_ITEM`, `ITEM`. `SUBTOTAL`/`TOTAL` dihitung untuk tampilan dan export, tidak disimpan. Hanya `ITEM` yang memiliki volume/harga dan dapat dilacak progresnya (`work_item_id`).
+- Kode work item `WI-0001`, … diurutkan secara numerik (bukan teks), sehingga aman melewati WI-9999.
 - Induk baris harus berada dalam versi yang sama dan bukan `ITEM`; `SECTION` selalu di tingkat teratas.
 - No analisa disimpan sebagai teks (`analysis_code`) sampai AHSP (M7).
 - Approve memvalidasi: minimal satu ITEM; setiap ITEM punya satuan, volume ≥ 0, harga satuan ≥ 0, PPN 0–100. Peringatan yang wajib dikonfirmasi: total RAB CONTRACT ≠ nilai kontrak proyek, ITEM dengan volume 0.

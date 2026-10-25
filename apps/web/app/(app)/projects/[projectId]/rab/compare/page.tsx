@@ -126,6 +126,11 @@ export default async function RabComparePage({
                         <td className="rab-sticky-desc">
                           {(r.target ?? r.base)!.description}
                           {r.base && r.target && r.base.description !== r.target.description && <span className="block text-xs text-slate-500">sebelumnya: {r.base.description}</span>}
+                          {r.changes.includes('group') && (
+                            <span className="block text-xs text-slate-500">
+                              pindah kelompok: {r.baseGroup || '(tingkat teratas)'} → {r.targetGroup || '(tingkat teratas)'}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <Badge tone={CHANGE[r.change].tone}>{CHANGE[r.change].label}</Badge>

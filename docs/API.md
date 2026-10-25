@@ -152,7 +152,7 @@ POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 - baris: SECTION hanya di tingkat teratas; induk bukan ITEM dan dari versi yang sama: `400`; menghapus baris yang punya sub-baris: `409`
 - `issues`: `{ errors: [{ itemId?, message }], warnings: [...] }`; approve dengan error: `409`; ada warning tanpa `acknowledgeWarnings: true`: `409`
 - `rows` urut pohon dengan `depth`; baris non-ITEM membawa jumlah & bobot agregat sub-barisnya
-- compare: baris ITEM dicocokkan dengan `workItemId`; `change` = NEW | MODIFIED | REMOVED | UNCHANGED
+- compare: baris ITEM dicocokkan dengan `workItemId`; `change` = NEW | MODIFIED | REMOVED | UNCHANGED; `changes` = field yang berbeda (`description`, `unit`, `analysisCode`, `volume`, `unitPrice`, `taxPercent`, `group`); `baseGroup`/`targetGroup` = jalur kelompok (mis. `B › B.II`). `group` berarti pindah bagian/sub-bagian/induk; kelompok dikenali lewat rantai salinan (`previous_version_item_id`), sehingga ID baru hasil salinan bukan perubahan
 
 ## 7. AHSP
 

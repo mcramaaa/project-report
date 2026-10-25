@@ -1,9 +1,8 @@
-import { Decimal } from 'decimal.js';
+import { Decimal, type DecimalValue } from './decimal.js';
 
 // RAB math as in the office workbook (D-043). Inputs/outputs are decimal strings.
 // Item values are exact; only the total is rounded (REAL COST) and truncated (DIBULATKAN).
-// Default decimal.js precision (20 significant digits) is too small for these products.
-const D = Decimal.clone({ precision: 80, rounding: Decimal.ROUND_HALF_UP });
+const D = Decimal;
 const HUNDRED = new D(100);
 /** Weight digits sent to clients; weights are not stored (derived from subtotals). */
 const WEIGHT_SCALE = 10;
@@ -43,7 +42,7 @@ export function unitPriceWithTax(unitPrice: string, taxPercent: string): string 
   return new D(unitPrice).times(HUNDRED.plus(taxPercent)).div(HUNDRED).toFixed();
 }
 
-export function rabTotals(beforeTax: Decimal.Value, value: Decimal.Value): RabTotals {
+export function rabTotals(beforeTax: DecimalValue, value: DecimalValue): RabTotals {
   const v = new D(value);
   const realCost = v.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
   return {
