@@ -19,7 +19,7 @@ POST /auth/change-password  { currentPassword, newPassword } -> cabut semua sess
 
 - tidak ada endpoint pendaftaran publik
 - gagal login selalu `401 { message: "Email atau password salah." }`
-- terlalu banyak percobaan: `429`
+- terlalu banyak percobaan gagal untuk satu email: `429` (D-030)
 - cookie `lp_session` HTTP-only, `SameSite=Lax`, `Secure` di HTTPS (D-031)
 - POST/PUT/PATCH/DELETE wajib header `Origin` = origin `APP_URL`
 

@@ -80,6 +80,26 @@ npm run dev                   # api :3001 dan web :3000 bersamaan
 
 Seed hanya membuat akun bila email belum ada. Akun yang sudah ada tidak diubah, termasuk password-nya, sehingga aman dijalankan ulang. Password tidak pernah dicetak ke log. Setelah login pertama, ganti password lewat halaman Profil.
 
+### Mencoba alur user & role
+
+| URL | Siapa | Fungsi |
+|---|---|---|
+| http://localhost:3000/login | semua | login |
+| http://localhost:3000/ | user login | proyek dengan membership aktif |
+| http://localhost:3000/profile | user login | ganti password (login ulang setelahnya) |
+| http://localhost:3000/admin/users | system admin | buat, cari, ubah, aktif/nonaktif user, beri/cabut system admin |
+| http://localhost:3000/admin/projects | system admin | pilih proyek → kelola anggota & role |
+
+Langkah singkat:
+
+1. `npm run db:seed` lalu `npm run db:seed:dev` (proyek contoh DEV-001).
+2. Login sebagai system admin dari `SEED_ADMIN_EMAIL`.
+3. Buat user di Admin: User.
+4. Tambahkan user itu ke DEV-001 di Admin: Anggota Proyek dengan role tertentu.
+5. Login sebagai user tersebut: proyek DEV-001 tampil di Proyek Saya.
+
+System admin tidak otomatis melihat data proyek; tambahkan dirinya sebagai anggota bila perlu. Izin lengkap: `docs/PERMISSIONS.md`.
+
 ### Volume MySQL lama
 
 Skrip `docker/mysql/init/01-databases.sh` (membuat `<db>_test` dan `<db>_shadow`) hanya otomatis jalan saat volume baru dibuat. Untuk volume yang sudah ada, jalankan sekali:
@@ -111,4 +131,4 @@ Jangan mengedit migration yang sudah diterapkan.
 
 ## Status
 
-Milestone 0 (tooling) dan Milestone 1 (MySQL + Prisma, base schema, seed) selesai. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
+Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), dan Milestone 2 (login/session, user management, role proyek, audit) selesai. Belum ada fitur bisnis proyek (RAB, progres, laporan). Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".

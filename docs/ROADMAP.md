@@ -135,3 +135,4 @@ Deliverables:
 - restore test
 - access logs
 - upload hardening
+- login rate limit per IP dari IP klien tepercaya (Cloudflare), lalu aktifkan `trust proxy` sesuai hop (D-030)

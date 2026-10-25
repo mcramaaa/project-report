@@ -4,29 +4,29 @@ Gunakan ini sebagai checklist saat vibe coding.
 
 ## 0. Database & Seed (Milestone 1)
 
-- [ ] migration berjalan di database bersih
-- [ ] email unik secara case-insensitive (normalisasi + unique index)
-- [ ] token session disimpan sebagai hash
-- [ ] seed system admin dari environment
-- [ ] seed dijalankan ulang tidak mereset password akun yang ada
-- [ ] data development terpisah dari seed production
+- [x] migration berjalan di database bersih
+- [x] email unik secara case-insensitive (normalisasi + unique index)
+- [x] token session disimpan sebagai hash
+- [x] seed system admin dari environment
+- [x] seed dijalankan ulang tidak mereset password akun yang ada
+- [x] data development terpisah dari seed production
 
 ## 0b. Auth, User, Role (Milestone 2)
 
-- [ ] login benar berhasil; password salah, email tidak terdaftar, user nonaktif mendapat pesan yang sama
-- [ ] pembatasan percobaan login
-- [ ] session kedaluwarsa, logout, dan session dicabut ditolak
-- [ ] user nonaktif tidak bisa memakai session lama
-- [ ] ganti password: password lama wajib benar, semua session dicabut, password lama ditolak setelahnya
-- [ ] request mengubah data tanpa Origin yang sesuai ditolak
-- [ ] endpoint administrasi menolak non-system-admin
-- [ ] system admin tanpa membership tidak dapat membaca data proyek
-- [ ] isolasi akses antarproyek
-- [ ] perubahan role dan pencabutan membership berlaku pada request berikutnya
-- [ ] membership ganda ditolak
-- [ ] system admin aktif terakhir tidak bisa dinonaktifkan/dicabut, termasuk pada request bersamaan
-- [ ] audit dibuat untuk aksi user/membership/password/session tanpa data rahasia
-- [ ] response user tidak berisi password hash/token
+- [x] login benar berhasil; password salah, email tidak terdaftar, user nonaktif mendapat pesan yang sama
+- [x] pembatasan percobaan login (per email; per IP menunggu Milestone 16, D-030)
+- [x] session kedaluwarsa, logout, dan session dicabut ditolak
+- [x] user nonaktif tidak bisa memakai session lama
+- [x] ganti password: password lama wajib benar, semua session dicabut, password lama ditolak setelahnya
+- [x] request mengubah data tanpa Origin yang sesuai ditolak
+- [x] endpoint administrasi menolak non-system-admin
+- [x] system admin tanpa membership tidak dapat membaca data proyek
+- [x] isolasi akses antarproyek
+- [x] perubahan role dan pencabutan membership berlaku pada request berikutnya
+- [x] membership ganda ditolak
+- [x] system admin aktif terakhir tidak bisa dinonaktifkan/dicabut, termasuk pada request bersamaan
+- [x] audit dibuat untuk aksi user/membership/password/session tanpa data rahasia
+- [x] response user tidak berisi password hash/token
 
 ## A. Project Setup
 

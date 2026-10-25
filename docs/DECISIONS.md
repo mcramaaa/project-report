@@ -214,7 +214,7 @@ Hanya `users`, `auth_sessions`, `projects`, `project_users`, `audit_logs`. Tabel
 - setiap request memuat session, user, dan membership dari database; perubahan izin, nonaktivasi, dan pencabutan membership berlaku pada request berikutnya. Role tidak disimpan di cookie/browser
 - nonaktivasi user dan perubahan password mencabut semua session user tersebut; setelah ganti password user harus login ulang
 - pesan gagal login selalu sama untuk email tidak terdaftar, password salah, atau user nonaktif. Verifikasi password tetap dijalankan untuk email tidak terdaftar agar waktu respons serupa
-- pembatasan percobaan login: 5 gagal per email dan 20 gagal per IP dalam 15 menit (in-memory, satu proses)
+- pembatasan percobaan login: 5 gagal per email (dinormalisasi) dalam 15 menit (in-memory, satu proses). Tidak ada limit per IP: di balik rewrite `apps/web`, `X-Forwarded-For` diteruskan apa adanya dari klien sehingga dapat dipalsukan, sedangkan IP socket selalu proxy (limit per IP akan menjadi global). Limit per IP ditambahkan di Milestone 16 saat Cloudflare menyediakan IP klien tepercaya. `auth_sessions.ip_address` saat ini berisi alamat proxy
 
 ## D-031 Cookie dan CSRF
 
