@@ -41,6 +41,28 @@ Audit Log
 Pengaturan
 ```
 
+## 1a. Akun & Administrasi (Milestone 2)
+
+Halaman:
+
+| URL | Untuk | Isi |
+|---|---|---|
+| `/login` | publik | email + password; pesan gagal generik; info bila baru ganti password |
+| `/` | user login | daftar proyek dengan membership aktif + role |
+| `/projects/:projectId` | anggota proyek | identitas proyek |
+| `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
+| `/admin/users` | system admin | cari, pagination, buat user, ubah nama/email, aktif/nonaktif, beri/cabut system admin |
+| `/admin/projects` | system admin | daftar proyek (kode, nama) untuk memilih pengelolaan anggota |
+| `/admin/projects/:projectId/members` | system admin | daftar anggota, tambah user aktif, ubah role, cabut akses |
+
+Aturan UX:
+
+- header menampilkan nama user, tautan Profil, Logout; menu Administrasi hanya untuk system admin (kenyamanan saja, backend tetap memeriksa)
+- setiap daftar memiliki loading, empty state, dan pesan error
+- form menampilkan pesan validasi per field / pesan error dari server
+- konfirmasi wajib sebelum menonaktifkan user, mencabut system admin, atau mencabut membership
+- session tidak valid saat navigasi: diarahkan ke `/login`
+
 ## 2. Dashboard
 
 Tampilkan:

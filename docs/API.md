@@ -11,31 +11,62 @@ Base:
 ## 1. Auth
 
 ```text
-POST /auth/login
-POST /auth/logout
-GET  /auth/me
-POST /auth/change-password
+POST /auth/login            { email, password }  -> set cookie, user aktif
+POST /auth/logout           -> cabut session saat ini, hapus cookie
+GET  /auth/me               -> { id, name, email, isSystemAdmin }
+POST /auth/change-password  { currentPassword, newPassword } -> cabut semua session, wajib login ulang
 ```
 
-## 2. Projects
+- tidak ada endpoint pendaftaran publik
+- gagal login selalu `401 { message: "Email atau password salah." }`
+- terlalu banyak percobaan: `429`
+- cookie `lp_session` HTTP-only, `SameSite=Lax`, `Secure` di HTTPS (D-031)
+- POST/PUT/PATCH/DELETE wajib header `Origin` = origin `APP_URL`
+
+## 2. Projects (membership aktif)
 
 ```text
-GET    /projects
-POST   /projects
-GET    /projects/:projectId
-PATCH  /projects/:projectId
+GET /projects              -> proyek dengan membership aktif user + role
+GET /projects/:projectId   -> identitas proyek (izin project.read)
 ```
 
-## 3. Project Users
+Tanpa membership aktif: `404`, termasuk system admin (D-033). Create/update proyek dikerjakan di Milestone 3.
+
+## 3. Administrasi (system admin saja)
+
+Semua endpoint `/admin/*` mengembalikan `403` untuk non-system-admin.
+
+### Users
 
 ```text
-GET    /projects/:projectId/users
-POST   /projects/:projectId/users
-PATCH  /projects/:projectId/users/:userId
-DELETE /projects/:projectId/users/:userId
+GET   /admin/users?search=&page=&pageSize=&active=   -> { items, total, page, pageSize }
+POST  /admin/users                       { name, email, password, isSystemAdmin? }
+GET   /admin/users/:userId
+PATCH /admin/users/:userId               { name?, email?, reason? }
+POST  /admin/users/:userId/activate      { reason? }
+POST  /admin/users/:userId/deactivate    { reason? }  -> cabut semua session
+POST  /admin/users/:userId/grant-system-admin   { reason? }
+POST  /admin/users/:userId/revoke-system-admin  { reason? }
 ```
 
-Gunakan delete role assignment secara aman; bukan menghapus user global.
+- response user: `{ id, name, email, isActive, isSystemAdmin, createdAt, updatedAt }`; tanpa password hash/token
+- email duplikat: `409`
+- menonaktifkan/mencabut system admin aktif terakhir: `409`
+- `pageSize` maksimal 100
+
+### Projects & Members
+
+```text
+GET    /admin/projects?search=                       -> [{ id, code, projectName }]
+GET    /admin/projects/:projectId/members            -> { project, members: [{ userId, name, email, isActive, role, createdAt }] }
+POST   /admin/projects/:projectId/members            { userId, role }
+PATCH  /admin/projects/:projectId/members/:userId    { role }
+DELETE /admin/projects/:projectId/members/:userId    { reason? }
+```
+
+- hanya metadata minimum (D-026)
+- user harus aktif; membership aktif ganda: `409`
+- DELETE mencabut membership (`revoked_at`), tidak menghapus user atau histori; menambah ulang mengaktifkan baris yang sama
 
 ## 4. Documents
 
@@ -193,8 +224,9 @@ GET /audit-logs/:auditLogId
 
 ```text
 GET /health
-GET /health/database
 ```
+
+`/health/database` ditunda sampai dibutuhkan.
 
 Jangan expose detail sensitif ke public health endpoint.
 

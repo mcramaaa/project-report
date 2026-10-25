@@ -2,6 +2,32 @@
 
 Gunakan ini sebagai checklist saat vibe coding.
 
+## 0. Database & Seed (Milestone 1)
+
+- [ ] migration berjalan di database bersih
+- [ ] email unik secara case-insensitive (normalisasi + unique index)
+- [ ] token session disimpan sebagai hash
+- [ ] seed system admin dari environment
+- [ ] seed dijalankan ulang tidak mereset password akun yang ada
+- [ ] data development terpisah dari seed production
+
+## 0b. Auth, User, Role (Milestone 2)
+
+- [ ] login benar berhasil; password salah, email tidak terdaftar, user nonaktif mendapat pesan yang sama
+- [ ] pembatasan percobaan login
+- [ ] session kedaluwarsa, logout, dan session dicabut ditolak
+- [ ] user nonaktif tidak bisa memakai session lama
+- [ ] ganti password: password lama wajib benar, semua session dicabut, password lama ditolak setelahnya
+- [ ] request mengubah data tanpa Origin yang sesuai ditolak
+- [ ] endpoint administrasi menolak non-system-admin
+- [ ] system admin tanpa membership tidak dapat membaca data proyek
+- [ ] isolasi akses antarproyek
+- [ ] perubahan role dan pencabutan membership berlaku pada request berikutnya
+- [ ] membership ganda ditolak
+- [ ] system admin aktif terakhir tidak bisa dinonaktifkan/dicabut, termasuk pada request bersamaan
+- [ ] audit dibuat untuk aksi user/membership/password/session tanpa data rahasia
+- [ ] response user tidak berisi password hash/token
+
 ## A. Project Setup
 
 - [ ] project dapat dibuat
@@ -105,7 +131,7 @@ Expected:
 
 - [ ] error menahan finalisasi
 - [ ] warning membutuhkan catatan
-- [ ] reviewer tidak finalisasi own entry
+- [ ] reviewer tidak finalisasi own entry (wajib diuji di backend saat fitur laporan dibuat; `docs/PERMISSIONS.md` catatan ¹)
 - [ ] snapshot dibuat
 - [ ] final export menggunakan snapshot
 - [ ] Addendum setelah final tidak mengubah snapshot lama

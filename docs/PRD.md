@@ -14,6 +14,13 @@ Prinsip:
 
 ## 2. Pengguna
 
+Izin dibagi dua lapis (D-026, detail di `docs/PERMISSIONS.md`):
+
+- **System admin** (`users.is_system_admin`): administrasi global — pengelolaan user, pembuatan proyek, pengelolaan anggota/role proyek. Tidak otomatis boleh membaca/mengubah data proyek.
+- **Role proyek** (`project_users.role`): akses per proyek. Satu user dapat memiliki role berbeda di proyek berbeda. Role bukan level berurutan.
+
+Role proyek:
+
 ### FILLER
 - input progres
 - input/koreksi laporan harian
@@ -31,11 +38,20 @@ Prinsip:
 - pengelolaan Addendum
 - preview/presentasi
 
-### ADMIN
-- membuat proyek
+### ADMIN (role proyek)
 - upload dokumen
 - review hasil ekstraksi AI
-- pengelolaan user dan konfigurasi sistem
+
+Membuat proyek, pengelolaan user, dan konfigurasi sistem adalah wewenang system admin.
+
+### Akun User
+
+- tidak ada pendaftaran publik; akun dibuat system admin dengan password awal
+- user dinonaktifkan, tidak dihapus permanen
+- system admin aktif terakhir tidak boleh dinonaktifkan atau dicabut haknya
+- nonaktivasi dan perubahan password mencabut semua session user tersebut
+- perubahan izin berlaku pada request berikutnya
+- pembuat proyek otomatis menjadi MANAGER proyek tersebut
 
 ## 3. Identitas Proyek
 
@@ -418,6 +434,9 @@ Action penting:
 - UPDATE_PROGRESS
 - FINALIZE_REPORT
 - REOPEN_REPORT
+- aksi user, system admin, membership, password, dan session (daftar di `docs/PERMISSIONS.md` §4)
+
+Audit global (misalnya pengelolaan user) tidak memiliki project. Password, hash, token, dan secret tidak pernah dicatat.
 
 ## 28. Dokumen dan File
 
@@ -502,8 +521,10 @@ Output mengikuti pola kantor sedekat mungkin.
 
 ## 33. Keamanan
 
-- login wajib
-- password di-hash
+- login wajib, tanpa pendaftaran publik
+- password di-hash (scrypt)
+- session server-side di cookie HTTP-only; proteksi CSRF untuk request yang mengubah data
+- pesan gagal login tidak membocorkan keberadaan akun
 - server-side authorization
 - session expiry/revoke
 - rate limit login

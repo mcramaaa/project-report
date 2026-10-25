@@ -4,31 +4,42 @@ Dokumen ini adalah ERD konseptual. Implementasi detail dituangkan ke Prisma sche
 
 ## 1. Core Tables
 
+Dibuat di Milestone 1 (D-028). Semua `id` adalah UUID v7 `CHAR(36)` (D-027). Timestamp `DATETIME(3)` UTC. Foreign key memakai `ON DELETE RESTRICT`; data inti tidak di-hard-delete.
+
 ### users
 
 - id
 - name
-- email
-- password_hash
-- is_active
+- email — dinormalisasi trim + huruf kecil; unique
+- password_hash — scrypt (D-030), tidak pernah dikirim ke client
+- is_active — default true; nonaktivasi menggantikan delete
+- is_system_admin — default false (D-026)
 - created_at
 - updated_at
+
+Index: `is_system_admin, is_active` (pemeriksaan system admin aktif terakhir).
 
 ### auth_sessions
 
 - id
-- user_id
-- token_hash
+- user_id → users
+- token_hash — SHA-256 token session, unique; token mentah tidak disimpan
 - created_at
 - expires_at
-- revoked_at
-- ip_address
-- user_agent
+- revoked_at nullable
+- ip_address nullable
+- user_agent nullable
+
+Index: `user_id`.
+
+Session valid bila `revoked_at IS NULL`, `expires_at > now`, dan user aktif.
 
 ### projects
 
+Kolom identitas mengikuti PRD §3 (data minimum, wajib diisi):
+
 - id
-- code
+- code — unique
 - activity_name
 - sub_activity_name
 - project_name
@@ -42,20 +53,33 @@ Dokumen ini adalah ERD konseptual. Implementasi detail dituangkan ke Prisma sche
 - spmk_date
 - start_date
 - duration_days
-- planned_finish_date
-- status
 - created_at
 - updated_at
+
+`status` dan `planned_finish_date` belum dibuat (OD-007, Milestone 3).
 
 ### project_users
 
 - id
-- project_id
-- user_id
-- role
+- project_id → projects
+- user_id → users
+- role — FILLER | REVIEWER | MANAGER | ADMIN
+- created_by nullable → users
+- created_at
+- updated_at
+- revoked_at nullable — membership dicabut (soft revoke, D-029)
+- revoked_by nullable → users
 
 Unique:
 - project_id + user_id
+
+Index: `user_id`.
+
+Membership aktif = `revoked_at IS NULL`.
+
+### audit_logs
+
+Lihat §11.
 
 ## 2. Documents
 
@@ -476,16 +500,22 @@ format:
 
 ### audit_logs
 
+Dibuat di Milestone 1.
+
 - id
-- project_id
-- user_id
-- action
+- project_id nullable → projects (audit global tanpa proyek)
+- user_id nullable → users (actor; null untuk seed/sistem)
+- action — string, daftar di `docs/PERMISSIONS.md` §4
 - entity_type
-- entity_id
-- old_value
-- new_value
-- reason
+- entity_id nullable
+- old_value JSON nullable — hanya field aman
+- new_value JSON nullable — hanya field aman
+- reason nullable
 - created_at
+
+Index: `project_id + created_at`, `entity_type + entity_id`, `user_id`, `created_at`.
+
+Append-only: aplikasi tidak pernah update/delete baris audit.
 
 ## 12. Decimal Recommendations
 

@@ -27,9 +27,10 @@ Urutan dokumen:
 7. `docs/UI_UX.md`
 8. `docs/AI_EXTRACTION.md`
 9. `docs/EXCEL_MAPPING.md`
-10. `docs/ACCEPTANCE_TESTS.md`
-11. `docs/ROADMAP.md`
-12. `docs/VIBE_CODING_GUIDE.md`
+10. `docs/PERMISSIONS.md`
+11. `docs/ACCEPTANCE_TESTS.md`
+12. `docs/ROADMAP.md`
+13. `docs/VIBE_CODING_GUIDE.md`
 
 ## Stack yang Diputuskan
 
@@ -61,25 +62,53 @@ Butuh Node 24 dan Docker.
 
 ```bash
 npm install
-cp .env.example .env          # isi secret sendiri; .env tidak masuk Git
-docker compose up -d --wait   # MySQL 8.4, healthcheck sampai siap menerima koneksi
+cp .env.example .env          # isi password/secret sendiri; .env tidak masuk Git
+docker compose up -d --wait   # MySQL 8.4 + database _test dan _shadow
+npm run db:migrate            # terapkan migration
+npm run db:seed               # buat system admin pertama dari SEED_ADMIN_* (.env)
+npm run db:seed:dev           # opsional, development saja: proyek contoh DEV-001
 npm run dev                   # api :3001 dan web :3000 bersamaan
 ```
 
-- Web: http://localhost:3000 (menampilkan status API)
+- Web: http://localhost:3000
 - API: http://localhost:3001/api/health
 
-Pemeriksaan:
+### Seed system admin
+
+1. Isi `SEED_ADMIN_EMAIL`, `SEED_ADMIN_NAME`, `SEED_ADMIN_PASSWORD` di `.env` (password minimal 8 karakter; jangan commit).
+2. Jalankan `npm run db:seed`.
+
+Seed hanya membuat akun bila email belum ada. Akun yang sudah ada tidak diubah, termasuk password-nya, sehingga aman dijalankan ulang. Password tidak pernah dicetak ke log. Setelah login pertama, ganti password lewat halaman Profil.
+
+### Volume MySQL lama
+
+Skrip `docker/mysql/init/01-databases.sh` (membuat `<db>_test` dan `<db>_shadow`) hanya otomatis jalan saat volume baru dibuat. Untuk volume yang sudah ada, jalankan sekali:
+
+```bash
+docker compose exec mysql sh /docker-entrypoint-initdb.d/01-databases.sh
+```
+
+Password MySQL di `.env` juga hanya berlaku saat volume pertama kali dibuat.
+
+### Pemeriksaan
 
 ```bash
 npm run lint
 npm run typecheck
-npm test
+npm test        # butuh MySQL berjalan; memakai database <db>_test yang dikosongkan per test
 npm run build
 ```
 
-`typecheck`, `test`, dan `dev` membangun `packages/shared` dan `packages/calc` lebih dulu (lihat D-025).
+`typecheck`, `test`, dan `dev` menjalankan `prisma generate` dan membangun `packages/shared` + `packages/calc` lebih dulu (D-025). Test menolak berjalan bila nama database tidak berakhiran `_test`.
+
+### Migration baru
+
+```bash
+npm run db:migrate:dev -- --name <nama>   # butuh SHADOW_DATABASE_URL
+```
+
+Jangan mengedit migration yang sudah diterapkan.
 
 ## Status
 
-Milestone 0 (repository & tooling) selesai. Belum ada business feature, schema database, atau auth. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
+Milestone 0 (tooling) dan Milestone 1 (MySQL + Prisma, base schema, seed) selesai. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".

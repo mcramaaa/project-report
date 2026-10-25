@@ -17,3 +17,4 @@ storage/temp/*
 .vscode/
 next-env.d.ts
 *.tsbuildinfo
+apps/api/src/generated/

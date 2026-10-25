@@ -11,20 +11,26 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build:packages": "npm run build -w @laporan-proyek/shared -w @laporan-proyek/calc",
+    "build:packages": "prisma generate && npm run build -w @laporan-proyek/shared -w @laporan-proyek/calc",
     "predev": "npm run build:packages",
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @laporan-proyek/api\" \"npm run dev -w @laporan-proyek/web\"",
+    "prebuild": "prisma generate",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "pretypecheck": "npm run build:packages",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build:packages",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed -w @laporan-proyek/api",
+    "db:seed:dev": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed:dev -w @laporan-proyek/api"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "concurrently": "^10.0.6",
     "eslint": "^9.39.5",
+    "prisma": "^7.10.1",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   },

@@ -16,5 +16,8 @@
   },
   "devDependencies": {
     "@laporan-proyek/config": "0.0.0"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

@@ -1,0 +1,125 @@
+// Base schema Milestone 1 (docs/DATABASE.md §1, D-028).
+generator client {
+  provider     = "prisma-client"
+  output       = "../apps/api/src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum ProjectRole {
+  FILLER
+  REVIEWER
+  MANAGER
+  ADMIN
+}
+
+model User {
+  id            String   @id @default(uuid(7)) @db.Char(36)
+  name          String   @db.VarChar(150)
+  /// Normalized (trim + lowercase) before write; uniqueness enforced here.
+  email         String   @unique @db.VarChar(254)
+  passwordHash  String   @map("password_hash") @db.VarChar(255)
+  isActive      Boolean  @default(true) @map("is_active")
+  isSystemAdmin Boolean  @default(false) @map("is_system_admin")
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  sessions           AuthSession[]
+  memberships        ProjectUser[] @relation("MembershipUser")
+  createdMemberships ProjectUser[] @relation("MembershipCreatedBy")
+  revokedMemberships ProjectUser[] @relation("MembershipRevokedBy")
+  auditLogs          AuditLog[]
+
+  @@index([isSystemAdmin, isActive])
+  @@map("users")
+}
+
+model AuthSession {
+  id        String    @id @default(uuid(7)) @db.Char(36)
+  userId    String    @map("user_id") @db.Char(36)
+  /// SHA-256 hex of the session token; the raw token is never stored.
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  expiresAt DateTime  @map("expires_at") @db.DateTime(3)
+  revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
+  ipAddress String?   @map("ip_address") @db.VarChar(45)
+  userAgent String?   @map("user_agent") @db.VarChar(512)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@map("auth_sessions")
+}
+
+model Project {
+  id              String   @id @default(uuid(7)) @db.Char(36)
+  code            String   @unique @db.VarChar(50)
+  activityName    String   @map("activity_name") @db.VarChar(255)
+  subActivityName String   @map("sub_activity_name") @db.VarChar(255)
+  projectName     String   @map("project_name") @db.VarChar(500)
+  location        String   @db.VarChar(255)
+  fiscalYear      Int      @map("fiscal_year") @db.UnsignedSmallInt
+  contractorName  String   @map("contractor_name") @db.VarChar(255)
+  consultantName  String   @map("consultant_name") @db.VarChar(255)
+  contractNumber  String   @map("contract_number") @db.VarChar(100)
+  contractDate    DateTime @map("contract_date") @db.Date
+  spmkNumber      String   @map("spmk_number") @db.VarChar(100)
+  spmkDate        DateTime @map("spmk_date") @db.Date
+  startDate       DateTime @map("start_date") @db.Date
+  durationDays    Int      @map("duration_days") @db.UnsignedSmallInt
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  members   ProjectUser[]
+  auditLogs AuditLog[]
+
+  @@map("projects")
+}
+
+model ProjectUser {
+  id        String      @id @default(uuid(7)) @db.Char(36)
+  projectId String      @map("project_id") @db.Char(36)
+  userId    String      @map("user_id") @db.Char(36)
+  role      ProjectRole
+  createdBy String?     @map("created_by") @db.Char(36)
+  createdAt DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  /// Soft revoke (D-029); active membership = revokedAt IS NULL.
+  revokedAt DateTime?   @map("revoked_at") @db.DateTime(3)
+  revokedBy String?     @map("revoked_by") @db.Char(36)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  user          User    @relation("MembershipUser", fields: [userId], references: [id], onDelete: Restrict)
+  createdByUser User?   @relation("MembershipCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  revokedByUser User?   @relation("MembershipRevokedBy", fields: [revokedBy], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_users")
+}
+
+/// Append-only. Never store passwords, hashes, tokens, or secrets (D-034).
+model AuditLog {
+  id         String   @id @default(uuid(7)) @db.Char(36)
+  projectId  String?  @map("project_id") @db.Char(36)
+  userId     String?  @map("user_id") @db.Char(36)
+  action     String   @db.VarChar(64)
+  entityType String   @map("entity_type") @db.VarChar(64)
+  entityId   String?  @map("entity_id") @db.Char(36)
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  reason     String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  actor   User?    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt])
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

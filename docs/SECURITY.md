@@ -2,16 +2,20 @@
 
 ## Authentication
 
-- password hash
-- HTTP-only cookie
-- session expiry
-- session revoke
-- login throttling
+- password hash: scrypt (D-030)
+- HTTP-only cookie, `SameSite=Lax`, `Secure` di HTTPS (D-031)
+- token session hanya disimpan sebagai SHA-256 hash
+- session expiry (default 12 jam) dan revoke
+- login throttling (per email dan per IP)
+- pesan gagal login generik
+- CSRF: request yang mengubah data wajib `Origin` yang sesuai
+- session, user, dan membership dibaca ulang dari database setiap request
 
 ## Authorization
 
-Periksa di API:
+Periksa di API (matriks lengkap: `docs/PERMISSIONS.md`):
 
+- system admin vs role proyek; tanpa bypass universal
 - project role
 - self-review restriction
 - baseline activation permission
