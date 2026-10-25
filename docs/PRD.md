@@ -198,7 +198,10 @@ UI perbandingan wajib menunjukkan perubahan antar baseline.
 ## 11. AHSP
 
 Di sistem, analisa ditampilkan dan dikelola sebagai **satu daftar gabungan**
-untuk proyek, bukan daftar terpisah Struktur/Arsitektur/MEP. Bentuk sumber Excel
+untuk **masing-masing versi RAB**, bukan satu daftar bersama seluruh proyek
+(D-056). Penawaran/Kontrak, MC0, dan setiap Addendum memiliki rekap, analisa,
+bahan, upah, alat, koefisien, dan harga sendiri. Penggabungan hanya lintas
+Struktur/Arsitektur/MEP di dalam versi RAB yang sama. Bentuk sumber Excel
 (analisa gabungan atau dipisah per disiplin/file/sheet) dinormalisasi ke daftar
 yang sama. Asal disiplin/dokumen tetap metadata untuk penelusuran dan filter;
 tidak menjadi pemisahan daftar wajib. Versi analisa dan referensi item tetap
@@ -223,7 +226,11 @@ Setiap komponen menyimpan:
 - satuan
 - koefisien
 
-AHSP dapat digunakan kembali dan dapat memiliki versi bila diperlukan.
+Analisa dapat digunakan beberapa item dalam RAB yang sama. Analisa atau
+harga dari RAB lain hanya boleh menjadi sumber kandidat/salinan yang
+dikonfirmasi; hasilnya milik RAB tujuan, termasuk subanalisa dan harga yang
+dibutuhkan, tanpa ketergantungan ke master RAB asal. Versi dan histori tetap
+dipertahankan. Harga pada MC0/Addendum tidak mengubah Penawaran/Kontrak.
 
 Pada alur RAB berbasis analisa (D-046), harga satuan pekerjaan berasal dari
 perhitungan komponen analisa: harga upah/bahan/alat dikalikan koefisiennya,
@@ -503,7 +510,8 @@ terlacak; Kontrak, MC0, dan Addendum tidak digabung menjadi satu versi.
 
 Pada sumber, analisa/AHSP dapat digabung atau dipisah per disiplin, termasuk
 berada dalam file/sheet yang sama dengan RAB. **Hasil di sistem selalu satu
-daftar analisa gabungan**, sesuai §11. Satu analisa yang telah
+daftar analisa gabungan untuk RAB tujuan**, sesuai §11, terpisah dari daftar
+versi RAB lain. Satu analisa yang telah
 divalidasi dapat dirujuk beberapa item RAB; komponen analisanya tidak perlu
 diduplikasi berdasarkan disiplin. Pemetaan referensi tetap melalui review.
 

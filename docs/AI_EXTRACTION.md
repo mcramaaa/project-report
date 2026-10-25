@@ -1,5 +1,12 @@
 # AI Extraction Design
 
+Scope target terbaru: D-056. Paket analisa/harga dimiliki masing-masing
+versi RAB (Penawaran/Kontrak, MC0, Addendum), bukan master bersama proyek.
+Normalisasi disiplin menjadi satu daftar hanya dalam paket RAB tujuan.
+Kandidat dari paket lain perlu dikonfirmasi dan disalin beserta dependency
+terpakainya; backend menolak relasi analisa/harga lintas paket. Pipeline dan
+prompt versi 1 yang telah dibuat perlu dimigrasikan sebelum memenuhi scope ini.
+
 ## 1. Tujuan
 
 Membantu admin mengubah RAB/AHSP dari Excel atau PDF menjadi data standar aplikasi tanpa mengetik ulang ratusan baris.
@@ -224,7 +231,7 @@ upload semua file -> simpan asli -> inventaris file/sheet dan jenis data
   Inventarisasi dan parsing harus mengenali blok data, bukan menganggap satu
   file/sheet hanya memiliki satu jenis data atau satu disiplin.
 - Seluruh bentuk sumber tersebut dinormalisasi ke **satu daftar analisa
-  gabungan di sistem** untuk proyek. Jangan membuat daftar analisa terpisah
+  gabungan di sistem** untuk versi RAB tujuan. Jangan membuat daftar analisa terpisah
   berdasarkan file/sheet atau Struktur/Arsitektur/MEP; asalnya tetap tersedia
   sebagai metadata/filter. Konsolidasi daftar tidak berarti menyatukan paksa
   analisa yang berbeda isi atau menghilangkan versi analisa.

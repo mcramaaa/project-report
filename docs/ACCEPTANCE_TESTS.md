@@ -174,6 +174,10 @@ Expected:
 
 ## K. AI Extraction
 
+- [ ] D-056: Penawaran/Kontrak, MC0, dan tiap Addendum memiliki paket rekap/analisa/bahan/upah/alat/harga sendiri
+- [ ] daftar/detail/pencarian analisa dan harga dibatasi versi RAB; backend menolak relasi lintas paket
+- [ ] kandidat analisa RAB lama yang dikonfirmasi disalin bersama dependency terpakai ke paket tujuan; perubahan paket tujuan tidak mengubah asal
+- [ ] backfill/seed mempertahankan histori approved dan membuktikan isolasi paket, bukan hanya total yang sama
 - [x] nama rekap berbeda dari analisa: formula menghubungkan keduanya, nama item RAB mengikuti rekap dan nama analisa asli tetap tersimpan
 - [x] referensi formula berantai dan bukti sumber dapat ditinjau; formula ambigu/hilang atau file eksternal tidak tersedia masuk review tanpa tebakan nama
 - [x] pipeline memakai instruksi impor tetap dari RAB_IMPORT_GUIDE, versi instruksi tercatat, serta hasil AI tetap divalidasi backend
@@ -185,7 +189,7 @@ Expected:
 - [ ] satu file multi-sheet atau beberapa file Struktur/Arsitektur/MEP menghasilkan satu draft versi RAB dengan hierarki disiplin tetap ada
 - [x] paket lengkap menyimpan file RAB, rekap, analisa, upah, bahan, dan alat beserta locator sumber setiap baris
 - [x] analisa gabungan lintas disiplin dan blok RAB/analisa pada file/sheet yang sama dapat dipetakan tanpa mewajibkan pemisahan file
-- [x] analisa dari sumber gabungan maupun terpisah Struktur/Arsitektur/MEP muncul di satu daftar analisa proyek; sumber/disiplin dapat ditelusuri tanpa pemisahan daftar wajib
+- [ ] analisa dari sumber gabungan maupun terpisah Struktur/Arsitektur/MEP muncul di satu daftar untuk RAB yang sama, tidak bercampur versi lain (scope dikoreksi D-056; test lama berscope proyek belum cukup)
 - [x] beberapa item RAB dapat merujuk satu analisa tervalidasi tanpa menggandakan komponennya; konflik referensi tetap direview
 - [ ] rekap/subtotal/total sumber tidak dihitung dua kali sebagai ITEM
 - [x] kode item/analisa yang sama lintas sumber tidak auto-merge; konflik ditampilkan untuk review

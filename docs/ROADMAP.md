@@ -70,7 +70,7 @@ Deliverables:
 
 - kalkulasi harga analisa dari harga upah/bahan/alat × koefisien, lalu nilai item dari volume × harga analisa; aturan rinci OD-012
 - impor hanya analisa dan komponen/harga yang dipakai item RAB (D-046); sinkronkan dependency M5/M7 sebelum implementasi impor lengkap
-- satu daftar analisa gabungan proyek, terlepas dari pemisahan Struktur/Arsitektur/MEP pada Excel sumber (D-045)
+- paket analisa, bahan, upah, alat, dan harga mandiri per versi RAB; penggabungan Struktur/Arsitektur/MEP hanya di dalam RAB yang sama (D-056 menggantikan scope D-045/D-050)
 - pengelolaan dan approval analisa/harga dari draft paket M5 sesuai keputusan OD-011
 - analysis master
 - versions

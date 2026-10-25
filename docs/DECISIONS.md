@@ -375,6 +375,9 @@ Disetujui 2026-10-25.
 
 ## D-045 Upload Paket Lengkap dan Konsolidasi Disiplin
 
+Koreksi scope pada 2026-10-26: penggabungan analisa berlaku per versi RAB,
+bukan lintas seluruh proyek; bagian yang bertentangan digantikan D-056.
+
 Kebutuhan pengguna 2026-10-25: dokumen RAB beserta analisa, upah, bahan, dan
 alat dapat di-upload seluruhnya, termasuk Struktur/Arsitektur/MEP yang terpisah.
 
@@ -469,6 +472,9 @@ Disetujui 2026-10-25.
 
 ## D-050 Harga Referensi per Proyek (menutup OD-011)
 
+Scope harga bersama per proyek digantikan D-056: setiap versi RAB memiliki
+paket analisa dan harga sendiri. Aturan versioning/approval/histori tetap.
+
 Disetujui 2026-10-25.
 
 - Harga upah/bahan/alat disimpan per proyek dalam **versi daftar harga** (`price_lists`); setiap impor yang di-approve membuat versi baru. Versi lama tidak ditimpa. Belum ada katalog lintas proyek.
@@ -504,6 +510,9 @@ Disetujui 2026-10-25.
 
 ## D-053 Impor Versi Non-Kontrak dan Seed AHSP
 
+Penautan analisa resmi versi lain sebagai dependency bersama digantikan
+D-056. Kandidat lama tetap dapat ditinjau, lalu disalin ke paket RAB tujuan.
+
 Disetujui 2026-10-25.
 
 - Impor MC-0/Addendum menghasilkan RAB DRAFT baru dari sumber (bukan salinan). Identitas pekerjaan (`work_item_id`) ditentukan keputusan reviewer per item: cocokkan ke work item versi approved terakhir atau buat baru. Backend menyusun kandidat (jalur kelompok + uraian sama); kandidat tidak pernah diterapkan otomatis.
@@ -527,6 +536,34 @@ Disetujui 2026-10-25 (temuan review).
 - Setiap dokumen paket berperan `RAB` (memiliki sheet RAB/rekap; minimal satu) atau `SUPPORT` (analisa/harga tanpa sheet RAB). Dokumen pendukung tidak ditolak karena tidak memiliki sheet RAB; provenance-nya tetap tercatat.
 - Analisa di dokumen pendukung hanya menjadi kandidat untuk baris yang rantainya putus, ambigu, atau merujuk file lain (referensi lintas file belum dapat dibuktikan rumus). Kandidat = kode, satuan, dan harga sama; tidak diterapkan otomatis.
 - Analisa kandidat hanya diimpor bila reviewer menautkannya; kandidat yang tidak cocok tidak masuk draft.
+
+## D-056 Paket Analisa dan Harga Mandiri per Versi RAB
+
+Klarifikasi eksplisit pengguna 2026-10-26; menggantikan scope bersama proyek
+pada D-045/D-050 serta penautan analisa lintas RAB pada D-053.
+
+- Penawaran/Kontrak, MC0, dan setiap Addendum masing-masing mempunyai rekap,
+  analisa, bahan, upah, alat, koefisien, dan harga sendiri. Tidak ada satu
+  master gabungan yang dipakai bersama oleh semua versi RAB dalam proyek.
+- Analisa Struktur/Arsitektur/MEP yang terpisah dalam Excel digabung hanya
+  di dalam paket versi RAB yang sama. Identitas sumber/disiplin tetap ada.
+- Beberapa item pada RAB yang sama boleh merujuk analisa/komponen yang sama.
+  Kandidat dari RAB sebelumnya tidak menjadi dependency bersama: setelah
+  konfirmasi, salin dependency terpakai ke paket tujuan, termasuk subanalisa
+  dan harga. Pertahankan provenance ke asal salinan.
+- Pembacaan, pencarian, review, dan validasi relasi harus mengetahui versi
+  RAB tujuan. Backend mencegah referensi analisa/harga/subanalisa keluar dari
+  paket tersebut. Work item permanen tetap per proyek untuk histori progres;
+  scope work item tidak berubah karena isolasi data analisa/harga.
+- Perubahan paket MC0/Addendum tidak mengubah paket Penawaran/Kontrak atau
+  snapshot approved. Tidak menghapus histori lama untuk memisahkan paket.
+- Prioritas saat ini: memuat dan memverifikasi RAB lengkap beserta paketnya
+  di aplikasi. Jangan lanjut ke progres, laporan, atau aktivasi baseline dulu.
+- Implementasi sebelumnya masih berscope proyek. Perubahan ini memerlukan
+  rancangan schema/API, migration baru, validasi, UI pemilih versi RAB,
+  test isolasi, serta pembaruan panduan/prompt impor ke versi berikutnya.
+  Seed lama tidak boleh dipakai sebagai bukti isolasi sebelum relasinya
+  diperiksa; seed contoh baru/penyesuaian non-destruktif harus direkonsiliasi.
 
 ## Keputusan Terbuka
 

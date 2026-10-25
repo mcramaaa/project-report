@@ -161,6 +161,12 @@ POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 
 ## 7. AHSP (D-049–D-051)
 
+Perubahan target D-056: endpoint di bawah masih menggambarkan scope proyek
+yang telah diimplementasikan. Revisi kontrak API agar daftar/detail analisa
+dan harga selalu memiliki konteks versi RAB; backend memeriksa kepemilikan
+paket dan menolak relasi lintas RAB. Bentuk route/parameter final ditentukan
+bersama migration, sebelum implementasi. Filter UI saja tidak cukup.
+
 ```text
 GET /projects/:projectId/analyses?search=&discipline=     ahsp.read -> daftar gabungan (versi terbaru per analisa, jumlah item RAB yang merujuk)
 GET /projects/:projectId/analyses/:analysisId             ahsp.read -> versi, komponen, sumber, item RAB yang merujuk

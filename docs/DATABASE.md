@@ -271,6 +271,14 @@ activation_mode:
 
 ## 5. AHSP (D-050, D-051)
 
+**Rancangan perubahan wajib D-056 (belum migration):** tabel di bawah
+menggambarkan implementasi lama berscope proyek. Tambahkan kepemilikan versi
+RAB yang tegas pada paket harga/analisa, serta constraint/validasi agar relasi
+item RAB, analisa, subanalisa, dan harga berada dalam paket yang sama.
+Salinan dari RAB lain menyimpan provenance, tanpa master mutable bersama.
+Rancang backfill non-destruktif untuk data yang sudah ada, lalu migration
+baru; jangan mengubah migration lama atau menghapus data approved.
+
 ### price_lists
 
 Versi daftar harga per proyek; dibuat saat approve impor, tidak diubah.

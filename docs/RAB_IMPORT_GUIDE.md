@@ -1,5 +1,14 @@
 # Panduan Tetap Impor RAB dan Analisa
 
+**Koreksi kebutuhan 2026-10-26 (D-056):** daftar analisa dan harga harus
+mandiri per versi RAB, bukan gabungan proyek. Penggabungan disiplin hanya
+di dalam RAB yang sama. Kandidat dari RAB lain disalin ke paket tujuan
+setelah review, bukan ditautkan sebagai master bersama. Dokumen dan runtime
+versi 1 di bawah merekam implementasi sebelumnya; sebelum alur baru diklaim
+selesai, terbitkan versi panduan/prompt berikutnya dan sinkronkan schema,
+validator, test, serta catatan versi run. Jangan menerapkan perubahan scope
+secara diam-diam pada extraction run lama.
+
 Versi panduan: 1. Acuan: PRD §11/§29 dan D-045–D-053. Ini spesifikasi
 untuk implementasi, prompt AI, validator, dan review. Runtime: instruksi
 `rab-import-guide@1` di `apps/api/src/imports/guide/` (prompt + schema zod),

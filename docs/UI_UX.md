@@ -70,7 +70,7 @@ Pengaturan
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
 | `/projects/:projectId/imports` | `document.read` / `rabImport.review` | dokumen (upload .xlsx, unduh asli, kandidat sheet RAB), buat run impor (peran RAB/pendukung, sheet, versi tujuan), daftar run |
 | `/projects/:projectId/imports/:importId` | `rabImport.review` / `rabImport.approve` | ringkasan & rekonsiliasi, issue, item dengan rantai rumus, kandidat, keputusan (analisa, harga langsung, harga analisa/override beralasan, pekerjaan permanen), terima kandidat tunggal, analisa terpakai & bukti rekonsiliasi, panggilan AI, approve/tolak/ulangi |
-| `/projects/:projectId/analyses` | `ahsp.read` | satu daftar analisa gabungan proyek (cari), harga, pemakaian, sumber impor |
+| `/projects/:projectId/analyses` | `ahsp.read` | target D-056: pilih versi RAB, tampilkan analisa/harga milik RAB itu saja; implementasi sebelumnya masih daftar proyek |
 | `/projects/:projectId/analyses/:analysisId` | `ahsp.read` | versi, D/E/harga, komponen dengan sumber harga atau subanalisa, item RAB yang merujuk |
 | `/admin/users` | `users.read` | cari, pagination; dengan `users.manage`: buat, ubah, aktif/nonaktif; super admin: beri/cabut super admin |
 | `/admin/users/:userId` | `assignments.read` | role administrasi user dan daftar proyek yang dapat diaksesnya; tambah/ubah/cabut akses proyek |
