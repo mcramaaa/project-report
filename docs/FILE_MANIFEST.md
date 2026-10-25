@@ -15,6 +15,8 @@
 - `apps/api/src/admin/admin-users.controller.ts`
 - `apps/api/src/admin/admin-users.service.ts`
 - `apps/api/src/admin/admin-users.spec.ts`
+- `apps/api/src/ahsp/ahsp.controller.ts`
+- `apps/api/src/ahsp/ahsp.service.ts`
 - `apps/api/src/ai/ai.client.spec.ts`
 - `apps/api/src/ai/ai.client.ts`
 - `apps/api/src/ai/ping.ts`
@@ -41,12 +43,18 @@
 - `apps/api/src/db/seed-sample.ts`
 - `apps/api/src/db/seeding.spec.ts`
 - `apps/api/src/db/seeding.ts`
+- `apps/api/src/documents/documents.controller.ts`
+- `apps/api/src/documents/documents.service.ts`
 - `apps/api/src/db/seed.ts`
 - `apps/api/src/health/health.controller.spec.ts`
 - `apps/api/src/health/health.controller.ts`
 - `apps/api/src/imports/build-draft.spec.ts`
 - `apps/api/src/imports/build-draft.ts`
 - `apps/api/src/imports/build-draft.workbook.spec.ts`
+- `apps/api/src/imports/evaluate.ts`
+- `apps/api/src/imports/rab-imports.controller.ts`
+- `apps/api/src/imports/rab-imports.service.ts`
+- `apps/api/src/imports/rab-imports.spec.ts`
 - `apps/api/src/imports/guide/rab-import-guide.ts`
 - `apps/api/src/imports/test-workbook.ts`
 - `apps/api/src/imports/workbook/analysis-block.ts`
@@ -182,6 +190,7 @@
 - `prisma/migrations/20261025110000_rab_versions/migration.sql`
 - `prisma/migrations/20261025130000_rab_exact_amounts/migration.sql`
 - `prisma/migrations/20261025150000_rab_import_ahsp/migration.sql`
+- `prisma/migrations/20261025170000_import_document_roles/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

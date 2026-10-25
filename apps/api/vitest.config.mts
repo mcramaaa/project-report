@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import swc from 'unplugin-swc';
 import { defineConfig } from 'vitest/config';
 
@@ -21,6 +22,10 @@ const testEnv = {
   SESSION_TTL_HOURS: '12',
   NODE_ENV: 'test',
   REPO_ROOT: resolve(import.meta.dirname, '../..'),
+  // Uploaded files of tests never land in the real storage/ directory.
+  STORAGE_DIR: mkdtempSync(join(tmpdir(), 'laporan-proyek-storage-')),
+  // Tests never call the real 9router; specs inject a mock AI client when they need one.
+  NINEROUTER_API_KEY: '',
 };
 // test.env only reaches workers; globalSetup runs in this process.
 Object.assign(process.env, testEnv);

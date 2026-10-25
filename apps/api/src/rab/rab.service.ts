@@ -61,6 +61,15 @@ const ITEM_SELECT = {
   taxPercent: true,
   unitPriceWithTax: true,
   subtotal: true,
+  analysisVersionId: true,
+  priceSource: true,
+  sourceUnitPrice: true,
+  analysisUnitPrice: true,
+  priceNote: true,
+  priceDecidedBy: true,
+  priceDecidedAt: true,
+  sourceLocator: true,
+  analysisVersion: { select: { analysisId: true, code: true, name: true } },
 } as const satisfies Prisma.RabVersionItemSelect;
 type ItemRow = Prisma.RabVersionItemGetPayload<{ select: typeof ITEM_SELECT }>;
 
@@ -137,6 +146,9 @@ function toRows(items: ItemRow[], values: Map<string, RabRowValues>): RabRowDto[
       subtotalBeforeTax: v?.subtotalBeforeTax ?? null,
       subtotal: v?.subtotal ?? null,
       weight: v?.weight ?? null,
+      priceSource: i.priceSource,
+      analysis: i.analysisVersionId && i.analysisVersion ? { analysisId: i.analysisVersion.analysisId, versionId: i.analysisVersionId, code: i.analysisVersion.code, name: i.analysisVersion.name } : null,
+      priceNote: i.priceNote,
     };
   });
 }
@@ -212,56 +224,69 @@ export class RabService {
 
   /** CONTRACT starts empty; MC0/ADDENDUM copy the latest approved version (D-040). One DRAFT per project. */
   async create(actor: AuthUser, projectId: string, input: CreateRabVersionInput): Promise<RabVersionDetailDto> {
-    const versionId = await this.prisma.$transaction(async (tx) => {
-      await this.lockActiveProject(tx, projectId);
-      const versions = await tx.rabVersion.findMany({
-        where: { projectId, status: { not: 'DISCARDED' } },
-        select: { id: true, versionType: true, revisionNumber: true, status: true, approvedAt: true },
-      });
-      if (versions.some((v) => v.status === 'DRAFT')) throw new ConflictException('Masih ada draft RAB; approve atau batalkan draft tersebut lebih dahulu.');
-      const approved = versions.filter((v) => v.status === 'APPROVED').sort((a, b) => a.approvedAt!.getTime() - b.approvedAt!.getTime());
-      const latest = approved.at(-1);
-
-      let revisionNumber = 0;
-      if (input.versionType === 'CONTRACT') {
-        if (versions.length > 0) throw new ConflictException('RAB Kontrak sudah ada.');
-      } else if (!latest) {
-        throw new ConflictException('RAB Kontrak harus di-approve sebelum membuat MC-0 atau Addendum.');
-      } else if (input.versionType === 'MC0') {
-        if (versions.some((v) => v.versionType !== 'CONTRACT')) throw new ConflictException('MC-0 hanya dapat dibuat satu kali dan sebelum Addendum.');
-      } else {
-        revisionNumber = Math.max(0, ...versions.filter((v) => v.versionType === 'ADDENDUM').map((v) => v.revisionNumber)) + 1;
-      }
-
-      const version = await tx.rabVersion.create({
-        data: {
-          projectId,
-          versionType: input.versionType,
-          revisionNumber,
-          documentNumber: input.documentNumber ?? null,
-          documentDate: input.documentDate ? toDbDate(input.documentDate) : null,
-          previousVersionId: input.versionType === 'CONTRACT' ? null : latest!.id,
-          createdBy: actor.id,
-        },
-      });
-      if (input.versionType !== 'CONTRACT') await this.copyItems(tx, latest!.id, version.id);
-      await writeAudit(tx, {
-        actorId: actor.id,
-        action: 'CREATE_RAB_VERSION',
-        entityType: 'RAB_VERSION',
-        entityId: version.id,
-        projectId,
-        newValue: {
-          versionType: input.versionType,
-          revisionNumber,
-          previousVersionId: version.previousVersionId,
-          documentNumber: version.documentNumber,
-          documentDate: input.documentDate ?? null,
-        },
-      });
-      return version.id;
-    });
+    const versionId = await this.prisma.$transaction(async (tx) => (await this.createVersionInTx(tx, actor, projectId, input, { copyPrevious: true })).id);
     return this.get(projectId, versionId);
+  }
+
+  /**
+   * Creates a version under the M4 order rules (one DRAFT per project, CONTRACT → MC0 → ADDENDUM n) inside
+   * the caller's transaction. Manual creation copies the previous approved version; an approved import
+   * fills the rows itself (D-049, D-053) — the only other caller, so there is a single RAB creation path.
+   */
+  async createVersionInTx(
+    tx: Db,
+    actor: AuthUser,
+    projectId: string,
+    input: CreateRabVersionInput,
+    options: { copyPrevious: boolean },
+  ): Promise<{ id: string; previousVersionId: string | null; versionType: string; revisionNumber: number }> {
+    await this.lockActiveProject(tx, projectId);
+    const versions = await tx.rabVersion.findMany({
+      where: { projectId, status: { not: 'DISCARDED' } },
+      select: { id: true, versionType: true, revisionNumber: true, status: true, approvedAt: true },
+    });
+    if (versions.some((v) => v.status === 'DRAFT')) throw new ConflictException('Masih ada draft RAB; approve atau batalkan draft tersebut lebih dahulu.');
+    const approved = versions.filter((v) => v.status === 'APPROVED').sort((a, b) => a.approvedAt!.getTime() - b.approvedAt!.getTime());
+    const latest = approved.at(-1);
+
+    let revisionNumber = 0;
+    if (input.versionType === 'CONTRACT') {
+      if (versions.length > 0) throw new ConflictException('RAB Kontrak sudah ada.');
+    } else if (!latest) {
+      throw new ConflictException('RAB Kontrak harus di-approve sebelum membuat MC-0 atau Addendum.');
+    } else if (input.versionType === 'MC0') {
+      if (versions.some((v) => v.versionType !== 'CONTRACT')) throw new ConflictException('MC-0 hanya dapat dibuat satu kali dan sebelum Addendum.');
+    } else {
+      revisionNumber = Math.max(0, ...versions.filter((v) => v.versionType === 'ADDENDUM').map((v) => v.revisionNumber)) + 1;
+    }
+
+    const version = await tx.rabVersion.create({
+      data: {
+        projectId,
+        versionType: input.versionType,
+        revisionNumber,
+        documentNumber: input.documentNumber ?? null,
+        documentDate: input.documentDate ? toDbDate(input.documentDate) : null,
+        previousVersionId: input.versionType === 'CONTRACT' ? null : latest!.id,
+        createdBy: actor.id,
+      },
+    });
+    if (input.versionType !== 'CONTRACT' && options.copyPrevious) await this.copyItems(tx, latest!.id, version.id);
+    await writeAudit(tx, {
+      actorId: actor.id,
+      action: 'CREATE_RAB_VERSION',
+      entityType: 'RAB_VERSION',
+      entityId: version.id,
+      projectId,
+      newValue: {
+        versionType: input.versionType,
+        revisionNumber,
+        previousVersionId: version.previousVersionId,
+        documentNumber: version.documentNumber,
+        documentDate: input.documentDate ?? null,
+      },
+    });
+    return { id: version.id, previousVersionId: version.previousVersionId, versionType: version.versionType, revisionNumber };
   }
 
   async updateVersion(actor: AuthUser, projectId: string, versionId: string, input: UpdateRabVersionInput): Promise<RabVersionDetailDto> {
@@ -317,6 +342,9 @@ export class RabService {
       await this.lockDraft(tx, projectId, versionId);
       const item = await this.findItem(tx, versionId, itemId);
       const { parentId, ...fields } = input;
+      if (item.analysisVersionId && fields.unitPrice !== undefined) {
+        throw new ConflictException('Harga satuan item ini mengikuti analisa; ubah lewat impor/analisa, bukan langsung di RAB.');
+      }
       if (item.rowType !== 'ITEM' && ITEM_ONLY_FIELDS.some((f) => fields[f] != null)) {
         throw new BadRequestException('Hanya baris ITEM yang memiliki volume, satuan, no analisa, harga, dan PPN.');
       }
@@ -506,6 +534,15 @@ export class RabService {
         unitPrice: i.unitPrice,
         taxPercent: i.taxPercent,
         previousVersionItemId: i.id,
+        // The copy keeps the analysis link and how its price was decided (D-050: history points at versions).
+        analysisVersionId: i.analysisVersionId,
+        priceSource: i.priceSource,
+        sourceUnitPrice: i.sourceUnitPrice,
+        analysisUnitPrice: i.analysisUnitPrice,
+        priceNote: i.priceNote,
+        priceDecidedBy: i.priceDecidedBy,
+        priceDecidedAt: i.priceDecidedAt,
+        sourceLocator: (i.sourceLocator ?? undefined) as Prisma.InputJsonValue | undefined,
       })),
     });
   }
@@ -529,7 +566,7 @@ export class RabService {
   private async findItem(tx: Db, versionId: string, itemId: string) {
     const item = await tx.rabVersionItem.findFirst({
       where: { id: itemId, rabVersionId: versionId },
-      select: { id: true, rowType: true, parentItemId: true, sortOrder: true, workItemId: true },
+      select: { id: true, rowType: true, parentItemId: true, sortOrder: true, workItemId: true, analysisVersionId: true },
     });
     if (!item) throw new NotFoundException('Baris RAB tidak ditemukan.');
     return item;

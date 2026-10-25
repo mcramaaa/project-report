@@ -302,6 +302,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     analyses: draftAnalyses,
     prices: [...prices.values()],
     workbookTotals,
+    priceMetadata: priceMetadata(sources, [...prices.values()]),
     stats: {
       items: rows.filter((r) => r.rowType === 'ITEM').length,
       analysesInWorkbook,
@@ -550,4 +551,31 @@ function checkRowPrices(rows: DraftRow[], analyses: DraftAnalysis[], issues: Imp
       issues.push({ code: 'PRICE_SCALE', severity: 'BLOCKING', message: `${row.description}: harga analisa ${a.computed.price} lebih dari 2 desimal.`, rowKey: row.key, resolvedBy: ['PRICE_CHOICE'] });
     }
   }
+}
+
+/** "Lokasi : Denpasar" / "Tahun : 2026" in the first rows of the price sheets actually used. */
+function priceMetadata(sources: DraftSource[], used: DraftPrice[]): { location: string | null; period: string | null } {
+  const found = { location: null as string | null, period: null as string | null };
+  const seen = new Set<string>();
+  for (const p of used) {
+    const src = sources.find((x) => x.documentId === p.locator.documentId);
+    const id = `${p.locator.documentId}|${p.locator.sheet}`;
+    if (!src || seen.has(id)) continue;
+    seen.add(id);
+    for (let r = 1; r <= 12; r++) {
+      for (let c = 1; c <= 8; c++) {
+        const label = src.model.text(p.locator.sheet, r, c).toUpperCase();
+        const field = label === 'LOKASI' ? 'location' : label === 'TAHUN' ? 'period' : null;
+        if (!field || found[field]) continue;
+        for (let k = c + 1; k <= c + 6; k++) {
+          const v = src.model.text(p.locator.sheet, r, k).replace(/^:\s*/, '');
+          if (v && v !== ':') {
+            found[field] = v.slice(0, 100);
+            break;
+          }
+        }
+      }
+    }
+  }
+  return found;
 }

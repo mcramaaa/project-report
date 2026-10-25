@@ -129,6 +129,10 @@ export interface RabRowDto {
   subtotalBeforeTax: string | null;
   subtotal: string | null;
   weight: string | null;
+  /** MANUAL | ANALYSIS | SOURCE_OVERRIDE | DIRECT (D-051). */
+  priceSource: 'MANUAL' | 'ANALYSIS' | 'SOURCE_OVERRIDE' | 'DIRECT';
+  analysis: { analysisId: string; versionId: string; code: string | null; name: string } | null;
+  priceNote: string | null;
 }
 
 export interface RabIssue {

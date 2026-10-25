@@ -507,6 +507,7 @@ Disetujui 2026-10-25.
 Disetujui 2026-10-25.
 
 - Impor MC-0/Addendum menghasilkan RAB DRAFT baru dari sumber (bukan salinan). Identitas pekerjaan (`work_item_id`) ditentukan keputusan reviewer per item: cocokkan ke work item versi approved terakhir atau buat baru. Backend menyusun kandidat (jalur kelompok + uraian sama); kandidat tidak pernah diterapkan otomatis.
+- Saat approve, baris versi hasil impor ditautkan ke versi sebelumnya seperti salinan: item melalui keputusan work item, baris kelompok melalui jalur struktur yang sama (nomor + nama), agar perbandingan tidak menganggap seluruh item pindah kelompok. Kelompok hanya struktur, bukan identitas pekerjaan.
 - Relasi analisa yang rantainya berhenti di nilai (mis. REKAP ANALISA tanpa formula pada workbook MC-0) memerlukan keputusan reviewer; kandidat dari analisa resmi proyek (kode, harga, satuan sama) hanya usulan.
 - Seed `npm run db:seed:sample-ahsp` (development) membuat proyek `SDN2-SERANGAN-2026-AHSP` melalui alur impor yang sama: Kontrak dari workbook Penawaran (`00`), MC-0 dari workbook mingguan (`04`). Keputusan pemetaan MC-0 dicatat eksplisit sebagai keputusan reviewer oleh admin seed. Seed berhenti bila rekonsiliasi gagal, aman diulang (melanjutkan langkah yang belum selesai), dan tidak menyentuh proyek, user, role, atau histori lain.
 

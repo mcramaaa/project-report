@@ -383,6 +383,8 @@ model ProjectDocument {
   mimeType         String   @map("mime_type") @db.VarChar(120)
   fileSize         Int      @map("file_size") @db.UnsignedInt
   sha256           String   @db.Char(64)
+  /// Sheets that look like a RAB, computed once at upload (choice of rab_sheet).
+  sheetInventory   Json?    @map("sheet_inventory")
   uploadedBy       String   @map("uploaded_by") @db.Char(36)
   uploadedAt       DateTime @default(now()) @map("uploaded_at") @db.DateTime(3)
 
@@ -447,8 +449,12 @@ model RabImport {
 }
 
 model RabImportDocument {
-  importId   String @map("import_id") @db.Char(36)
-  documentId String @map("document_id") @db.Char(36)
+  importId   String       @map("import_id") @db.Char(36)
+  documentId String       @map("document_id") @db.Char(36)
+  /// RAB = main RAB/recap document; SUPPORT = analysis/price document (D-055).
+  role       DocumentRole @default(RAB)
+  rabSheet   String?      @map("rab_sheet") @db.VarChar(120)
+  sortOrder  Int          @default(0) @map("sort_order") @db.UnsignedSmallInt
 
   import   RabImport       @relation(fields: [importId], references: [id], onDelete: Restrict)
   document ProjectDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
@@ -456,6 +462,11 @@ model RabImportDocument {
   @@id([importId, documentId])
   @@index([documentId])
   @@map("rab_import_documents")
+}
+
+enum DocumentRole {
+  RAB
+  SUPPORT
 }
 
 enum RabImportDecisionKind {

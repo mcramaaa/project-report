@@ -152,6 +152,8 @@ export const rabImportDraftSchema = z.object({
   analyses: z.array(draftAnalysisSchema),
   prices: z.array(draftPriceSchema),
   workbookTotals: z.object({ value: decimal, rounded: decimal.nullable() }).nullable(),
+  /** Location/period from the price list headers ("Lokasi", "Tahun"), metadata of the price list (D-050). */
+  priceMetadata: z.object({ location: z.string().nullable(), period: z.string().nullable() }),
   stats: z.object({
     items: z.number().int(),
     analysesInWorkbook: z.number().int(),
@@ -250,4 +252,72 @@ export interface DocumentDto {
   uploadedAt: string;
   /** Sheets that look like a RAB (VOLUME + NO. ANALISA header), for choosing `rabSheet`. */
   rabSheetCandidates: string[];
+}
+
+export interface AhspAnalysisSummaryDto {
+  id: string;
+  code: string | null;
+  name: string;
+  unit: string | null;
+  versionCount: number;
+  latestVersion: {
+    id: string;
+    versionNumber: number;
+    price: string;
+    priceExact: string;
+    overheadPercent: string | null;
+    roundingScale: number | null;
+    discipline: string | null;
+    components: number;
+    rabItems: number;
+    usedAsSub: number;
+    source: { importId: string; versionType: string; documents: string[] };
+  };
+}
+
+export interface AhspAnalysisDetailDto {
+  id: string;
+  code: string | null;
+  name: string;
+  unit: string | null;
+  versions: {
+    id: string;
+    versionNumber: number;
+    code: string | null;
+    name: string;
+    unit: string | null;
+    discipline: string | null;
+    overheadPercent: string | null;
+    roundingScale: number | null;
+    directCost: string;
+    overheadAmount: string;
+    priceExact: string;
+    price: string;
+    priceList: { id: string; versionNumber: number; location: string | null; period: string | null };
+    sourceLocator: unknown;
+    createdAt: string;
+    components: {
+      id: string;
+      category: AhspCategory;
+      description: string;
+      unit: string | null;
+      coefficient: string;
+      unitPrice: string;
+      amount: string;
+      priceItem: { id: string; name: string; price: string } | null;
+      subAnalysis: { analysisId: string; versionId: string; code: string | null; name: string; basis: 'EXACT' | 'ROUNDED' | null } | null;
+      sourceLocator: unknown;
+    }[];
+    rabItems: { id: string; description: string; displayNumber: string | null; rabVersion: { id: string; versionType: string; revisionNumber: number; status: string } }[];
+  }[];
+}
+
+export interface PriceListDto {
+  id: string;
+  versionNumber: number;
+  location: string | null;
+  period: string | null;
+  createdAt: string;
+  sourceImportId: string | null;
+  items: { id: string; name: string; unit: string | null; price: string; sourceLocator: unknown }[];
 }

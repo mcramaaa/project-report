@@ -121,18 +121,25 @@ export class ProjectPermissionGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const permission = this.reflector.get<ProjectPermission>(PROJECT_PERMISSION, context.getHandler());
+    const anyOf = this.reflector.get<ProjectPermission[]>(PROJECT_PERMISSION, context.getHandler());
     const req = context.switchToHttp().getRequest<AppRequest>();
     const projectId = req.params.projectId;
     const user = req.auth?.user;
-    if (!permission || !user || typeof projectId !== 'string') throw new ForbiddenException();
+    if (!anyOf?.length || !user || typeof projectId !== 'string') throw new ForbiddenException();
 
-    const allowed = UUID_PATTERN.test(projectId) ? await this.access.hasProjectPermission(user, projectId, permission) : null;
+    let allowed: boolean | null = null;
+    if (UUID_PATTERN.test(projectId)) {
+      for (const permission of anyOf) {
+        allowed = await this.access.hasProjectPermission(user, projectId, permission);
+        if (allowed !== false) break; // null = not a member; true = granted
+      }
+    }
     if (allowed === null) throw new NotFoundException('Proyek tidak ditemukan.');
     if (!allowed) throw new ForbiddenException('Role Anda di proyek ini tidak memiliki izin untuk aksi ini.');
     return true;
   }
 }
 
-export const RequireProjectPermission = (permission: ProjectPermission) =>
-  applyDecorators(SetMetadata(PROJECT_PERMISSION, permission), UseGuards(ProjectPermissionGuard));
+/** Any one of the permissions in :projectId grants access. */
+export const RequireProjectPermission = (...anyOf: ProjectPermission[]) =>
+  applyDecorators(SetMetadata(PROJECT_PERMISSION, anyOf), UseGuards(ProjectPermissionGuard));

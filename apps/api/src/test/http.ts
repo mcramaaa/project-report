@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../app.module';
+import { AI_CLIENT } from '../imports/rab-imports.service';
 import { configureApp } from '../app.setup';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -13,8 +14,12 @@ export interface TestApp {
   prisma: PrismaService;
 }
 
-export async function startApp(): Promise<TestApp> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+/** `ai` replaces the 9router client (default: none, so imports use manual review only). */
+export async function startApp(options: { ai?: unknown } = {}): Promise<TestApp> {
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(AI_CLIENT)
+    .useValue(options.ai ?? null)
+    .compile();
   const app = moduleRef.createNestApplication({ logger: process.env.TEST_LOG ? ['error'] : false });
   configureApp(app);
   await app.listen(0, '127.0.0.1');
@@ -66,6 +71,17 @@ export class Client {
 
   delete(path: string, body?: unknown) {
     return this.request('DELETE', path, body);
+  }
+
+  /** multipart/form-data upload, field `files`. */
+  async upload(path: string, files: { name: string; data: Buffer }[]): Promise<ApiResponse> {
+    const form = new FormData();
+    for (const f of files) form.append('files', new Blob([new Uint8Array(f.data)]), f.name);
+    const headers: Record<string, string> = { origin: APP_ORIGIN };
+    if (this.cookie) headers.cookie = this.cookie;
+    const res = await fetch(`${this.baseUrl}${path}`, { method: 'POST', headers, body: form });
+    const text = await res.text();
+    return { status: res.status, body: text ? JSON.parse(text) : undefined, setCookie: [] };
   }
 
   async login(email: string, password: string): Promise<ApiResponse> {

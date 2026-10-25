@@ -15,12 +15,19 @@ import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsController } from './projects/projects.controller';
 import { ProjectsService } from './projects/projects.service';
+import { AhspController } from './ahsp/ahsp.controller';
+import { AhspService } from './ahsp/ahsp.service';
+import { AiClient, readAiConfig } from './ai/ai.client';
+import { DocumentsController } from './documents/documents.controller';
+import { DocumentsService } from './documents/documents.service';
+import { RabImportsController } from './imports/rab-imports.controller';
+import { AI_CLIENT, RabImportsService } from './imports/rab-imports.service';
 import { RabController } from './rab/rab.controller';
 import { RabService } from './rab/rab.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, AdminUsersController, AdminProjectsController, AdminAccessController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -31,6 +38,11 @@ import { RabService } from './rab/rab.service';
     AdminAccessService,
     ProjectsService,
     RabService,
+    DocumentsService,
+    RabImportsService,
+    AhspService,
+    // 9router is optional (D-052): without configuration imports go straight to manual review.
+    { provide: AI_CLIENT, useFactory: () => { const config = readAiConfig(); return config ? new AiClient(config) : null; } },
     AdminUsersService,
     AdminProjectsService,
   ],
