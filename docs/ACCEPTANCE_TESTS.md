@@ -174,6 +174,24 @@ Expected:
 
 ## K. AI Extraction
 
+- [ ] nama rekap berbeda dari analisa: formula menghubungkan keduanya, nama item RAB mengikuti rekap dan nama analisa asli tetap tersimpan
+- [ ] referensi formula berantai dan bukti sumber dapat ditinjau; formula ambigu/hilang atau file eksternal tidak tersedia masuk review tanpa tebakan nama
+- [ ] pipeline memakai instruksi impor tetap dari RAB_IMPORT_GUIDE, versi instruksi tercatat, serta hasil AI tetap divalidasi backend
+- [ ] hanya analisa yang dirujuk item RAB beserta komponen/harga yang diperlukan diimpor; referensi lain di workbook tidak menjadi record domain
+- [ ] analisa yang dipakai beberapa item tidak diduplikasi; referensi hilang/ambigu ditampilkan untuk review
+- [ ] volume 0 tidak otomatis menyebabkan analisa item terpilih dibuang; koefisien 0 pada analisa terpilih tetap terlacak
+- [ ] harga komponen × koefisien membentuk harga analisa, lalu × volume membentuk nilai item/rekap, dengan decimal dan aturan pajak/rounding yang sudah disetujui
+- [ ] selisih harga hasil analisa dengan RAB sumber ditampilkan pada review; perubahan sumber tidak menimpa RAB approved atau histori
+- [ ] satu file multi-sheet atau beberapa file Struktur/Arsitektur/MEP menghasilkan satu draft versi RAB dengan hierarki disiplin tetap ada
+- [ ] paket lengkap menyimpan file RAB, rekap, analisa, upah, bahan, dan alat beserta locator sumber setiap baris
+- [ ] analisa gabungan lintas disiplin dan blok RAB/analisa pada file/sheet yang sama dapat dipetakan tanpa mewajibkan pemisahan file
+- [ ] analisa dari sumber gabungan maupun terpisah Struktur/Arsitektur/MEP muncul di satu daftar analisa proyek; sumber/disiplin dapat ditelusuri tanpa pemisahan daftar wajib
+- [ ] beberapa item RAB dapat merujuk satu analisa tervalidasi tanpa menggandakan komponennya; konflik referensi tetap direview
+- [ ] rekap/subtotal/total sumber tidak dihitung dua kali sebagai ITEM
+- [ ] kode item/analisa yang sama lintas sumber tidak auto-merge; konflik ditampilkan untuk review
+- [ ] nilai konsolidasi direkonsiliasi dengan rincian/rekap sumber memakai decimal
+- [ ] Kontrak, MC0, dan Addendum dari paket berbeda tidak saling menimpa
+- [ ] status draft analisa/harga dibedakan dari data resmi; upload tidak mengubah RAB approved
 - [ ] file asli disimpan
 - [ ] extraction memiliki source locator
 - [ ] invalid schema retry maksimal sesuai kebijakan
@@ -182,6 +200,17 @@ Expected:
 - [ ] UNCERTAIN item match wajib human decision
 - [ ] approval membuat official RAB transactionally
 - [ ] audit dibuat
+- [ ] status impor UPLOADED → PROCESSING → NEEDS_REVIEW → APPROVED/REJECTED, FAILED untuk kegagalan teknis; retry membuat run baru tanpa menimpa run lama (D-048)
+- [ ] permission dokumen/impor/AHSP ditegakkan backend per proyek (D-049)
+- [ ] approve impor menghasilkan daftar harga, analisa/komponen resmi, dan RAB DRAFT tertaut dalam satu transaksi; approval RAB tetap lewat M4
+- [ ] analisa bertingkat ikut diimpor; siklus ditolak; hanya rantai terpakai menjadi record domain
+- [ ] harga analisa = Σ(harga × koefisien) + overhead sumber, dibulatkan sesuai sumber; direkonsiliasi dengan workbook (D-051)
+- [ ] selisih harga analisa vs RAB memblokir approve sampai reviewer memilih harga analisa atau override beralasan; kedua nilai, harga efektif, alasan, actor, waktu tersimpan
+- [ ] harga langsung diperbolehkan dengan warning; baris judul tanpa kode tidak dianggap item harga langsung
+- [ ] AI hanya untuk baris putus/ambigu; fallback model dipakai saat model utama gagal teknis; model, attempt, versi instruksi tercatat; kedua model gagal → review manual
+- [ ] impor MC-0/Addendum: work item dicocokkan lewat keputusan reviewer, kandidat tidak diterapkan otomatis (D-053)
+- [ ] RAB approved tetap menunjuk versi analisa/harga lama setelah impor berikutnya
+- [ ] seed `db:seed:sample-ahsp` membuat relasi komponen → analisa → item RAB, rekonsiliasi Kontrak & MC-0 sama dengan workbook, aman diulang
 
 ## L. Security
 

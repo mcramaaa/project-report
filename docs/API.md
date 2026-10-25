@@ -103,28 +103,32 @@ DELETE /admin/projects/:projectId/members/:userId    { reason? }
 - `member-candidates`: user aktif yang belum menjadi anggota aktif, maks. 20, cari nama/email; tidak memuat diri sendiri bagi pemegang delegasi; tidak membutuhkan `users.read`
 - DELETE mencabut membership (`revoked_at`), tidak menghapus user atau histori; menambah ulang mengaktifkan baris yang sama
 
-## 4. Documents
+## 4. Documents (D-049)
 
 ```text
-GET  /projects/:projectId/documents
-POST /projects/:projectId/documents
-GET  /documents/:documentId
-GET  /documents/:documentId/download
+GET  /projects/:projectId/documents                       document.read
+POST /projects/:projectId/documents   multipart files[]   document.upload   -> DocumentDto[] (201)
+GET  /projects/:projectId/documents/:documentId/download  document.read
 ```
 
-## 5. AI Extraction
+- v1 hanya `.xlsx` (ZIP signature + ekstensi), maks. 30 MB per file
+- `DocumentDto`: `{ id, originalFilename, mimeType, fileSize, sha256, uploadedBy, uploadedAt }`
+
+## 5. RAB Import (D-048–D-053)
 
 ```text
-POST /documents/:documentId/extractions
-GET  /ai-extractions/:extractionId
-GET  /ai-extractions/:extractionId/rows
-PATCH /ai-extractions/:extractionId/rows/:rowId
-POST /ai-extractions/:extractionId/retry
-POST /ai-extractions/:extractionId/approve
-POST /ai-extractions/:extractionId/reject
+GET  /projects/:projectId/rab-imports                                  rabImport.review | rabImport.approve
+POST /projects/:projectId/rab-imports   { targetVersionType, documentIds }   rabImport.review -> 201, status UPLOADED → diproses di latar
+GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns }
+POST /projects/:projectId/rab-imports/:importId/decisions  { rowKey, kind, value, reason? }   rabImport.review
+POST /projects/:projectId/rab-imports/:importId/retry                  rabImport.review -> run baru
+POST /projects/:projectId/rab-imports/:importId/approve                rabImport.approve
+POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport.approve
 ```
 
-Approval harus transaction-safe.
+- keputusan hanya pada status `NEEDS_REVIEW`; approve ditolak (`409`) bila masih ada issue `BLOCKING`
+- approve dalam satu transaksi: versi daftar harga, analisa/versi/komponen terpakai, RAB versi DRAFT tertaut, audit; mengikuti aturan urutan versi M4 (satu DRAFT per proyek)
+- AI dipakai otomatis saat pemrosesan untuk baris putus/ambigu bila 9router dikonfigurasi; hasilnya hanya kandidat
 
 ## 6. RAB
 
@@ -154,15 +158,13 @@ POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 - `rows` urut pohon dengan `depth`; baris non-ITEM membawa jumlah & bobot agregat sub-barisnya
 - compare: baris ITEM dicocokkan dengan `workItemId`; `change` = NEW | MODIFIED | REMOVED | UNCHANGED; `changes` = field yang berbeda (`description`, `unit`, `analysisCode`, `volume`, `unitPrice`, `taxPercent`, `group`); `baseGroup`/`targetGroup` = jalur kelompok (mis. `B › B.II`). `group` berarti pindah bagian/sub-bagian/induk; kelompok dikenali lewat rantai salinan (`previous_version_item_id`), sehingga ID baru hasil salinan bukan perubahan
 
-## 7. AHSP
+## 7. AHSP (D-049–D-051)
 
 ```text
-GET    /ahsp
-POST   /ahsp
-GET    /ahsp/:analysisId
-PATCH  /ahsp/:analysisId
-GET    /ahsp/:analysisId/versions
-POST   /ahsp/:analysisId/versions
+GET /projects/:projectId/analyses?search=&discipline=     ahsp.read -> daftar gabungan (versi terbaru per analisa, jumlah item RAB yang merujuk)
+GET /projects/:projectId/analyses/:analysisId             ahsp.read -> versi, komponen, sumber, item RAB yang merujuk
+GET /projects/:projectId/price-lists                      ahsp.read
+GET /projects/:projectId/price-lists/:priceListId         ahsp.read -> harga terpakai
 ```
 
 ## 8. Schedule

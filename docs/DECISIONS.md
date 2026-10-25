@@ -373,15 +373,151 @@ Disetujui 2026-10-25.
 - `npm run db:seed:sample`: hanya development; membaca workbook dari `storage/temp/` (tidak masuk Git, data proyek nyata tidak di-commit). Membuat proyek contoh SDN 2 Serangan beserta RAB Kontrak dan MC-0 (keduanya approved) dari sheet `RAB + PPN` laporan mingguan MC-0, dengan super admin seed sebagai pembuat/penyetuju. Idempotent: tidak berbuat apa-apa bila kode proyek sudah ada.
 - Pemetaan baris workbook: kode `A`…`H` → SECTION; `B.I` dst → SUBSECTION; nomor dengan volume → ITEM; nomor tanpa volume yang diikuti baris tanpa nomor → PARENT_ITEM dengan sub-item; baris tanpa nomor dan tanpa volume → lanjutan uraian baris sebelumnya; baris `JUMLAH`/`JUMLAH TOTAL`/`DIBULATKAN` dilewati (dihitung). Item bervolume 0 di MC-0 tidak disalin ke MC-0 (REMOVED).
 
+## D-045 Upload Paket Lengkap dan Konsolidasi Disiplin
+
+Kebutuhan pengguna 2026-10-25: dokumen RAB beserta analisa, upah, bahan, dan
+alat dapat di-upload seluruhnya, termasuk Struktur/Arsitektur/MEP yang terpisah.
+
+- Satu versi RAB proyek dapat memiliki banyak dokumen/sheet sumber. Hasilnya
+  satu RAB terintegrasi dengan kelompok disiplin dan hierarki yang terlacak.
+- Pemisahan file bukan pemisahan versi baseline. Kontrak, MC0, dan Addendum
+  tetap versi berbeda; file asli tetap disimpan.
+- Klarifikasi pengguna: bentuk sumber analisa boleh gabungan lintas disiplin,
+  terpisah per disiplin, maupun bercampur dengan RAB di file/sheet yang sama.
+  **Di sistem hasilnya selalu satu daftar analisa gabungan untuk proyek**,
+  bukan daftar/menu terpisah Struktur/Arsitektur/MEP. Disiplin dan sumber
+  menjadi metadata/filter; versi dan identitas analisa tetap dipertahankan.
+  Satu analisa yang sudah tervalidasi dapat
+  dirujuk beberapa item; jangan menduplikasi komponen hanya karena itemnya
+  berada di kelompok disiplin berbeda. Pemetaan disahkan melalui review.
+- Setiap baris draft/hasil resmi perlu provenance ke dokumen, sheet/halaman,
+  dan baris sumber. Identitas file tidak boleh hilang saat konsolidasi.
+- Rincian pekerjaan dihitung sekali; rekap dan subtotal sumber dipakai untuk
+  rekonsiliasi, bukan ditambahkan sebagai pekerjaan lagi.
+- Kesamaan kode/nama lintas disiplin tidak menjadi aturan auto-merge; konflik
+  item, analisa, satuan, koefisien, atau harga memerlukan review manusia.
+- M5 mencakup penerimaan paket dan draft terstruktur seluruh jenis data.
+  AHSP resmi, komponen dan pengaitannya tetap M7. Detail model database/API,
+  matching, scope harga referensi, serta approval data AHSP/harga diselesaikan
+  sebelum implementasi terkait (OD-011), bukan diasumsikan dari nomor analisa.
+- Semua hasil ekstraksi melewati validasi, review, dan approval sesuai domain;
+  perubahan sumber tidak menimpa RAB approved atau baseline lama.
+
+## D-046 Harga dari Analisa dan Impor Referensi Terpakai
+
+Kebutuhan pengguna 2026-10-25:
+
+- Alur harga: harga upah/bahan/alat × koefisien komponen → harga satuan analisa
+  → dikalikan volume pekerjaan → nilai item → rekap RAB. PPN mengikuti D-043
+  pada nilai yang tepat, tanpa pajak ganda. Semua kalkulasi kritis decimal-safe.
+- Pada impor paket, mulai dari item RAB yang dimasukkan ke versi tujuan,
+  telusuri analisa yang dirujuk, lalu komponen dan harga yang diperlukan.
+  Analisa, bahan, upah, dan alat yang tidak terpakai tidak dibuat sebagai data
+  domain. File sumber lengkap tetap disimpan untuk audit/penelusuran.
+- Analisa bersama tidak diduplikasi karena dipakai beberapa item. Penentuan
+  keterpakaian berdasarkan referensi, bukan sekadar volume > 0. Komponen
+  berkoefisien 0 yang tercantum dalam analisa terpilih tidak dibuang otomatis.
+- Referensi hilang/ambigu atau selisih hasil hitung dengan harga pada RAB
+  masuk validasi/review; jangan mengarang harga/koefisien atau menimpa nilai
+  resmi secara diam-diam. Data historis dan RAB approved tetap terlindungi.
+- Pengelolaan AHSP dan penurunan harga merupakan dependency impor lengkap.
+  Rencana M5/M7 harus menjelaskan urutan penyelesaiannya sebelum mengklaim
+  alur end-to-end selesai; penyimpanan draft M5 saja belum memenuhi alur ini.
+- Detail overhead/profit, dasar PPN, rounding komponen, serta item tanpa
+  analisa memerlukan keputusan OD-012 sebelum kalkulasi resminya dibuat.
+
+## D-047 Pemetaan Formula Rekap dan Panduan Impor Tetap
+
+Kebutuhan pengguna 2026-10-25:
+
+- Nama rekap dapat berbeda dari nama analisa. Telusuri formula dan rantai
+  referensinya untuk menentukan analisa yang dirujuk; nama item RAB mengikuti
+  rekap. Nama analisa asli tidak ditimpa, dan bukti relasi tetap terlacak.
+- Rumus/kandidat yang tidak dapat dibuktikan, eksternal tidak tersedia, atau
+  ambigu masuk review manusia. Jangan mengarang pemetaan dari nama saja.
+- Cara impor disimpan di `docs/RAB_IMPORT_GUIDE.md` agar pengembang dan AI
+  aplikasi mempunyai acuan tetap. Implementasi wajib menghubungkannya ke
+  instruksi ekstraksi, structured schema, validator, review, dan test; bukan
+  mengandalkan chat atau file yang belum diintegrasikan ke runtime. Versi
+  instruksi perlu terlacak pada ekstraksi.
+- Panduan mencakup D-045/D-046: satu daftar analisa gabungan, impor referensi
+  terpakai, harga dari komponen × koefisien, dan histori versi aman.
+
+## D-048 Status Impor dan Retry (menutup OD-001)
+
+Disetujui 2026-10-25.
+
+- `rab_imports.status`: `UPLOADED → PROCESSING → NEEDS_REVIEW → APPROVED | REJECTED`; `FAILED` untuk kegagalan teknis (file rusak, parser/AI error yang tidak dapat diselesaikan).
+- `NEEDS_MANUAL_REVIEW` digabung ke `NEEDS_REVIEW`; masalah tercatat per baris pada draft (`issues`).
+- Retry membuat run baru (`attempt_number` + 1, `previous_import_id` ke run sebelumnya). Hasil, draft, dan keputusan review run lama tidak ditimpa atau dipindahkan.
+- Run `PROCESSING` yang terputus saat server berhenti ditandai `FAILED` saat API start.
+
+## D-049 Permission Dokumen, Impor, dan AHSP (menutup bagian OD-008 untuk M5/M7)
+
+Disetujui 2026-10-25.
+
+| Permission | Untuk | Default |
+|---|---|---|
+| `document.read` | lihat & unduh dokumen proyek | ADMIN, MANAGER |
+| `document.upload` | upload dokumen | ADMIN, MANAGER |
+| `rabImport.review` | buat run impor, retry, catat keputusan reviewer | ADMIN, MANAGER |
+| `rabImport.approve` | approve/reject impor | MANAGER |
+| `ahsp.read` | lihat daftar analisa, komponen, daftar harga | FILLER, REVIEWER, MANAGER, ADMIN |
+
+- Approve impor menghasilkan versi daftar harga, analisa/komponen resmi, dan **RAB versi DRAFT** yang tertaut. Approval RAB tetap `rab.approve` (M4); aktivasi baseline M6. Tidak ada jalur approval RAB kedua.
+- Semua izin diperiksa backend per proyek dan role dinamis. Sisa OD-008 (progress, laporan, baseline) tetap terbuka.
+
+## D-050 Harga Referensi per Proyek (menutup OD-011)
+
+Disetujui 2026-10-25.
+
+- Harga upah/bahan/alat disimpan per proyek dalam **versi daftar harga** (`price_lists`); setiap impor yang di-approve membuat versi baru. Versi lama tidak ditimpa. Belum ada katalog lintas proyek.
+- Lokasi dan periode dari sumber menjadi metadata versi daftar harga.
+- Konflik harga/referensi (nama sama harga berbeda, kandidat ganda) masuk review.
+- Approval ikut approve impor (`rabImport.approve`).
+- Versi analisa menunjuk versi daftar harga; item RAB menunjuk versi analisa. RAB approved tetap menunjuk versi yang dipakai saat itu; perubahan master berikutnya tidak mengubah histori.
+
+## D-051 Rumus Harga Satuan Analisa (menutup OD-012)
+
+Disetujui 2026-10-25 berdasarkan bukti workbook SDN 2 Serangan (`ANALISA`, `REKAP ANALISA`, `UPAH`, `BAHAN V`).
+
+- Harga komponen sebelum PPN; PPN dikenakan sekali di RAB (D-043).
+- Nilai komponen = harga × koefisien, tanpa pembulatan. Biaya langsung (D) = Σ nilai komponen (tenaga + bahan + alat).
+- Overhead/profit = persentase **per versi analisa** dari sumber × D. Harga eksak (F) = D + overhead.
+- Harga satuan analisa = pembulatan **sesuai sumber per versi analisa** (`rounding_scale`, HALF_UP). Profil workbook contoh: `ROUND(F, 0)` pada REKAP ANALISA. Bila sumber tidak membulatkan, harga = F. Tidak ada tarif, markup, atau pembulatan default yang diasumsikan; rumus yang tidak terbukti masuk review.
+- Harga satuan RAB disimpan maksimal 2 desimal (D-043); harga analisa yang lebih presisi tanpa pembulatan sumber memblokir approval sampai reviewer memutuskan (override dengan alasan).
+- **Selisih harga analisa vs harga sumber RAB** memblokir approve impor sampai reviewer memilih: harga analisa, atau override harga sumber dengan alasan. Disimpan: harga sumber, harga analisa, harga efektif, sumber harga, alasan, actor, waktu.
+- **Harga langsung/lump sum** (item tanpa analisa yang terbukti memakai harga literal) boleh dengan warning. Baris judul/kelompok tanpa kode tidak dianggap item harga langsung.
+- **Analisa bertingkat**: komponen dapat merujuk versi analisa lain; harga komponen mengikuti rumus sumber (harga eksak atau harga yang dibulatkan). Siklus ditolak.
+- TKDN tetap ditunda (OD-010).
+
+## D-052 Penelusuran Deterministik, AI 9router, dan Panduan Versi 1
+
+Disetujui 2026-10-25.
+
+- Penelusuran formula, pembacaan blok analisa, dan seluruh kalkulasi deterministik di backend (`apps/api`), Decimal di `packages/calc`.
+- Fungsi formula yang didukung v1: referensi sel/range lintas sheet, `VLOOKUP` exact match (`FALSE`/0), `IFERROR`, `ROUND`, `SUM`, `+ - * /`, unary `+/-`, angka/teks literal. Formula lain, referensi eksternal, `VLOOKUP` approximate, atau rantai yang tidak dapat dibuktikan masuk review.
+- AI hanya membantu kandidat untuk baris yang rantainya putus/ambigu, dengan bukti; backend memvalidasi kandidat. AI tidak menulis RAB/AHSP resmi.
+- 9router (OpenAI-compatible) hanya dipanggil dari `apps/api`: `NINEROUTER_BASE_URL`, `NINEROUTER_API_KEY`, `AI_MODEL`, `AI_FALLBACK_MODEL`. Timeout dan retry terbatas; model fallback dipakai bila model utama gagal secara teknis. Setiap panggilan dicatat (`ai_runs`): model aktual, attempt, versi instruksi, status, error. API key tidak pernah dicatat/ditampilkan. Bila kedua model gagal, impor tetap selesai lewat review manual.
+- `docs/RAB_IMPORT_GUIDE.md` versi 1 diintegrasikan sebagai instruksi tetap berversi `rab-import-guide@1` (prompt, structured schema zod, validator, test). Versi tercatat pada setiap run impor.
+- Format v1: `.xlsx`. PDF menyusul.
+
+## D-053 Impor Versi Non-Kontrak dan Seed AHSP
+
+Disetujui 2026-10-25.
+
+- Impor MC-0/Addendum menghasilkan RAB DRAFT baru dari sumber (bukan salinan). Identitas pekerjaan (`work_item_id`) ditentukan keputusan reviewer per item: cocokkan ke work item versi approved terakhir atau buat baru. Backend menyusun kandidat (jalur kelompok + uraian sama); kandidat tidak pernah diterapkan otomatis.
+- Relasi analisa yang rantainya berhenti di nilai (mis. REKAP ANALISA tanpa formula pada workbook MC-0) memerlukan keputusan reviewer; kandidat dari analisa resmi proyek (kode, harga, satuan sama) hanya usulan.
+- Seed `npm run db:seed:sample-ahsp` (development) membuat proyek `SDN2-SERANGAN-2026-AHSP` melalui alur impor yang sama: Kontrak dari workbook Penawaran (`00`), MC-0 dari workbook mingguan (`04`). Keputusan pemetaan MC-0 dicatat eksplisit sebagai keputusan reviewer oleh admin seed. Seed berhenti bila rekonsiliasi gagal, aman diulang (melanjutkan langkah yang belum selesai), dan tidak menyentuh proyek, user, role, atau histori lain.
+
 ## Keputusan Terbuka
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.
 
 ### OD-001 Status ekstraksi AI setelah retry gagal
 
-`docs/AI_EXTRACTION.md` §8 menyebut `NEEDS_MANUAL_REVIEW`; enum `ai_extractions.status` di `docs/DATABASE.md` hanya memiliki `NEEDS_REVIEW`. Apakah keduanya status yang sama atau berbeda?
+Sudah diputuskan: lihat D-048.
 
-Diputuskan sebelum: Milestone 5 (tabel AI tidak masuk base schema, D-028).
 
 ### OD-002 Lingkup role ADMIN
 
@@ -425,6 +561,8 @@ Matriks di `docs/PERMISSIONS.md` mengikuti PRD §2. Belum jelas:
 
 Diputuskan sebelum: milestone yang pertama kali memakai izin tersebut (Milestone 5, 6, 9, 11).
 
+
+Untuk dokumen, impor, dan AHSP (M5/M7): diputuskan di D-049. Sisanya tetap terbuka.
 ### OD-009 Verifikasi rumus RAB terhadap workbook kantor
 
 Sudah diputuskan: lihat D-043.
@@ -434,3 +572,12 @@ Sudah diputuskan: lihat D-043.
 Workbook kantor memuat kolom TKDN (%) per item (dari REKAP ANALISA) dan nilai TKDN = jumlah × TKDN%, beserta rekap TKDN per bagian dan total. Belum ada di PRD. Perlu diputuskan: apakah disimpan per item RAB atau diturunkan dari AHSP, dan apakah ditampilkan/diekspor.
 
 Diputuskan sebelum: Milestone 7 (AHSP) atau Milestone 14 (export), mana yang lebih dulu membutuhkannya.
+
+### OD-011 Harga Referensi dan Approval Paket Analisa Lengkap
+
+Sudah diputuskan: lihat D-050.
+
+
+### OD-012 Komposisi Harga Satuan Analisa dan Rekonsiliasi RAB
+
+Sudah diputuskan: lihat D-051.

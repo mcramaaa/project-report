@@ -26,6 +26,11 @@ Aplikasi:
 
 ## 3. REKAP ANALISA
 
+Nama pekerjaan pada rekap dapat berbeda dari nama analisa. Telusuri formula
+harga/jumlah melalui sheet ini ke analisa rinci, bukan hanya mencocokkan nama.
+Nama item RAB mengikuti rekap; uraian analisa asli tetap disimpan terpisah.
+Simpan bukti formula/rantai referensi; lihat `docs/RAB_IMPORT_GUIDE.md`.
+
 Fungsi:
 - referensi no analisa / uraian / harga
 

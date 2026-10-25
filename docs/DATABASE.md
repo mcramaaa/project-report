@@ -124,91 +124,71 @@ Lihat §11.
 
 ### project_documents
 
+File asli disimpan di `storage/projects/<project_id>/documents/<stored_filename>` (nama acak), bukan blob database.
+
 - id
-- project_id
-- document_type
-- document_number
-- document_date
+- project_id → projects (RESTRICT)
 - original_filename
-- stored_filename
-- file_path
+- stored_filename — unik, UUID + ekstensi
 - mime_type
 - file_size
 - sha256
-- uploaded_by
+- uploaded_by → users
 - uploaded_at
-- status
 
-Document types:
-- CONTRACT
-- SPMK
-- RAB_CONTRACT
-- MC0
-- ADDENDUM
-- AHSP
-- SCHEDULE
-- TEMPLATE
-- OTHER
+Index: `project_id`, `sha256`. Dokumen tidak dihapus.
 
-## 3. AI Extraction
+## 3. RAB Import (D-048, D-052)
 
-### ai_extractions
+### rab_imports
+
+Satu run impor paket ke satu versi RAB tujuan.
 
 - id
-- project_document_id
-- extraction_type
-- attempt_number
-- provider
-- model
-- started_at
-- finished_at
-- raw_response
-- structured_result
-- status
-- error_message
-- created_by
-- created_at
+- project_id → projects
+- target_version_type — CONTRACT | MC0 | ADDENDUM
+- status — UPLOADED | PROCESSING | NEEDS_REVIEW | APPROVED | REJECTED | FAILED
+- attempt_number, previous_import_id nullable → rab_imports (retry)
+- guide_version — mis. `rab-import-guide@1`
+- parser_version
+- draft JSON nullable — structured draft tervalidasi schema (baris RAB, analisa terpakai, harga, bukti formula, issues, kandidat)
+- error_message nullable
+- created_by, created_at, updated_at, processed_at
+- approved_by, approved_at, rejected_by, rejected_at, reject_reason nullable
+- rab_version_id nullable → rab_versions (hasil), price_list_id nullable → price_lists (hasil)
 
-Status:
-- PENDING
-- PROCESSING
-- NEEDS_REVIEW
-- FAILED
-- APPROVED
-- REJECTED
+### rab_import_documents
 
-### ai_extraction_rows
+- import_id → rab_imports, document_id → project_documents (PK keduanya)
+
+### rab_import_decisions
+
+Keputusan reviewer, append-only (keputusan terakhir per `row_key` + `kind` berlaku).
 
 - id
-- extraction_id
-- source_sheet
-- source_row
-- source_locator
-- sort_order
-- row_type
-- code
-- description
-- volume
-- unit
-- analysis_no
-- unit_price
-- tax_percent
-- unit_price_with_tax
-- subtotal
-- weight
-- confidence
-- validation_status
-- review_status
-- review_note
+- import_id → rab_imports
+- row_key — kunci baris draft
+- kind — ANALYSIS_LINK | PRICE_CHOICE | DIRECT_PRICE | WORK_ITEM_MATCH
+- value JSON — mis. `{ analysisKey }`, `{ source: 'ANALYSIS' | 'SOURCE_OVERRIDE' }`, `{ workItemId | null }`
+- reason nullable (wajib untuk override)
+- decided_by → users, decided_at
 
-### ai_extraction_reviews
+### ai_runs
+
+Setiap panggilan model.
 
 - id
-- extraction_id
-- reviewed_by
-- reviewed_at
-- decision
-- notes
+- import_id → rab_imports
+- purpose
+- instruction_version
+- model — model aktual yang menjawab/gagal
+- attempt
+- status — SUCCEEDED | FAILED
+- error nullable
+- response JSON nullable (tanpa API key)
+- started_at, finished_at
+
+Tabel lama `ai_extractions`/`ai_extraction_rows`/`ai_extraction_reviews` digantikan oleh tabel di atas.
 
 ## 4. RAB Versioning
 
@@ -260,6 +240,12 @@ Permanent project work identity. Dibuat saat baris ITEM baru ditambahkan; terbaw
 - tax_percent DECIMAL(5,2) nullable
 - unit_price_with_tax DECIMAL(26,6), subtotal DECIMAL(48,18) nullable — snapshot eksak saat approve (D-043)
 - previous_version_item_id nullable → rab_version_items (baris asal salinan)
+- analysis_version_id nullable → ahsp_analysis_versions (D-049/D-051)
+- price_source — MANUAL | ANALYSIS | SOURCE_OVERRIDE | DIRECT
+- source_unit_price, analysis_unit_price DECIMAL(40,12) nullable — harga sumber dan harga analisa saat diputuskan
+- price_note nullable — alasan override
+- price_decided_by nullable → users, price_decided_at nullable
+- source_locator JSON nullable — dokumen/sheet/baris sumber impor
 - created_at
 - updated_at
 
@@ -283,39 +269,73 @@ activation_mode:
 - NEXT_WEEK
 - EXACT_DATE
 
-## 5. AHSP
+## 5. AHSP (D-050, D-051)
+
+### price_lists
+
+Versi daftar harga per proyek; dibuat saat approve impor, tidak diubah.
+
+- id
+- project_id → projects
+- version_number — unique per proyek
+- source_import_id → rab_imports
+- location, period nullable — metadata dari sumber
+- created_by, created_at
+
+### price_items
+
+Hanya harga yang dipakai komponen analisa terpakai (D-046).
+
+- id
+- price_list_id → price_lists
+- name
+- unit nullable
+- price DECIMAL(40,12)
+- source_locator JSON — dokumen, sheet, sel
 
 ### ahsp_analyses
 
+Identitas analisa dalam **satu daftar gabungan per proyek** (D-045). Kode tidak unik dan bukan identitas.
+
 - id
-- analysis_number
-- description
-- unit
+- project_id → projects
+- code, name, unit — dari sumber saat pertama dibuat
+- created_at
 
 ### ahsp_analysis_versions
 
+Tidak diubah setelah dibuat; item RAB menunjuk versi.
+
 - id
-- ahsp_analysis_id
-- source_document_id
-- version_label
-- effective_date
-- status
+- analysis_id → ahsp_analyses
+- version_number — unique per analisa
+- price_list_id → price_lists
+- source_import_id → rab_imports
+- code, name, unit — snapshot sumber (nama analisa asli, tidak ditimpa nama rekap)
+- discipline nullable — metadata/filter (Struktur/Arsitektur/MEP bila diketahui)
+- overhead_percent DECIMAL(9,4) nullable
+- rounding_scale nullable — pembulatan harga sesuai sumber (D-051)
+- direct_cost, overhead_amount, price_exact DECIMAL(50,24)
+- price DECIMAL(40,12) — harga satuan analisa (setelah pembulatan sumber)
+- source_locator JSON
 - created_at
 
 ### ahsp_components
 
 - id
-- analysis_version_id
-- component_type
-- description
-- unit
-- coefficient
-- reference_price
+- analysis_version_id → ahsp_analysis_versions
+- sort_order
+- category — LABOR | MATERIAL | EQUIPMENT
+- description, unit
+- coefficient DECIMAL(30,12)
+- price_item_id nullable → price_items
+- sub_analysis_version_id nullable → ahsp_analysis_versions (analisa bertingkat)
+- sub_price_basis nullable — EXACT | ROUNDED
+- unit_price DECIMAL(40,12) — snapshot harga komponen
+- amount DECIMAL(65,24) — koefisien × harga, eksak
+- source_locator JSON
 
-component_type:
-- MATERIAL
-- LABOR
-- EQUIPMENT
+Tepat satu dari `price_item_id`/`sub_analysis_version_id`, atau keduanya null untuk harga literal di analisa (locator menunjuk selnya).
 
 ## 6. Schedule
 

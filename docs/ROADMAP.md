@@ -44,7 +44,12 @@ Deliverables:
 
 ## Milestone 5 - AI Upload / Extraction / Review
 
+- integrasikan panduan tetap RAB_IMPORT_GUIDE ke instruksi AI/validator; telusuri formula rekap ke analisa, nama item mengikuti rekap (D-047)
 - document upload
+- paket multi-file/multi-sheet: RAB Struktur/Arsitektur/MEP, rekap, analisa, upah, bahan, alat (D-045)
+- konsolidasi draft satu versi RAB dengan disiplin/hierarki dan locator sumber tetap terlacak
+- draft terstruktur analisa/harga sumber; pengelolaan resmi dan relasi AHSP diselesaikan di M7 (OD-011)
+- rekonsiliasi rincian vs rekap; review konflik kode/referensi lintas dokumen tanpa auto-merge
 - storage
 - Excel preprocessing
 - 9router client
@@ -63,6 +68,10 @@ Deliverables:
 
 ## Milestone 7 - AHSP
 
+- kalkulasi harga analisa dari harga upah/bahan/alat × koefisien, lalu nilai item dari volume × harga analisa; aturan rinci OD-012
+- impor hanya analisa dan komponen/harga yang dipakai item RAB (D-046); sinkronkan dependency M5/M7 sebelum implementasi impor lengkap
+- satu daftar analisa gabungan proyek, terlepas dari pemisahan Struktur/Arsitektur/MEP pada Excel sumber (D-045)
+- pengelolaan dan approval analisa/harga dari draft paket M5 sesuai keputusan OD-011
 - analysis master
 - versions
 - material/labor/equipment components

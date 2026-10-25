@@ -211,6 +211,12 @@ Filter:
 
 ## 9. RAB Single Version
 
+Daftar analisa/AHSP proyek menggunakan satu daftar gabungan, meskipun analisa
+di Excel sumber dipisah menjadi Struktur/Arsitektur/MEP. Disiplin dan dokumen
+sumber tersedia untuk penelusuran/filter; pengguna tidak perlu berpindah
+daftar analisa per disiplin. Pilihan analisa pada item RAB merujuk daftar ini
+dengan versi yang sesuai. Hierarki kelompok pekerjaan pada grid RAB tetap ada.
+
 Milestone 4 (D-040): `/projects/:id/rab` (daftar versi, buat Kontrak/MC-0/Addendum) dan `/projects/:id/rab/:versionId` (grid). Draft dapat diedit per baris (tambah baris/sub-baris, ubah, hapus, naik/turun, pindah induk) oleh `rab.edit`; panel validasi menampilkan error/warning; approve oleh `rab.approve` dengan konfirmasi warning; discard wajib alasan. Header tabel dan kolom No/Uraian sticky; pilihan kolom tersimpan per browser.
 
 Tampilan familiar seperti Excel.

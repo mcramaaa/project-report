@@ -32,6 +32,11 @@ Urutan dokumen:
 12. `docs/ROADMAP.md`
 13. `docs/VIBE_CODING_GUIDE.md`
 
+Untuk pekerjaan impor RAB/AHSP, baca juga [panduan impor tetap](docs/RAB_IMPORT_GUIDE.md).
+Panduan memuat konsolidasi analisa, referensi yang dipakai, penelusuran formula
+rekap, dan aturan nama pekerjaan. Integrasi ke prompt/validator AI masih harus
+diimplementasikan pada pipeline impor.
+
 ## Stack yang Diputuskan
 
 - Monorepo: npm workspaces

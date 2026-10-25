@@ -35,6 +35,11 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `rab.read` | PROJECT | RAB | lihat versi RAB, grid, perbandingan (D-041) |
 | `rab.edit` | PROJECT | RAB | buat/ubah/discard draft RAB |
 | `rab.approve` | PROJECT | RAB | approve draft RAB |
+| `document.read` | PROJECT | Dokumen | lihat & unduh dokumen proyek (D-049) |
+| `document.upload` | PROJECT | Dokumen | upload dokumen |
+| `rabImport.review` | PROJECT | Impor RAB | buat run impor, retry, catat keputusan reviewer |
+| `rabImport.approve` | PROJECT | Impor RAB | approve/reject impor → analisa/harga resmi + RAB DRAFT |
+| `ahsp.read` | PROJECT | AHSP | lihat daftar analisa, komponen, harga |
 
 Rencana (ditambahkan saat milestone terkait; `rab.*` sudah ditambahkan di M4, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `baseline.activate`, `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
 
@@ -46,9 +51,9 @@ FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2). Kode, scope, d
 
 | Role | Default permission |
 |---|---|
-| FILLER, REVIEWER | `project.read`, `rab.read` |
-| ADMIN | `project.read`, `rab.read`, `rab.edit` |
-| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve` |
+| FILLER, REVIEWER | `project.read`, `rab.read`, `ahsp.read` |
+| ADMIN | `project.read`, `rab.read`, `rab.edit`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review` |
+| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve` |
 
 Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
 
@@ -91,6 +96,11 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `GET /projects/:id/rab-versions…` (daftar, detail, compare) | `rab.read` |
 | `POST/PATCH/DELETE /projects/:id/rab-versions…` (draft, baris, discard) | `rab.edit` |
 | `POST /projects/:id/rab-versions/:vid/approve` | `rab.approve` |
+| `GET /projects/:id/documents…` / `POST /projects/:id/documents` | `document.read` / `document.upload` |
+| `GET /projects/:id/rab-imports…` | `rabImport.review` atau `rabImport.approve` |
+| `POST /projects/:id/rab-imports`, `…/decisions`, `…/retry` | `rabImport.review` |
+| `POST /projects/:id/rab-imports/:iid/approve`, `…/reject` | `rabImport.approve` |
+| `GET /projects/:id/analyses…`, `GET /projects/:id/price-lists…` | `ahsp.read` |
 
 ## 6. Respons Penolakan
 
@@ -123,7 +133,15 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `CLOSE_PROJECT` / `REOPEN_PROJECT` | status proyek berubah | status lama & baru (alasan wajib) |
 | `CREATE_RAB_VERSION` / `UPDATE_RAB_VERSION` | versi RAB dibuat (jenis, revisi, versi asal) / dokumen diubah | jenis, revisi, nomor/tanggal dokumen |
 | `APPROVE_RAB_VERSION` | draft disetujui | total sebelum PPN, PPN, total, jumlah ITEM, warning yang dikonfirmasi |
+| `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |
+| `CREATE_RAB_IMPORT` / `RETRY_RAB_IMPORT` | run impor dibuat / diulang | versi tujuan, dokumen, run sebelumnya |
+| `DECIDE_RAB_IMPORT_ROW` | keputusan reviewer | baris, jenis, nilai, alasan |
+| `APPROVE_RAB_IMPORT` / `REJECT_RAB_IMPORT` | impor di-approve / ditolak | versi RAB & daftar harga hasil, jumlah analisa/komponen; alasan |
 | `DISCARD_RAB_VERSION` | draft dibatalkan | status lama & baru (alasan wajib) |
+| `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |
+| `CREATE_RAB_IMPORT` / `RETRY_RAB_IMPORT` | run impor dibuat / diulang | versi tujuan, dokumen, run sebelumnya |
+| `DECIDE_RAB_IMPORT_ROW` | keputusan reviewer | baris, jenis, nilai, alasan |
+| `APPROVE_RAB_IMPORT` / `REJECT_RAB_IMPORT` | impor di-approve / ditolak | versi RAB & daftar harga hasil, jumlah analisa/komponen; alasan |
 | `CHANGE_PASSWORD` | password diganti | tidak ada nilai |
 | `REVOKE_SESSIONS` | session dicabut karena nonaktivasi/ganti password | jumlah session, penyebab |
 

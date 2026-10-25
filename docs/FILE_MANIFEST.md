@@ -1,5 +1,6 @@
 # File Manifest
 
+- `docs/RAB_IMPORT_GUIDE.md`
 - `AGENTS.md`
 - `apps/api/eslint.config.mjs`
 - `apps/api/nest-cli.json`

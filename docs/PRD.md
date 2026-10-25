@@ -197,6 +197,13 @@ UI perbandingan wajib menunjukkan perubahan antar baseline.
 
 ## 11. AHSP
 
+Di sistem, analisa ditampilkan dan dikelola sebagai **satu daftar gabungan**
+untuk proyek, bukan daftar terpisah Struktur/Arsitektur/MEP. Bentuk sumber Excel
+(analisa gabungan atau dipisah per disiplin/file/sheet) dinormalisasi ke daftar
+yang sama. Asal disiplin/dokumen tetap metadata untuk penelusuran dan filter;
+tidak menjadi pemisahan daftar wajib. Versi analisa dan referensi item tetap
+dipertahankan, dan konflik kode/isi diselesaikan melalui review.
+
 Analisa memiliki:
 
 - nomor analisa
@@ -217,6 +224,20 @@ Setiap komponen menyimpan:
 - koefisien
 
 AHSP dapat digunakan kembali dan dapat memiliki versi bila diperlukan.
+
+Pada alur RAB berbasis analisa (D-046), harga satuan pekerjaan berasal dari
+perhitungan komponen analisa: harga upah/bahan/alat dikalikan koefisiennya,
+lalu dijumlahkan. Nilai pekerjaan berasal dari harga satuan analisa dikalikan
+volume RAB; rekap mengagregasi nilai pekerjaan. PPN tetap mengikuti D-043 dan
+tidak dikenakan dua kali. Overhead/profit atau komponen tambahan dari sumber
+memerlukan verifikasi rumus (OD-012).
+
+Hanya analisa yang dirujuk oleh item RAB yang diimpor, beserta komponen dan
+harga yang diperlukan analisa tersebut. Analisa/upah/bahan/alat lain pada
+workbook tidak diimpor sebagai data domain. File asli tetap disimpan lengkap.
+Item bervolume 0 bukan otomatis tidak terpakai: penentuan pemakaian berdasarkan
+referensi item yang termasuk versi RAB, bukan ambang volume. Penghilangan
+referensi pada impor baru tidak menghapus data yang dipakai histori lama.
 
 ## 12. Minggu Proyek
 
@@ -473,6 +494,35 @@ File tidak disimpan sebagai blob besar di database.
 ## 29. AI Extraction
 
 Admin upload Excel/PDF.
+
+Upload mendukung paket dokumen proyek lengkap: RAB, rekap, analisa/AHSP,
+daftar harga upah, bahan, dan alat. Struktur, Arsitektur, dan MEP dapat berada
+di file atau sheet berbeda dan dikonsolidasikan menjadi satu RAB untuk satu
+proyek dan satu versi baseline. Disiplin, hierarki, dan asal setiap baris tetap
+terlacak; Kontrak, MC0, dan Addendum tidak digabung menjadi satu versi.
+
+Pada sumber, analisa/AHSP dapat digabung atau dipisah per disiplin, termasuk
+berada dalam file/sheet yang sama dengan RAB. **Hasil di sistem selalu satu
+daftar analisa gabungan**, sesuai §11. Satu analisa yang telah
+divalidasi dapat dirujuk beberapa item RAB; komponen analisanya tidak perlu
+diduplikasi berdasarkan disiplin. Pemetaan referensi tetap melalui review.
+
+Bila nama pekerjaan pada rekap berbeda dari nama analisa, telusuri formula
+rekap (termasuk rantai referensi sheet perantara) untuk menemukan analisa yang
+dipakai. Nama item RAB mengikuti rekap; nama analisa asli dan bukti referensi
+tetap disimpan. Formula hilang/ambigu atau tidak dapat ditelusuri masuk review,
+bukan dipetakan paksa berdasarkan kemiripan nama. Panduan impor tetap di
+`docs/RAB_IMPORT_GUIDE.md` harus menjadi acuan prompt dan validasi backend.
+
+Rekap dan rincian bukan dua sumber nilai untuk dijumlahkan bersama. Kode item
+atau nomor analisa yang sama pada dokumen/disiplin berbeda tidak cukup untuk
+menggabungkan data otomatis; konflik dan ketidakpastian ditinjau manusia.
+
+M5 menerima dan menyimpan seluruh sumber serta draft terstrukturnya. Pengelolaan
+AHSP resmi, komponen, harga referensi, dan pengaitan ke RAB diselesaikan pada M7;
+upload lengkap tidak boleh mengklaim rincian AHSP sudah resmi bila baru draft.
+Detail cakupan harga referensi dan approval-nya masih memerlukan keputusan
+(OD-011). Perubahan harga sumber tidak otomatis mengubah RAB approved.
 
 Flow wajib:
 
