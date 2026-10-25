@@ -22,10 +22,12 @@ const FALLBACK: Record<number, string> = {
 export async function api<T = void>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
+    // FormData (file upload) goes as multipart; everything else as JSON.
+    const multipart = typeof FormData !== 'undefined' && body instanceof FormData;
     res = await fetch(`/api${path}`, {
       method,
-      headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers: body === undefined || multipart ? undefined : { 'content-type': 'application/json' },
+      body: body === undefined ? undefined : multipart ? body : JSON.stringify(body),
       credentials: 'same-origin',
     });
   } catch {

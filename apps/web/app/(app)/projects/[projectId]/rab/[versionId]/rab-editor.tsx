@@ -1,6 +1,7 @@
 'use client';
 
 import { RAB_ROW_TYPES, type RabIssue, type RabRowDto, type RabRowType, type RabVersionDetailDto } from '@laporan-proyek/shared';
+import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, Field, Select } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
@@ -285,7 +286,18 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
                     </td>
                     {shown.map((c) => (
                       <td key={c.key} className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}>
-                        {cell(row, c.key)}
+                        {c.key === 'analysisCode' && row.analysis ? (
+                          <Link className="link-button" href={`/projects/${projectId}/analyses/${row.analysis.analysisId}`} title={row.analysis.name}>
+                            {row.analysisCode ?? row.analysis.code}
+                          </Link>
+                        ) : (
+                          cell(row, c.key)
+                        )}
+                        {c.key === 'unitPrice' && (row.priceSource === 'SOURCE_OVERRIDE' || row.priceSource === 'DIRECT') && (
+                          <span className="rab-code" title={row.priceNote ?? undefined}>
+                            {row.priceSource === 'SOURCE_OVERRIDE' ? 'override' : 'langsung'}
+                          </span>
+                        )}
                       </td>
                     ))}
                     {editable && (

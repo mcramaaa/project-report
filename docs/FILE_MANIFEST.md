@@ -100,6 +100,12 @@
 - `apps/web/app/(app)/profile/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/project-actions.tsx`
+- `apps/web/app/(app)/projects/[projectId]/analyses/[analysisId]/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/analyses/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/imports/[importId]/import-review.tsx`
+- `apps/web/app/(app)/projects/[projectId]/imports/[importId]/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/imports/imports-manager.tsx`
+- `apps/web/app/(app)/projects/[projectId]/imports/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/rab/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/rab/create-rab-version.tsx`
 - `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/page.tsx`
@@ -122,6 +128,7 @@
 - `apps/web/components/ui.tsx`
 - `apps/web/eslint.config.mjs`
 - `apps/web/lib/api.ts`
+- `apps/web/lib/import-ui.ts`
 - `apps/web/lib/permissions.ts`
 - `apps/web/lib/project-fields.ts`
 - `apps/web/lib/rab-ui.ts`
