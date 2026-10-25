@@ -2,6 +2,7 @@
 
 Kondisi per 2026-10-26, dari repo dan mesin laptop (`/home/mchrama/project/project-report`).
 Dokumen ini tidak memuat password, token, atau isi `.env`.
+Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex.
 
 ## 1. Progres
 
@@ -33,7 +34,7 @@ Semua keputusan ada di `docs/DECISIONS.md` (D-001 … D-064). Yang paling menent
 - D-063 rekonsiliasi per item/total, WARNING `OVERHEAD_UNUSED`, keterbatasan presisi 12 desimal.
 - D-064 klik asal nilai hanya untuk RAB dan pendukungnya.
 
-Keputusan terbuka yang masih berlaku: OD-002, OD-003, OD-004, OD-005, OD-006,
+Keputusan terbuka yang masih berlaku: OD-003, OD-004, OD-005, OD-006,
 OD-008 (izin fitur mendatang), OD-010 (TKDN). Ajukan dengan rekomendasi sebelum
 milestone terkait.
 
@@ -41,7 +42,11 @@ milestone terkait.
 
 - Branch `main`, HEAD saat handoff dibuat: lihat `git log -1` (commit handoff ini, di atas `3160ef8`).
 - `origin` = `git@github.com:mcramaaa/project-report.git`. Remote hanya berisi commit awal `fff60d1`;
-  semua commit setelahnya (29 commit) **belum di-push**. Repo dibawa lewat git bundle (bagian 6).
+  semua commit setelahnya (29 commit) **belum di-push saat handoff awal dibuat**.
+  Pengguna kemudian mengizinkan commit dan push ke origin/main. Untuk status
+  terbaru, jalankan `git fetch origin` dan `git status -sb`; clone GitHub dapat
+  dipakai setelah push berhasil. Bundle pada bagian 6 tetap merupakan snapshot
+  saat dibuat dan tidak otomatis memuat commit handoff Codex yang lebih baru.
 - Commit terakhir:
   - `3160ef8` Value provenance limited to RAB and its supporting figures (D-064, Codex)
   - `581c7a8` RAB view: package tabs, value provenance (D-059–D-062); source reconciliation audit (D-063)

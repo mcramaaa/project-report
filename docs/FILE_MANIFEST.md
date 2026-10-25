@@ -237,3 +237,5 @@ penautan provenance; `projects/[projectId]/documents/[documentId]/page.tsx`
 pratinjau sheet; `apps/api/src/documents/workbook-preview.ts` referensi
 rumus/window terbatas, dengan unit test; DTO `packages/shared/src/workbook-preview.ts`.
 `app/(app)/loading.tsx` dan `error.tsx` menangani state halaman bersama.
+
+- `docs/HANDOFF_CODEX.md`: catatan sesi Codex, preferensi terbaru pengguna, kondisi kode dan kelanjutan di WSL; dibaca bersama `docs/HANDOFF.md` dari Claude.
