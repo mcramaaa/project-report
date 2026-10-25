@@ -3,10 +3,27 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "echo \"TODO: initialize NestJS app\"",
-    "build": "echo \"TODO: initialize NestJS app\"",
-    "lint": "echo \"TODO: initialize NestJS app\"",
-    "typecheck": "echo \"TODO: initialize NestJS app\"",
-    "test": "echo \"No tests yet\""
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@laporan-proyek/shared": "0.0.0",
+    "@nestjs/common": "12.2.0",
+    "@nestjs/core": "12.2.0",
+    "@nestjs/platform-express": "12.2.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@laporan-proyek/config": "0.0.0",
+    "@nestjs/cli": "12.0.10",
+    "@nestjs/schematics": "12.0.10",
+    "@nestjs/testing": "12.2.0",
+    "@swc/core": "1.16.20",
+    "unplugin-swc": "2.0.0"
   }
 }

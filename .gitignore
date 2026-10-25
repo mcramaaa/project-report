@@ -15,3 +15,5 @@ storage/temp/*
 .DS_Store
 .idea/
 .vscode/
+next-env.d.ts
+*.tsbuildinfo

@@ -1,0 +1,9 @@
+{
+  "extends": "@laporan-proyek/config/tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": []
+  },
+  "include": ["src"]
+}

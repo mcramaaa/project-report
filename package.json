@@ -4,17 +4,31 @@
   "private": true,
   "description": "Aplikasi laporan progres proyek konstruksi",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "engines": {
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "build:packages": "npm run build -w @laporan-proyek/shared -w @laporan-proyek/calc",
+    "predev": "npm run build:packages",
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @laporan-proyek/api\" \"npm run dev -w @laporan-proyek/web\"",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
+    "pretypecheck": "npm run build:packages",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build:packages",
     "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "concurrently": "^10.0.6",
+    "eslint": "^9.39.5",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }

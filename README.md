@@ -55,6 +55,31 @@ storage
 docs
 ```
 
+## Menjalankan Lokal
+
+Butuh Node 24 dan Docker.
+
+```bash
+npm install
+cp .env.example .env          # isi secret sendiri; .env tidak masuk Git
+docker compose up -d --wait   # MySQL 8.4, healthcheck sampai siap menerima koneksi
+npm run dev                   # api :3001 dan web :3000 bersamaan
+```
+
+- Web: http://localhost:3000 (menampilkan status API)
+- API: http://localhost:3001/api/health
+
+Pemeriksaan:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+`typecheck`, `test`, dan `dev` membangun `packages/shared` dan `packages/calc` lebih dulu (lihat D-025).
+
 ## Status
 
-Repository ini adalah starter/specification pack untuk vibe coding. Implementasi aplikasi belum dibuat.
+Milestone 0 (repository & tooling) selesai. Belum ada business feature, schema database, atau auth. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
