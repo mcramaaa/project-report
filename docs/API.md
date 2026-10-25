@@ -118,7 +118,7 @@ GET  /projects/:projectId/documents/:documentId/download  document.read
 
 ```text
 GET  /projects/:projectId/rab-imports                                  rabImport.review | rabImport.approve
-POST /projects/:projectId/rab-imports   { targetVersionType, documentIds }   rabImport.review -> 201, status UPLOADED → diproses di latar
+POST /projects/:projectId/rab-imports   { targetVersionType, sources: [{ documentId, role: RAB|SUPPORT, rabSheet? }] }   rabImport.review -> 201, status UPLOADED → diproses di latar
 GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns }
 POST /projects/:projectId/rab-imports/:importId/decisions  { rowKey, kind, value, reason? }   rabImport.review
 POST /projects/:projectId/rab-imports/:importId/retry                  rabImport.review -> run baru
@@ -126,6 +126,7 @@ POST /projects/:projectId/rab-imports/:importId/approve                rabImport
 POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport.approve
 ```
 
+- `rabSheet` wajib bila dokumen RAB punya lebih dari satu kandidat sheet; dokumen `SUPPORT` tidak perlu sheet RAB (D-055)
 - keputusan hanya pada status `NEEDS_REVIEW`; approve ditolak (`409`) bila masih ada issue `BLOCKING`
 - approve dalam satu transaksi: versi daftar harga, analisa/versi/komponen terpakai, RAB versi DRAFT tertaut, audit; mengikuti aturan urutan versi M4 (satu DRAFT per proyek)
 - AI dipakai otomatis saat pemrosesan untuk baris putus/ambigu bila 9router dikonfigurasi; hasilnya hanya kandidat

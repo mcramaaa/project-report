@@ -28,8 +28,9 @@ export interface BlockComponent {
   description: string;
   unit: string | null;
   coefficient: string;
-  /** Cached amount (price × coefficient) for reconciliation. */
+  /** Cached amount (price × coefficient) for reconciliation; raw float kept for the comparison (D-054). */
   sourceAmount: string | null;
+  sourceAmountRaw: number | null;
   priceCell: { sheet: string; row: number; col: number };
 }
 
@@ -43,6 +44,8 @@ export interface AnalysisBlock {
   overheadPercent: string | null;
   sourceDirectCost: string | null;
   sourcePriceExact: string | null;
+  sourceDirectCostRaw: number | null;
+  sourcePriceExactRaw: number | null;
   components: BlockComponent[];
 }
 
@@ -206,6 +209,8 @@ export function readAnalysisBlock(model: WorkbookModel, sheet: string, headerRow
     overheadPercent,
     sourceDirectCost: excelDecimal(dCell.value),
     sourcePriceExact: excelDecimal(fCell.value),
+    sourceDirectCostRaw: typeof dCell.value === 'number' ? dCell.value : null,
+    sourcePriceExactRaw: typeof fCell.value === 'number' ? fCell.value : null,
     components,
   };
 }
@@ -256,6 +261,7 @@ function readComponent(model: WorkbookModel, sheet: string, headerRow: number, r
     unit: model.text(sheet, row, cols.unit) || null,
     coefficient,
     sourceAmount: excelDecimal(amount.value),
+    sourceAmountRaw: typeof amount.value === 'number' ? amount.value : null,
     priceCell: { sheet: model.sheetName(sheet) ?? sheet, row, col: cols.price },
   };
 }

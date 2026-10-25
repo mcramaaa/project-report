@@ -52,6 +52,21 @@ export const draftComponentSchema = z.object({
 });
 export type DraftComponent = z.infer<typeof draftComponentSchema>;
 
+/** One cached-Excel reconciliation (D-054): what was compared, both values, difference, tolerance. */
+export const reconciliationSchema = z.object({
+  what: z.string(),
+  exact: z.string(),
+  cached: z.string(),
+  diff: z.string(),
+  tolerance: z.string(),
+  rule: z.string(),
+  matches: z.boolean(),
+});
+export type ReconciliationEntry = z.infer<typeof reconciliationSchema>;
+
+export const DOCUMENT_ROLES = ['RAB', 'SUPPORT'] as const;
+export type DocumentRole = (typeof DOCUMENT_ROLES)[number];
+
 export const draftAnalysisSchema = z.object({
   key: z.string(),
   code: z.string().nullable(),
@@ -68,12 +83,18 @@ export const draftAnalysisSchema = z.object({
   components: z.array(draftComponentSchema),
   usedByRows: z.array(z.string()),
   usedByAnalyses: z.array(z.string()),
+  /** Only offered as a candidate (e.g. from a supporting document); imported only if a reviewer links it. */
+  candidateOnly: z.boolean(),
+  reconciliation: z.array(reconciliationSchema),
 });
 export type DraftAnalysis = z.infer<typeof draftAnalysisSchema>;
 
 export const workItemCandidateSchema = z.object({ workItemId: z.string(), code: z.string(), description: z.string(), groupPath: z.string() });
 export const analysisCandidateSchema = z.object({
-  analysisVersionId: z.string(),
+  /** Official analysis version of the project, or … */
+  analysisVersionId: z.string().nullable(),
+  /** … an analysis of this draft (e.g. from a supporting document). */
+  analysisKey: z.string().nullable(),
   code: z.string().nullable(),
   name: z.string(),
   unit: z.string().nullable(),
@@ -116,7 +137,17 @@ export const rabImportDraftSchema = z.object({
   guideVersion: z.string(),
   parserVersion: z.string(),
   targetVersionType: z.enum(RAB_VERSION_TYPES),
-  sources: z.array(z.object({ documentId: z.string(), filename: z.string(), sha256: z.string(), sheet: z.string(), block: z.string().nullable() })),
+  sources: z.array(
+    z.object({
+      documentId: z.string(),
+      filename: z.string(),
+      sha256: z.string(),
+      role: z.enum(DOCUMENT_ROLES),
+      sheet: z.string().nullable(),
+      block: z.string().nullable(),
+      analysisSheets: z.array(z.string()),
+    }),
+  ),
   rows: z.array(draftRowSchema),
   analyses: z.array(draftAnalysisSchema),
   prices: z.array(draftPriceSchema),
@@ -136,9 +167,10 @@ export type RabImportDraft = z.infer<typeof rabImportDraftSchema>;
 export const createRabImportSchema = z.object({
   targetVersionType: z.enum(RAB_VERSION_TYPES),
   sources: z
-    .array(z.object({ documentId: z.uuid(), rabSheet: z.string().trim().min(1).max(120).optional() }))
+    .array(z.object({ documentId: z.uuid(), role: z.enum(DOCUMENT_ROLES).default('RAB'), rabSheet: z.string().trim().min(1).max(120).optional() }))
     .min(1, { message: 'Pilih minimal satu dokumen.' })
-    .max(10),
+    .max(10)
+    .refine((list) => list.some((x) => x.role === 'RAB'), { message: 'Minimal satu dokumen berperan RAB.' }),
 });
 export type CreateRabImportInput = z.infer<typeof createRabImportSchema>;
 

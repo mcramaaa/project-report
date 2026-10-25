@@ -510,6 +510,23 @@ Disetujui 2026-10-25.
 - Relasi analisa yang rantainya berhenti di nilai (mis. REKAP ANALISA tanpa formula pada workbook MC-0) memerlukan keputusan reviewer; kandidat dari analisa resmi proyek (kode, harga, satuan sama) hanya usulan.
 - Seed `npm run db:seed:sample-ahsp` (development) membuat proyek `SDN2-SERANGAN-2026-AHSP` melalui alur impor yang sama: Kontrak dari workbook Penawaran (`00`), MC-0 dari workbook mingguan (`04`). Keputusan pemetaan MC-0 dicatat eksplisit sebagai keputusan reviewer oleh admin seed. Seed berhenti bila rekonsiliasi gagal, aman diulang (melanjutkan langkah yang belum selesai), dan tidak menyentuh proyek, user, role, atau histori lain.
 
+## D-054 Toleransi Rekonsiliasi Nilai Cached Excel
+
+Disetujui 2026-10-25.
+
+- Rekonsiliasi nilai hasil hitung aplikasi (Decimal eksak) terhadap nilai cached workbook memakai **satu batas absolut Rp 0,000001** (`ABS_0.000001`) untuk semua skala nilai. Tidak ada toleransi relatif.
+- Nilai cached dibandingkan dari float mentahnya (17 digit), bukan string 15 digit.
+- Toleransi hanya untuk rekonsiliasi cached Excel: tidak mengubah nilai aplikasi, tidak dipakai untuk `PRICE_MISMATCH` (harga analisa vs harga RAB tetap dibandingkan eksak).
+- Setiap perbandingan dicatat sebagai bukti review pada draft (`reconciliation`: nilai aplikasi, nilai cached, selisih, toleransi, aturan, hasil).
+
+## D-055 Dokumen Utama dan Pendukung dalam Paket Impor
+
+Disetujui 2026-10-25 (temuan review).
+
+- Setiap dokumen paket berperan `RAB` (memiliki sheet RAB/rekap; minimal satu) atau `SUPPORT` (analisa/harga tanpa sheet RAB). Dokumen pendukung tidak ditolak karena tidak memiliki sheet RAB; provenance-nya tetap tercatat.
+- Analisa di dokumen pendukung hanya menjadi kandidat untuk baris yang rantainya putus, ambigu, atau merujuk file lain (referensi lintas file belum dapat dibuktikan rumus). Kandidat = kode, satuan, dan harga sama; tidak diterapkan otomatis.
+- Analisa kandidat hanya diimpor bila reviewer menautkannya; kandidat yang tidak cocok tidak masuk draft.
+
 ## Keputusan Terbuka
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.

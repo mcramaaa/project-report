@@ -43,17 +43,38 @@ export function calculateAnalysisPrice(
   };
 }
 
-/**
- * Whether an exact Decimal result equals a cached workbook float. Excel computes in binary floating point
- * (≈15–17 significant digits) and accumulates rounding error across operations, so the comparison allows a
- * relative difference of 1e-13 (below Rp 0.001 on billions). The application's own values stay exact.
- */
-export function matchesWorkbookValue(exact: DecimalValue, cached: number): boolean {
-  if (!Number.isFinite(cached)) return false;
-  const c = new Decimal(cached.toPrecision(17));
-  const diff = new Decimal(exact).minus(c).abs();
-  return diff.lte(Decimal.max(new Decimal('1e-9'), c.abs().times('1e-13')));
+/** D-054: one absolute bound for reconciling cached Excel floats (Rp 0.000001); never changes app values. */
+export const WORKBOOK_TOLERANCE = '0.000001';
+export const WORKBOOK_TOLERANCE_RULE = 'ABS_0.000001';
+
+export interface WorkbookComparison {
+  exact: string;
+  cached: string;
+  diff: string;
+  tolerance: string;
+  rule: string;
+  matches: boolean;
 }
+
+/**
+ * Compares an exact Decimal result with a cached workbook float (Excel computes in binary floating point,
+ * so tiny differences are float noise). Returns the evidence a reviewer sees: values, difference, tolerance.
+ */
+export function compareWithWorkbook(exact: DecimalValue, cached: number): WorkbookComparison {
+  const e = new Decimal(exact);
+  const c = Number.isFinite(cached) ? new Decimal(cached.toPrecision(17)) : null;
+  const diff = c ? e.minus(c).abs() : null;
+  return {
+    exact: e.toFixed(),
+    cached: c ? c.toFixed() : String(cached),
+    diff: diff ? diff.toFixed() : 'NaN',
+    tolerance: WORKBOOK_TOLERANCE,
+    rule: WORKBOOK_TOLERANCE_RULE,
+    matches: diff !== null && diff.lte(WORKBOOK_TOLERANCE),
+  };
+}
+
+export const matchesWorkbookValue = (exact: DecimalValue, cached: number): boolean => compareWithWorkbook(exact, cached).matches;
 
 /** Depth-first cycle check over analysis -> sub-analysis edges; returns the cycle path or null. */
 export function findAnalysisCycle(edges: Map<string, string[]>): string[] | null {

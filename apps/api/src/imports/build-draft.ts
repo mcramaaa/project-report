@@ -1,4 +1,4 @@
-import { calculateAnalysisPrice, Decimal, findAnalysisCycle, matchesWorkbookValue } from '@laporan-proyek/calc';
+import { calculateAnalysisPrice, compareWithWorkbook, Decimal, findAnalysisCycle } from '@laporan-proyek/calc';
 import type {
   AnalysisCandidate,
   DraftAnalysis,
@@ -11,7 +11,7 @@ import type {
   RabVersionType,
 } from '@laporan-proyek/shared';
 import { GUIDE_VERSION } from './guide/rab-import-guide';
-import { analysisHeaderIn, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock } from './workbook/analysis-block';
+import { analysisHeaderIn, blockColumns, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock } from './workbook/analysis-block';
 import { formatAddress, type FormulaNode } from './workbook/formula';
 import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-sheet';
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
@@ -24,6 +24,8 @@ export interface DraftSource {
   documentId: string;
   filename: string;
   sha256: string;
+  /** RAB = main RAB/recap document; SUPPORT = analysis/price document without a RAB sheet (D-045). */
+  role?: 'RAB' | 'SUPPORT';
   rabSheet?: string;
 }
 
@@ -109,7 +111,29 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
   const analysisSheets = new Map<string, { model: WorkbookModel; sheet: string }>();
   let workbookTotals: RabImportDraft['workbookTotals'] = null;
 
+  const supportIndex = new Map<string, { src: DraftSource; docIndex: number; sheet: string; headerRow: number }[]>();
   sources.forEach((src, docIndex) => {
+    if (src.role === 'SUPPORT') {
+      // No RAB sheet required: index analysis blocks by code; they only become candidates (D-045).
+      const sheets: string[] = [];
+      for (const sheet of src.model.sheetNames()) {
+        let found = false;
+        for (let r = 1; r < src.model.rowCount(sheet); r++) {
+          const cols = blockColumns(src.model, sheet, r);
+          if (!cols || !src.model.formulaOf(src.model.cell(sheet, r, cols.amount))) continue;
+          found = true;
+          const code = src.model.text(sheet, r, cols.no);
+          if (!code) continue;
+          const list = supportIndex.get(normalizeText(code)) ?? [];
+          list.push({ src, docIndex, sheet, headerRow: r });
+          supportIndex.set(normalizeText(code), list);
+        }
+        if (found) sheets.push(sheet);
+      }
+      sourceInfo.push({ documentId: src.documentId, filename: src.filename, sha256: src.sha256, role: 'SUPPORT', sheet: null, block: null, analysisSheets: sheets });
+      if (sheets.length === 0) issues.push({ code: 'SUPPORT_WITHOUT_ANALYSIS', severity: 'WARNING', message: `${src.filename}: tidak ditemukan blok analisa; dokumen tetap tersimpan sebagai sumber.` });
+      return;
+    }
     const candidates = rabSheetCandidates(src.model);
     const sheetName = src.rabSheet ?? (candidates.length === 1 ? candidates[0] : undefined);
     if (!sheetName) {
@@ -126,8 +150,8 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       if (err instanceof RabSheetError) throw new DraftInputError(`${src.filename}: ${err.message}`);
       throw err;
     }
-    sourceInfo.push({ documentId: src.documentId, filename: src.filename, sha256: src.sha256, sheet: sheet.sheet, block: sheet.columns.block });
-    if (sheet.totals && sources.length === 1) workbookTotals = { value: sheet.totals.value, rounded: sheet.totals.rounded };
+    sourceInfo.push({ documentId: src.documentId, filename: src.filename, sha256: src.sha256, role: 'RAB', sheet: sheet.sheet, block: sheet.columns.block, analysisSheets: [] });
+    if (sheet.totals && sources.filter((x) => x.role !== 'SUPPORT').length === 1) workbookTotals = { value: sheet.totals.value, rounded: sheet.totals.rounded };
 
     const keyOf = (row: number) => `${docIndex}:${row}`;
     const byRow = new Map(sheet.rows.map((r) => [r.row, r]));
@@ -204,12 +228,71 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     }
   });
 
-  const draftAnalyses = computeAnalyses(analyses, issues);
+  // Supporting-document candidates for rows whose chain did not prove an analysis (incl. external refs).
+  const offered = new Map<string, string[]>();
+  const usedBeforeCandidates = new Set(analyses.keys());
+  for (const row of rows) {
+    if (row.price.kind !== 'UNRESOLVED') continue;
+    const key = row.price.stoppedAt?.lookupKey ?? row.analysisCode;
+    if (typeof key !== 'string') continue;
+    for (const hit of supportIndex.get(normalizeText(key)) ?? []) {
+      const pending = registerAnalysis(analyses, prices, analysisSheets, issues, hit.src, hit.docIndex, hit.sheet, hit.headerRow);
+      offered.set(row.key, [...(offered.get(row.key) ?? []), pending.key]);
+    }
+  }
+
+  const computed = computeAnalyses(analyses, issues);
+  const byKey = new Map(computed.map((a) => [a.key, a]));
+  const chosen = new Set<string>();
+  for (const row of rows) {
+    for (const key of offered.get(row.key) ?? []) {
+      const a = byKey.get(key);
+      if (!a || !sameUnit(a.unit, row.unit) || row.sourceUnitPrice === null || !new Decimal(a.computed.price).equals(row.sourceUnitPrice)) continue;
+      chosen.add(key);
+      row.analysisCandidates.push({
+        analysisVersionId: null,
+        analysisKey: key,
+        code: a.code,
+        name: a.name,
+        unit: a.unit,
+        price: a.computed.price,
+        reason: `Kode, satuan, dan harga sama dengan analisa di dokumen pendukung (${a.locator.sheet}); relasi lintas file belum terbukti rumus, perlu keputusan reviewer.`,
+        origin: 'RULE',
+      });
+    }
+  }
+  // Keep analyses used by rows, the chosen candidates, and everything they reference; drop the rest.
+  const used = new Set(computed.filter((a) => a.usedByRows.length > 0).map((a) => a.key));
+  const keep = new Set<string>();
+  const visit = (key: string) => {
+    if (keep.has(key)) return;
+    keep.add(key);
+    for (const c of byKey.get(key)?.components ?? []) if (c.source.kind === 'ANALYSIS') visit(c.source.analysisKey);
+  };
+  for (const key of [...used, ...chosen]) visit(key);
+  const reachableFromUsed = new Set<string>();
+  const visitUsed = (key: string) => {
+    if (reachableFromUsed.has(key)) return;
+    reachableFromUsed.add(key);
+    for (const c of byKey.get(key)?.components ?? []) if (c.source.kind === 'ANALYSIS') visitUsed(c.source.analysisKey);
+  };
+  for (const key of used) visitUsed(key);
+  const draftAnalyses = computed.filter((a) => keep.has(a.key)).map((a) => ({ ...a, candidateOnly: !reachableFromUsed.has(a.key) }));
+  const priceKeys = new Set(draftAnalyses.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'PRICE_ITEM' ? [c.source.priceKey] : []))));
+  for (const k of [...prices.keys()]) if (!priceKeys.has(k)) prices.delete(k);
+  // Drop only issues of support candidates that were not offered to any row.
+  const keptIssues = issues.filter((i) => !i.analysisKey || usedBeforeCandidates.has(i.analysisKey) || keep.has(i.analysisKey));
+  issues.length = 0;
+  issues.push(...keptIssues);
   checkRowPrices(rows, draftAnalyses, issues);
 
   let analysesInWorkbook = 0;
   for (const { model, sheet } of analysisSheets.values()) analysesInWorkbook += countAnalysisBlocks(model, sheet);
-  const subKeys = new Set(draftAnalyses.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'ANALYSIS' ? [c.source.analysisKey] : []))));
+  sourceInfo.forEach((info, docIndex) => {
+    if (info.role === 'RAB') info.analysisSheets = [...analysisSheets.keys()].filter((k) => k.startsWith(`${docIndex}:`)).map((k) => k.slice(k.indexOf(':') + 1));
+  });
+  const imported = draftAnalyses.filter((a) => !a.candidateOnly);
+  const subKeys = new Set(imported.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'ANALYSIS' ? [c.source.analysisKey] : []))));
   return {
     guideVersion: GUIDE_VERSION,
     parserVersion: PARSER_VERSION,
@@ -222,10 +305,10 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     stats: {
       items: rows.filter((r) => r.rowType === 'ITEM').length,
       analysesInWorkbook,
-      analysesImported: draftAnalyses.length,
-      subAnalyses: draftAnalyses.filter((a) => subKeys.has(a.key)).length,
-      components: draftAnalyses.reduce((n, a) => n + a.components.length, 0),
-      pricesImported: prices.size,
+      analysesImported: imported.length,
+      subAnalyses: imported.filter((a) => subKeys.has(a.key)).length,
+      components: imported.reduce((n, a) => n + a.components.length, 0),
+      pricesImported: new Set(imported.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'PRICE_ITEM' ? [c.source.priceKey] : [])))).size,
     },
     issues,
   };
@@ -241,6 +324,7 @@ function ruleCandidates(official: OfficialAnalysis[], row: DraftRow, lookupKey: 
     .filter((a) => a.code !== null && normalizeText(a.code) === code && sameUnit(a.unit, row.unit) && new Decimal(a.price).equals(row.sourceUnitPrice!))
     .map((a) => ({
       analysisVersionId: a.analysisVersionId,
+      analysisKey: null,
       code: a.code,
       name: a.name,
       unit: a.unit,
@@ -366,6 +450,21 @@ function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIs
     if (new Set(scales.map(String)).size > 1) {
       issues.push({ code: 'ROUNDING_CONFLICT', severity: 'BLOCKING', message: `Analisa ${a.block.code ?? a.key} dipakai dengan pembulatan berbeda (${scales.join(', ')}).`, analysisKey: a.key });
     }
+    const label = a.block.code ?? a.key;
+    // Every cached-Excel comparison is kept as review evidence (D-054), not only the failures.
+    const entries: DraftAnalysis['reconciliation'] = [];
+    const check = (what: string, exact: string, cached: number) => {
+      const cmp = compareWithWorkbook(exact, cached);
+      entries.push({ what, ...cmp });
+      if (!cmp.matches) {
+        issues.push({
+          code: 'RECONCILIATION',
+          severity: 'BLOCKING',
+          message: `Analisa ${label}, ${what}: aplikasi ${cmp.exact} ≠ workbook ${cmp.cached} (selisih ${cmp.diff} > toleransi ${cmp.tolerance}).`,
+          analysisKey: a.key,
+        });
+      }
+    };
     const components: DraftComponent[] = [];
     for (const c of a.components) {
       let unitPrice = c.unitPrice;
@@ -378,9 +477,7 @@ function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIs
         unitPrice =
           c.source.basis === 'EXACT' ? sub.computed.priceExact : new Decimal(sub.computed.priceExact).toDecimalPlaces(c.source.roundingScale ?? 0, Decimal.ROUND_HALF_UP).toFixed();
         const cached = c.trace.steps[0]!.value;
-        if (typeof cached === 'number' && !matchesWorkbookValue(unitPrice, cached)) {
-          issues.push({ code: 'RECONCILIATION', severity: 'BLOCKING', message: `Analisa ${a.block.code}: harga subanalisa "${c.block.description}" ${unitPrice} ≠ workbook ${cached}.`, analysisKey: a.key });
-        }
+        if (typeof cached === 'number') check(`harga subanalisa "${c.block.description}"`, unitPrice, cached);
       }
       if (c.amountOfRow !== undefined) {
         const ref = components.find((x) => x.locator.row === c.amountOfRow);
@@ -402,18 +499,12 @@ function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIs
       });
     }
     const computed = calculateAnalysisPrice(components, { overheadPercent: a.block.overheadPercent, roundingScale });
-    const label = a.block.code ?? a.key;
     components.forEach((c, i) => {
-      if (c.sourceAmount !== null && !matchesWorkbookValue(computed.componentAmounts[i]!, Number(c.sourceAmount))) {
-        issues.push({ code: 'RECONCILIATION', severity: 'BLOCKING', message: `Analisa ${label}, "${c.description}": ${computed.componentAmounts[i]} ≠ workbook ${c.sourceAmount}.`, analysisKey: a.key });
-      }
+      const raw = a.components.find((p) => p.block.row === c.locator.row)?.block.sourceAmountRaw;
+      if (raw !== null && raw !== undefined) check(`nilai "${c.description}"`, computed.componentAmounts[i]!, raw);
     });
-    if (a.block.sourceDirectCost !== null && !matchesWorkbookValue(computed.directCost, Number(a.block.sourceDirectCost))) {
-      issues.push({ code: 'RECONCILIATION', severity: 'BLOCKING', message: `Analisa ${label}: biaya langsung ${computed.directCost} ≠ workbook ${a.block.sourceDirectCost}.`, analysisKey: a.key });
-    }
-    if (a.block.sourcePriceExact !== null && !matchesWorkbookValue(computed.priceExact, Number(a.block.sourcePriceExact))) {
-      issues.push({ code: 'RECONCILIATION', severity: 'BLOCKING', message: `Analisa ${label}: harga ${computed.priceExact} ≠ workbook ${a.block.sourcePriceExact}.`, analysisKey: a.key });
-    }
+    if (a.block.sourceDirectCostRaw !== null) check('biaya langsung', computed.directCost, a.block.sourceDirectCostRaw);
+    if (a.block.sourcePriceExactRaw !== null) check('harga eksak', computed.priceExact, a.block.sourcePriceExactRaw);
     const result: DraftAnalysis = {
       key: a.key,
       code: a.block.code,
@@ -428,6 +519,8 @@ function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIs
       components,
       usedByRows: [...a.usedByRows],
       usedByAnalyses: [...a.usedByAnalyses],
+      candidateOnly: false,
+      reconciliation: entries,
     };
     done.set(a.key, result);
     return result;

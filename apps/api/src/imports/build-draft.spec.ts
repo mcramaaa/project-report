@@ -262,4 +262,78 @@ describe('buildDraft (RAB_IMPORT_GUIDE v1)', () => {
     expect(item.workItemCandidates.map((c) => c.workItemId)).toEqual(['w1']);
     expect(draft.issues).toContainEqual(expect.objectContaining({ code: 'WORK_ITEM_UNDECIDED', rowKey: item.key, resolvedBy: ['WORK_ITEM_MATCH'] }));
   });
+
+  it('accepts supporting documents without a RAB sheet; their analyses are only reviewed candidates (regression)', () => {
+    const block = analysisBlock(5, { seq: 1, code: 'A.1', name: 'GALIAN DI FILE ANALISA', unit: 'm3', components: [{ category: 'TENAGA', name: 'Pekerja', unit: 'OH', coef: 0.5, price: 100000 }] });
+    const other = analysisBlock(30, { seq: 2, code: 'B.7', name: 'TIDAK DIPAKAI', unit: 'm2', components: [{ category: 'TENAGA', name: 'Mandor', unit: 'OH', coef: 1, price: 1 }] });
+    const rab = workbookOf(
+      {
+        'RAB + PPN': rabSheet([
+          { no: 'A', desc: 'P' },
+          // Price comes from another file: not provable inside this workbook.
+          { no: 1, desc: 'Galian', vol: 3, unit: 'm3', code: 'A.1', price: [`'[1]REKAP ANALISA'!E6`, 55000] },
+          { no: 2, desc: 'Galian beda harga', vol: 3, unit: 'm3', code: 'A.1', price: [`'[1]REKAP ANALISA'!E6`, 60000] },
+        ]),
+      },
+      'rab',
+    );
+    const support = workbookOf({ ANALISA: { ...block.cells, ...other.cells } }, 'support');
+    const draft = buildDraft(
+      [
+        { model: rab, documentId: 'rab', filename: 'rab.xlsx', sha256: 'a' },
+        { model: support, documentId: 'support', filename: 'analisa.xlsx', sha256: 'b', role: 'SUPPORT' },
+      ],
+      contract,
+    );
+    expect(draft.sources.map((x) => [x.filename, x.role, x.sheet, x.analysisSheets])).toEqual([
+      ['rab.xlsx', 'RAB', 'RAB + PPN', []],
+      ['analisa.xlsx', 'SUPPORT', null, ['ANALISA']],
+    ]);
+    const [galian, beda] = draft.rows.filter((r) => r.rowType === 'ITEM');
+    expect(galian!.price.kind).toBe('UNRESOLVED');
+    expect(galian!.analysisCandidates).toEqual([expect.objectContaining({ analysisVersionId: null, analysisKey: '1:ANALISA:5', price: '55000', origin: 'RULE', reason: expect.stringContaining('lintas file') })]);
+    expect(beda!.analysisCandidates).toEqual([]); // different price: no candidate
+    expect(draft.issues.find((i) => i.rowKey === galian!.key)).toMatchObject({ code: 'ANALYSIS_UNRESOLVED', resolvedBy: ['ANALYSIS_LINK', 'DIRECT_PRICE'] });
+    // Candidate kept for review but not imported unless linked; unrelated analyses are dropped.
+    expect(draft.analyses.map((a) => [a.code, a.candidateOnly])).toEqual([['A.1', true]]);
+    expect(draft.stats).toMatchObject({ analysesImported: 0, components: 0, pricesImported: 0 });
+    expect(draft.analyses[0]!.locator.documentId).toBe('support');
+  });
+
+  it('reconciles cached Excel values within Rp 0.000001 and records the evidence; RAB prices stay exact (D-054 regression)', () => {
+    const build = (cachedAmount: number, rabPrice: number) => {
+      const block = analysisBlock(5, { seq: 1, code: 'A.1', name: 'X', unit: 'm3', overhead: null, components: [{ category: 'TENAGA', name: 'Pekerja', unit: 'OH', coef: 0.5, price: 100000 }] });
+      block.cells.H8 = ['G8*F8', cachedAmount];
+      return buildDraft(
+        [
+          {
+            model: workbookOf({
+              'RAB + PPN': rabSheet([
+                { no: 'A', desc: 'P' },
+                { no: 1, desc: 'Item', vol: 1, unit: 'm3', code: 'A.1', price: [`IFERROR(VLOOKUP(F14,'REKAP ANALISA'!B$6:E$100,4,FALSE),0)`, rabPrice] },
+              ]),
+              'REKAP ANALISA': { A6: 1, B6: ['VLOOKUP(A6,ANALISA!A$5:H$500,2,FALSE)', 'A.1'], E6: ['VLOOKUP(A6,ANALISA!A$5:H$500,8,FALSE)', rabPrice] },
+              ANALISA: block.cells,
+            }),
+            documentId: 'd',
+            filename: 'f',
+            sha256: 's',
+          },
+        ],
+        contract,
+      );
+    };
+    const ok = build(50000.0000005, 50000);
+    const entry = ok.analyses[0]!.reconciliation.find((e) => e.what.includes('Pekerja'))!;
+    expect(entry).toMatchObject({ exact: '50000', tolerance: '0.000001', rule: 'ABS_0.000001', matches: true });
+    expect(Number(entry.diff)).toBeCloseTo(0.0000005, 9); // the float nearest 50000.0000005 is 50000.000000499997
+    expect(ok.issues.filter((i) => i.code === 'RECONCILIATION')).toEqual([]);
+
+    const off = build(50000.000002, 50000);
+    expect(off.issues).toContainEqual(expect.objectContaining({ code: 'RECONCILIATION', message: expect.stringMatching(/selisih 0\.000002.* toleransi 0\.000001/) }));
+
+    // A RAB price differing by less than the tolerance is still a PRICE_MISMATCH: no tolerance there.
+    const price = build(50000, 50000.0000001);
+    expect(price.issues).toContainEqual(expect.objectContaining({ code: 'PRICE_MISMATCH' }));
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateAnalysisPrice, componentAmount, findAnalysisCycle, matchesWorkbookValue } from './index.js';
+import { calculateAnalysisPrice, compareWithWorkbook, componentAmount, findAnalysisCycle, matchesWorkbookValue } from './index.js';
 
 describe('calculateAnalysisPrice (D-051)', () => {
   // Workbook SDN 2 Serangan, ANALISA I.1 "PASANGAN 1 M' BOUWPLANK".
@@ -38,10 +38,22 @@ describe('calculateAnalysisPrice (D-051)', () => {
 });
 
 describe('matchesWorkbookValue', () => {
-  it('tolerates Excel float error but not real differences', () => {
+  it('uses one absolute bound of Rp 0.000001 regardless of scale (D-054) and returns the evidence', () => {
     expect(matchesWorkbookValue('222727.407407407669', 222727.40740740742)).toBe(true);
     expect(matchesWorkbookValue('5121250896.4818', 5121250896.481801)).toBe(true);
     expect(matchesWorkbookValue('5121250896.49', 5121250896.481801)).toBe(false);
+    // Regression: a relative bound grew with the value; the absolute bound does not.
+    expect(matchesWorkbookValue('1000000000000.0001', 1000000000000)).toBe(false);
+    expect(matchesWorkbookValue('100.0000009', 100)).toBe(true);
+    expect(matchesWorkbookValue('100.0000011', 100)).toBe(false);
+    expect(compareWithWorkbook('157822.5', 157822.49999999997)).toEqual({
+      exact: '157822.5',
+      cached: '157822.49999999997',
+      diff: '0.00000000003',
+      tolerance: '0.000001',
+      rule: 'ABS_0.000001',
+      matches: true,
+    });
     expect(matchesWorkbookValue('99', 98.99999999999999)).toBe(true);
     expect(matchesWorkbookValue('746294.07', 746294.0700000001)).toBe(true);
     expect(matchesWorkbookValue('157822.5', 157822.5)).toBe(true);
