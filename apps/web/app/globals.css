@@ -250,6 +250,10 @@ svg { flex-shrink: 0; }
   .rab-grid .rab-group td { font-weight: 600; }
   .rab-grid .rab-section td { background: var(--blue-wash); }
   .rab-grid .rab-total th, .rab-grid .rab-total td { position: sticky; bottom: 0; background: var(--background); font-weight: 700; }
+  .rab-toggle { display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -2px 6px 0 -4px; vertical-align: middle; border-radius: 6px; color: var(--muted); }
+  .rab-toggle:hover { background: var(--blue-wash); color: var(--blue); }
+  .rab-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+  .rab-toggle-space { display: inline-block; width: 22px; margin-right: 6px; margin-left: -4px; }
   .rab-code { margin-left: 8px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; font-weight: 400; }
   .rab-change-removed td { color: var(--muted); text-decoration: line-through; }
   .rab-change-removed td:nth-child(3) { text-decoration: none; }

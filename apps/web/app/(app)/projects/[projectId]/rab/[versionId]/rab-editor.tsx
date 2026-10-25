@@ -8,6 +8,7 @@ import { formatDate, formatNumber, formatRounded } from '@/lib/project-fields';
 import { RAB_COLUMNS, RAB_ROW_TYPE_LABEL, RAB_STATUS_BADGE, type RabColumn } from '@/lib/rab-ui';
 
 const COLUMNS_KEY = 'rab-columns';
+const collapsedKey = (versionId: string) => `rab-collapsed:${versionId}`;
 const ITEM_FIELDS = [
   { name: 'volume', label: 'Volume', hint: 'maks. 12 desimal', inputMode: 'decimal' },
   { name: 'unit', label: 'Satuan' },
@@ -27,6 +28,17 @@ function loadColumns(): RabColumn[] {
     // Storage unavailable or corrupt: fall back to all columns.
   }
   return RAB_COLUMNS.map((c) => c.key);
+}
+
+/** Saved collapsed groups for a version; per-browser convenience only. */
+function loadCollapsed(versionId: string): Set<string> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(collapsedKey(versionId)) ?? '[]') as unknown;
+    if (Array.isArray(saved)) return new Set(saved.filter((id): id is string => typeof id === 'string'));
+  } catch {
+    // Storage unavailable or corrupt: everything expanded.
+  }
+  return new Set();
 }
 
 function cell(row: RabRowDto, column: RabColumn): string {
@@ -54,18 +66,50 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
   const [editingId, setEditingId] = useState<string>();
   const [adding, setAdding] = useState<{ parentId: string | null }>();
   const [columns, setColumns] = useState<RabColumn[]>(RAB_COLUMNS.map((c) => c.key));
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { version, rows, totals, issues } = detail;
   const draft = version.status === 'DRAFT';
   const editable = draft && canEdit && !busy;
   const base = `/projects/${projectId}/rab-versions/${version.id}`;
   const shown = RAB_COLUMNS.filter((c) => columns.includes(c.key));
 
-  // Read the saved column choice after mount (localStorage is browser-only).
+  // Read saved choices after mount (localStorage is browser-only).
   useEffect(() => {
     const saved = loadColumns();
-    const id = requestAnimationFrame(() => setColumns(saved));
+    const savedCollapsed = loadCollapsed(version.id);
+    const id = requestAnimationFrame(() => (setColumns(saved), setCollapsed(savedCollapsed)));
     return () => cancelAnimationFrame(id);
-  }, []);
+  }, [version.id]);
+
+  const parentOf = new Map(rows.map((r) => [r.id, r.parentId]));
+  const groupIds = rows.filter((r) => r.rowType !== 'ITEM').map((r) => r.id);
+  const hasChildren = new Set(rows.map((r) => r.parentId));
+  /** Hidden when any ancestor is collapsed; group rows keep showing their totals. */
+  const hidden = (row: RabRowDto) => {
+    for (let p = row.parentId; p; p = parentOf.get(p) ?? null) if (collapsed.has(p)) return true;
+    return false;
+  };
+
+  function saveCollapsed(next: Set<string>) {
+    setCollapsed(next);
+    try {
+      localStorage.setItem(collapsedKey(version.id), JSON.stringify([...next]));
+    } catch {
+      // Per-browser convenience only.
+    }
+  }
+  const toggleGroup = (id: string) => {
+    const next = new Set(collapsed);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    saveCollapsed(next);
+  };
+  /** Opens the ancestors of a row so the row being edited or added stays visible. */
+  const reveal = (id: string | null) => {
+    const next = new Set(collapsed);
+    for (let p: string | null = id; p; p = parentOf.get(p) ?? null) next.delete(p);
+    if (next.size !== collapsed.size) saveCollapsed(next);
+  };
 
   function toggleColumn(key: RabColumn) {
     const next = columns.includes(key) ? columns.filter((c) => c !== key) : [...columns, key];
@@ -152,6 +196,16 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
             ))}
           </fieldset>
         </details>
+        {groupIds.length > 0 && (
+          <>
+            <Button variant="secondary" onClick={() => saveCollapsed(new Set(groupIds))}>
+              Ciutkan semua
+            </Button>
+            <Button variant="secondary" disabled={collapsed.size === 0} onClick={() => saveCollapsed(new Set())}>
+              Buka semua
+            </Button>
+          </>
+        )}
         {editable && (
           <Button variant="secondary" onClick={() => (setEditingId(undefined), setAdding({ parentId: null }))}>
             Tambah baris teratas
@@ -191,7 +245,7 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) =>
+              {rows.filter((row) => !hidden(row)).map((row) =>
                 editingId === row.id && editable ? (
                   <tr key={row.id}>
                     <td colSpan={shown.length + 3}>
@@ -213,6 +267,19 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
                   <tr key={row.id} className={row.rowType === 'ITEM' ? '' : `rab-group rab-${row.rowType.toLowerCase()}`}>
                     <td className="rab-sticky-no">{row.displayNumber}</td>
                     <td className="rab-sticky-desc" style={{ paddingLeft: `${12 + row.depth * 18}px` }}>
+                      {row.rowType !== 'ITEM' && hasChildren.has(row.id) ? (
+                        <button
+                          type="button"
+                          className="rab-toggle"
+                          aria-expanded={!collapsed.has(row.id)}
+                          aria-label={`${collapsed.has(row.id) ? 'Buka' : 'Ciutkan'} ${row.description}`}
+                          onClick={() => toggleGroup(row.id)}
+                        >
+                          <span aria-hidden="true">{collapsed.has(row.id) ? '▸' : '▾'}</span>
+                        </button>
+                      ) : (
+                        row.rowType !== 'ITEM' && <span className="rab-toggle-space" aria-hidden="true" />
+                      )}
                       {row.description}
                       {row.workItemCode && <span className="rab-code">{row.workItemCode}</span>}
                     </td>
@@ -228,7 +295,7 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
                             Ubah
                           </Button>
                           {row.rowType !== 'ITEM' && (
-                            <Button variant="secondary" onClick={() => (setEditingId(undefined), setAdding({ parentId: row.id }))}>
+                            <Button variant="secondary" onClick={() => (setEditingId(undefined), reveal(row.id), setAdding({ parentId: row.id }))}>
                               + Sub
                             </Button>
                           )}
