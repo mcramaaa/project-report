@@ -725,6 +725,14 @@ Arahan pengguna 2026-10-26 setelah audit SDN2-SERANGAN-2026-PAKET.
   XXIII.6 harga subanalisa VI.13). Jauh di bawah toleransi D-054; total dan
   harga analisa tidak terpengaruh. Pelebaran skala kolom diputuskan terpisah.
 
+## D-064 Penelusuran Nilai Terbatas pada RAB
+
+Koreksi pengguna 2026-10-26: tidak semua informasi harus dapat diklik.
+Batasi penelusuran ke angka RAB dan pendukungnya (AHSP, harga, perbandingan
+dan review impor RAB). Identitas, kontrak, SPMK, kalender dan pratinjau
+jadwal ditampilkan sebagai teks biasa. Mengoreksi perluasan UI D-061 pada
+informasi/jadwal proyek; rumus dan data tidak berubah.
+
 ## Keputusan Terbuka
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.

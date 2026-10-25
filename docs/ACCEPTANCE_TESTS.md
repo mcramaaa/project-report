@@ -264,3 +264,11 @@ RAB diciutkan lulus tanpa error browser atau overflow halaman. Hasil lokal:
 - [x] Rekap, daftar/detail analisa, bahan, alat dan upah hanya menampilkan tab paket; tab proyek tidak diulang.
 - [x] Tautan ke proyek, daftar versi dan daftar analisa mempertahankan tujuan dan izin.
 - [x] Tampilan desktop/mobile serta perjalanan sumber nilai tetap berfungsi.
+
+### D-064 Batas klik asal nilai
+
+- [x] Informasi proyek, kalender dan pratinjau wizard/jadwal tidak menampilkan tombol Asal nilai atau garis sumber.
+- [x] Angka RAB/analisa/harga dan penelusuran Excel tetap dapat dibuka.
+
+QA D-064: browser desktop 1440 dan mobile 390 memverifikasi informasi/kalender
+serta pratinjau jadwal wizard sebagai teks biasa; perjalanan sumber RAB tetap lulus.

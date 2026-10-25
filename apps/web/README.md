@@ -30,6 +30,6 @@ Tidak ada dependency runtime atau asset yang diambil dari proyek OLMAT.
 - Bila Turbopack diblokir lingkungan yang melarang bind port, build web dapat
   diverifikasi menggunakan `npm run build -w @laporan-proyek/web -- --webpack`.
 
-Klik nilai bergaris putus-putus untuk membuka **Asal nilai**: nilai lengkap,
+Pada RAB dan pendukung perhitungannya, klik nilai bergaris putus-putus untuk membuka **Asal nilai**: nilai lengkap,
 rumus, operand dan tautan rinci. Sumber Excel dibuka dalam pratinjau sheet
 (izin `document.read`); nilai cached tidak dihitung ulang. Baris tujuan disorot.

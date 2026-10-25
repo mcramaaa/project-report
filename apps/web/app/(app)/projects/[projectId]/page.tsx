@@ -1,4 +1,3 @@
-import { SourceValue } from '@/components/source-value';
 import type {
   ProjectDto,
   ProjectTeamMemberDto,
@@ -55,7 +54,7 @@ export default async function ProjectPage({
       </PageTitle>
       <ProjectTabs projectId={p.id} active={tab} permissions={p.permissions} />
       {tab === 'info' && <InfoTab project={p} />}
-      {tab === 'calendar' && <CalendarTab base={base} project={p} />}
+      {tab === 'calendar' && <CalendarTab base={base} />}
       {tab === 'team' && (
         <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />
       )}
@@ -107,32 +106,7 @@ function InfoTab({ project: p }: { project: ProjectDto }) {
             {rows.map(([label, value]) => (
               <div key={label} className="min-w-0">
                 <dt>{label}</dt>
-                <dd>
-                  <SourceValue
-                    title={label}
-                    value={String(value)}
-                    formula={
-                      label === 'Tanggal selesai rencana'
-                        ? 'Tanggal mulai + masa pelaksanaan − 1 hari (inklusif)'
-                        : undefined
-                    }
-                    note={
-                      label === 'Tanggal selesai rencana'
-                        ? 'Tanggal selesai diturunkan dari jadwal proyek.'
-                        : 'Data yang tersimpan pada formulir identitas proyek. Tautan dokumen sumber untuk field ini belum tercatat.'
-                    }
-                    sources={
-                      label === 'Tanggal selesai rencana'
-                        ? [
-                            { label: 'Tanggal mulai', value: p.startDate },
-                            { label: 'Masa pelaksanaan (hari)', value: String(p.durationDays) },
-                          ]
-                        : []
-                    }
-                  >
-                    {value}
-                  </SourceValue>
-                </dd>
+                <dd>{value}</dd>
               </div>
             ))}
           </dl>
@@ -143,7 +117,7 @@ function InfoTab({ project: p }: { project: ProjectDto }) {
   );
 }
 
-async function CalendarTab({ base, project }: { base: string; project: ProjectDto }) {
+async function CalendarTab({ base }: { base: string }) {
   const [weeks, periods] = await Promise.all([
     serverGet<ProjectWeekDto[]>(`${base}/weeks`),
     serverGet<ReportPeriodDto[]>(`${base}/report-periods`),
@@ -201,22 +175,8 @@ async function CalendarTab({ base, project }: { base: string; project: ProjectDt
                         {formatDate(w.endDate)}
                       </td>
                       <td role="cell" data-label="Hari" className="px-3 py-2">
-                        <SourceValue
-                          title={`Jumlah hari M${w.weekNumber}`}
-                          value={String(w.days)}
-                          formula="Tanggal selesai minggu − tanggal mulai minggu + 1"
-                          sources={[
-                            { label: 'Mulai minggu', value: w.startDate },
-                            { label: 'Selesai minggu', value: w.endDate },
-                            {
-                              label: 'Jadwal proyek',
-                              value: `${project.startDate} · ${project.durationDays} hari`,
-                              href: `${base}?tab=info`,
-                            },
-                          ]}
-                        >
-                          {w.days}
-                        </SourceValue>
+                        {w.days}
+
                         {w.days < 7 && (
                           <span className="ml-2">
                             <Badge>Minggu pendek</Badge>

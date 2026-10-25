@@ -1,4 +1,3 @@
-import { SourceValue } from './source-value';
 import {
   isValidIsoDate,
   plannedFinishDate,
@@ -37,46 +36,20 @@ export function CalendarPreview({
     <dl className="calendar-preview" aria-live="polite">
       <div>
         <dt>Tanggal selesai rencana</dt>
-        <dd>
-          <SourceValue
-            title="Pratinjau tanggal selesai"
-            value={plannedFinishDate(startDate, duration)}
-            formula="Tanggal mulai + masa pelaksanaan − 1 hari"
-            sources={[
-              { label: 'Tanggal mulai', value: startDate },
-              { label: 'Masa pelaksanaan (hari)', value: durationDays },
-            ]}
-          >
-            {formatDate(plannedFinishDate(startDate, duration))}
-          </SourceValue>
-        </dd>
+        <dd>{formatDate(plannedFinishDate(startDate, duration))}</dd>
       </div>
       <div>
         <dt>Minggu proyek</dt>
         <dd>
-          <SourceValue
-            title="Jumlah minggu"
-            value={String(weeks.length)}
-            formula="ceil(masa pelaksanaan ÷ 7)"
-            sources={[{ label: 'Masa pelaksanaan (hari)', value: durationDays }]}
-          >
-            {weeks.length}
-          </SourceValue>{' '}
-          minggu{lastWeek.days < 7 && ` (M${lastWeek.weekNumber}: ${lastWeek.days} hari)`}
+          {weeks.length} minggu
+          {lastWeek.days < 7 && ` (M${lastWeek.weekNumber}: ${lastWeek.days} hari)`}
         </dd>
       </div>
       <div>
         <dt>Periode 4 minggu</dt>
         <dd>
-          <SourceValue
-            title="Jumlah periode"
-            value={String(periods.length)}
-            formula="ceil(jumlah minggu ÷ 4)"
-            sources={[{ label: 'Jumlah minggu', value: String(weeks.length) }]}
-          >
-            {periods.length}
-          </SourceValue>{' '}
-          periode{lastPeriod.days < 28 && ` (B${lastPeriod.periodNumber}: ${lastPeriod.days} hari)`}
+          {periods.length} periode
+          {lastPeriod.days < 28 && ` (B${lastPeriod.periodNumber}: ${lastPeriod.days} hari)`}
         </dd>
       </div>
     </dl>

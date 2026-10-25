@@ -410,3 +410,7 @@ D-062: halaman satu versi RAB beserta rincian hanya memakai satu baris tab
 paket. Di atasnya ada tautan teks ke proyek dan daftar versi (sesuai izin),
 bukan baris tab proyek tambahan. Detail analisa tetap punya tautan kembali
 ke daftar analisa dalam versi yang sama.
+
+D-064: garis putus-putus dan dialog Asal nilai khusus angka RAB dan
+pendukungnya. Informasi proyek dan kalender/pratinjau jadwal memakai teks
+biasa; tombol ubah dan navigasi normal tetap dipertahankan.

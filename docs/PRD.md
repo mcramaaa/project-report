@@ -659,7 +659,7 @@ profit E sesuai sumber, harga D+E serta pembulatan sumber. TKDN ditunda.
 ### UI konsisten dan penelusuran nilai (D-061)
 
 Semua halaman memakai hirarki judul, formulir, tabel, loading/error dan navigasi
-yang konsisten serta nyaman di mobile. Nilai domain RAB/AHSP/harga dan jadwal
+yang konsisten serta nyaman di mobile. Nilai domain RAB/AHSP/harga
 dapat dibuka untuk melihat asalnya: rumus, operand, baris rinci, analisa,
 harga dasar atau dokumen asli. Nilai input manual dan override dijelaskan
 sebagai input/keputusan, bukan diberi sumber Excel buatan. Nilai tidak
@@ -670,3 +670,10 @@ mengubah histori atau dihitung ulang untuk mengganti snapshot approved.
 Halaman satu versi RAB dan semua rincian paketnya hanya menampilkan tab
 Rekap RAB / Analisa / Bahan / Alat / Upah. Tab detail proyek tidak diulang;
 tautan kembali ke proyek dan daftar versi tersedia di atas tab paket.
+
+### Batas penelusuran nilai (D-064)
+
+Klik asal nilai hanya untuk angka RAB dan pendukung perhitungannya: analisa,
+harga bahan/upah/alat, perbandingan dan review impor RAB. Identitas proyek,
+kontrak, SPMK, kalender serta pratinjau jadwal memakai teks biasa tanpa
+garis bawah atau dialog asal nilai. Navigasi dan aksi form tetap tersedia.
