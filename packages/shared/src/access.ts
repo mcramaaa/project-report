@@ -53,6 +53,9 @@ export const PERMISSIONS = [
     name: 'Ubah proyek',
     description: 'Mengubah identitas dan jadwal, serta menutup/membuka kembali proyek.',
   },
+  { code: 'rab.read', scope: 'PROJECT', module: 'RAB', name: 'Lihat RAB', description: 'Melihat versi RAB, isi, dan perbandingan antarversi.' },
+  { code: 'rab.edit', scope: 'PROJECT', module: 'RAB', name: 'Kelola draft RAB', description: 'Membuat, mengubah, dan membatalkan draft RAB.' },
+  { code: 'rab.approve', scope: 'PROJECT', module: 'RAB', name: 'Approve RAB', description: 'Menyetujui draft RAB; versi approved terkunci.' },
 ] as const satisfies readonly { code: string; scope: PermissionScope; module: string; name: string; description: string }[];
 
 export type PermissionCode = (typeof PERMISSIONS)[number]['code'];
@@ -71,10 +74,10 @@ export const SYSTEM_PROJECT_ROLES = [
   { code: 'ADMIN', name: 'Admin Proyek', description: 'Upload dokumen dan review ekstraksi AI.' },
 ] as const;
 export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
-  FILLER: ['project.read'],
-  REVIEWER: ['project.read'],
-  MANAGER: ['project.read', 'project.update'],
-  ADMIN: ['project.read'],
+  FILLER: ['project.read', 'rab.read'],
+  REVIEWER: ['project.read', 'rab.read'],
+  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve'],
+  ADMIN: ['project.read', 'rab.read', 'rab.edit'],
 };
 
 /** Permissions the MANAGER role must hold for project creation to hand the creator a usable project (D-039). */

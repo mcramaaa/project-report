@@ -128,13 +128,30 @@ Approval harus transaction-safe.
 
 ## 6. RAB
 
+Milestone 4. Route bersarang di proyek agar permission proyek diperiksa (D-041).
+
 ```text
-GET  /projects/:projectId/rab-versions
-GET  /rab-versions/:versionId
-GET  /rab-versions/:versionId/items
-GET  /rab-versions/:versionId/compare/:otherVersionId
-POST /rab-versions/:versionId/activate
+GET   /projects/:projectId/rab-versions                         -> RabVersionSummaryDto[]           rab.read
+POST  /projects/:projectId/rab-versions                         { versionType, documentNumber?, documentDate? }   rab.edit
+GET   /projects/:projectId/rab-versions/:versionId              -> { version, rows, totals, issues } rab.read
+PATCH /projects/:projectId/rab-versions/:versionId              { documentNumber?, documentDate? }  rab.edit
+POST  /projects/:projectId/rab-versions/:versionId/items        { parentId?, rowType, displayNumber?, description, volume?, unit?, analysisCode?, unitPrice?, taxPercent? }   rab.edit
+PATCH /projects/:projectId/rab-versions/:versionId/items/:itemId   { field?, parentId? }        rab.edit
+DELETE /projects/:projectId/rab-versions/:versionId/items/:itemId                               rab.edit
+POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/move  { direction: up|down }   rab.edit
+POST  /projects/:projectId/rab-versions/:versionId/approve      { acknowledgeWarnings }          rab.approve
+POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }                       rab.edit
+GET   /projects/:projectId/rab-versions/:baseId/compare/:targetId -> { base, target, rows, totals } rab.read
+POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 ```
+
+- angka (volume, harga, PPN, jumlah, bobot) berupa decimal string; volume maks. 4 desimal, harga 2 desimal, PPN 0–100 maks. 2 desimal
+- MC0/ADDENDUM menyalin versi approved terakhir; urutan salah atau masih ada DRAFT: `409`
+- versi bukan DRAFT atau proyek CLOSED: `409` untuk semua perubahan
+- baris: SECTION hanya di tingkat teratas; induk bukan ITEM dan dari versi yang sama: `400`; menghapus baris yang punya sub-baris: `409`
+- `issues`: `{ errors: [{ itemId?, message }], warnings: [...] }`; approve dengan error: `409`; ada warning tanpa `acknowledgeWarnings: true`: `409`
+- `rows` urut pohon dengan `depth`; baris non-ITEM membawa jumlah & bobot agregat sub-barisnya
+- compare: baris ITEM dicocokkan dengan `workItemId`; `change` = NEW | MODIFIED | REMOVED | UNCHANGED
 
 ## 7. AHSP
 

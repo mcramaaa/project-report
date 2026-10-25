@@ -21,5 +21,9 @@ export const AUDIT_ACTIONS = [
   'CHANGE_PROJECT_SCHEDULE',
   'CLOSE_PROJECT',
   'REOPEN_PROJECT',
+  'CREATE_RAB_VERSION',
+  'UPDATE_RAB_VERSION',
+  'APPROVE_RAB_VERSION',
+  'DISCARD_RAB_VERSION',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

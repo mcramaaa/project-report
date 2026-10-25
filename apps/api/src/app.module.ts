@@ -15,10 +15,12 @@ import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProjectsController } from './projects/projects.controller';
 import { ProjectsService } from './projects/projects.service';
+import { RabController } from './rab/rab.controller';
+import { RabService } from './rab/rab.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, AdminUsersController, AdminProjectsController, AdminAccessController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, AdminUsersController, AdminProjectsController, AdminAccessController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -28,6 +30,7 @@ import { ProjectsService } from './projects/projects.service';
     AuthService,
     AdminAccessService,
     ProjectsService,
+    RabService,
     AdminUsersService,
     AdminProjectsService,
   ],

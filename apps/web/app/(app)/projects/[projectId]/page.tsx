@@ -1,22 +1,19 @@
 import type { ProjectDto, ProjectTeamMemberDto, ProjectWeekDto, ReportPeriodDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ProjectTabs, type ProjectTab } from '@/components/project-tabs';
 import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
 import { can } from '@/lib/permissions';
 import { formatDate, formatRupiah } from '@/lib/project-fields';
 import { requireMe, serverGet } from '@/lib/server-api';
 import { ProjectActions } from './project-actions';
 
-type Tab = 'info' | 'calendar' | 'team';
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'info', label: 'Informasi' },
-  { key: 'calendar', label: 'Minggu & Periode' },
-  { key: 'team', label: 'Tim' },
-];
+type Tab = Exclude<ProjectTab, 'rab'>;
+const TABS: Tab[] = ['info', 'calendar', 'team'];
 
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ tab?: string }> }) {
   const [{ projectId }, { tab: rawTab }, me] = await Promise.all([params, searchParams, requireMe()]);
-  const tab: Tab = TABS.some((t) => t.key === rawTab) ? (rawTab as Tab) : 'info';
+  const tab: Tab = TABS.includes(rawTab as Tab) ? (rawTab as Tab) : 'info';
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const { status, data: p } = await serverGet<ProjectDto>(base);
   if (status === 404) notFound();
@@ -35,13 +32,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
       >
         {p.projectName}
       </PageTitle>
-      <nav className="access-tabs" aria-label="Bagian proyek">
-        {TABS.map((t) => (
-          <Link key={t.key} href={t.key === 'info' ? base : `${base}?tab=${t.key}`} aria-current={t.key === tab ? 'page' : undefined}>
-            {t.label}
-          </Link>
-        ))}
-      </nav>
+      <ProjectTabs projectId={p.id} active={tab} permissions={p.permissions} />
       {tab === 'info' && <InfoTab project={p} />}
       {tab === 'calendar' && <CalendarTab base={base} />}
       {tab === 'team' && <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />}

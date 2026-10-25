@@ -93,6 +93,8 @@ Satu proyek memiliki versi RAB:
 
 Setiap versi disimpan terpisah dan tidak saling overwrite.
 
+Milestone 4: versi berstatus DRAFT → APPROVED (terkunci) atau DISCARDED; MC0/Addendum dibuat sebagai salinan versi approved terakhir; rumus sementara di D-042 (verifikasi OD-009). Aktivasi baseline di Milestone 6.
+
 Setiap versi dapat mengubah:
 
 - volume

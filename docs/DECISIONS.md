@@ -308,6 +308,48 @@ Disetujui 2026-10-25.
 - Tab tim proyek baca-saja: nama dan role, tanpa email, memerlukan `project.read`. Pengelolaan anggota memakai halaman Akses proyek yang sudah ada.
 - Daftar proyek (`GET /projects`, `GET /admin/projects`) memakai pencarian dan pagination.
 
+## D-040 Versi RAB Manual (Milestone 4)
+
+Disetujui 2026-10-25 ("sesuai roadmap", mengikuti rekomendasi yang diajukan).
+
+- `rab_versions.version_type`: `CONTRACT` | `MC0` | `ADDENDUM` (dengan `revision_number` 1, 2, …).
+- Status: `DRAFT` → `APPROVED`, atau `DRAFT` → `DISCARDED` (alasan wajib). Tidak ada tahap diajukan/ditolak. Versi APPROVED terkunci permanen dan tidak dihapus; DISCARDED tidak dihapus.
+- Urutan versi linear per proyek: CONTRACT dahulu; MC0 hanya setelah CONTRACT approved dan sebelum Addendum; ADDENDUM n setelah versi approved terakhir. Hanya satu DRAFT per proyek.
+- CONTRACT dibuat kosong. MC0/ADDENDUM dibuat sebagai salinan versi approved terakhir: baris disalin, `work_item_id` terbawa, `previous_version_item_id` menunjuk baris asal.
+- Perbandingan (NEW/MODIFIED/REMOVED/UNCHANGED) dihitung dari `work_item_id` baris ITEM, tidak disimpan.
+- Aktivasi baseline, tanggal efektif, dan `baseline_assignments` ditunda ke M6. Approved belum berarti berlaku.
+- Jenis baris yang disimpan: `SECTION`, `SUBSECTION`, `PARENT_ITEM`, `ITEM`. `SUBTOTAL`/`TOTAL` dihitung untuk tampilan dan export, tidak disimpan. Hanya `ITEM` yang memiliki volume/harga dan dapat dilacak progresnya (`work_item_id`).
+- Induk baris harus berada dalam versi yang sama dan bukan `ITEM`; `SECTION` selalu di tingkat teratas.
+- No analisa disimpan sebagai teks (`analysis_code`) sampai AHSP (M7).
+- Approve memvalidasi: minimal satu ITEM; setiap ITEM punya satuan, volume ≥ 0, harga satuan ≥ 0, PPN 0–100. Peringatan yang wajib dikonfirmasi: total RAB CONTRACT ≠ nilai kontrak proyek, ITEM dengan volume 0.
+- Proyek `CLOSED` menolak pembuatan, perubahan, approve, dan discard versi RAB (perluasan D-036).
+- Audit: `CREATE_RAB_VERSION`, `UPDATE_RAB_VERSION`, `APPROVE_RAB_VERSION` (total snapshot), `DISCARD_RAB_VERSION`. Perubahan baris draft tidak diaudit per baris; isi versi approved adalah snapshot yang dapat ditelusuri.
+- Grid M4: input manual per baris (tambah, ubah, hapus di draft, naik/turun, pindah induk), header dan kolom kunci sticky, kolom dapat dipilih. Paste massal/import Excel ditunda ke M5.
+
+## D-041 Permission RAB
+
+Disetujui 2026-10-25.
+
+| Permission | Untuk | Default role sistem |
+|---|---|---|
+| `rab.read` | melihat versi, grid, perbandingan | FILLER, REVIEWER, MANAGER, ADMIN |
+| `rab.edit` | membuat/mengubah/discard draft | MANAGER, ADMIN |
+| `rab.approve` | approve draft | MANAGER |
+
+Penyetuju boleh sama dengan pembuat draft (tidak ada maker-checker); pembuat dan penyetuju tercatat. Migration menambahkan default ke role sistem yang sudah ada.
+
+## D-042 Rumus RAB (sementara)
+
+Disetujui 2026-10-25 sebagai **rumus sementara**, diturunkan dari spesifikasi (UI_UX §9 kolom harga/PPN/harga+PPN/subtotal/bobot; `tax_percent` per item). Wajib diverifikasi dengan workbook kantor (OD-009) sebelum dipakai untuk data resmi.
+
+- Harga + PPN = ROUND(harga satuan × (1 + PPN% / 100), 2).
+- Jumlah (subtotal) = ROUND(volume × harga + PPN, 2).
+- Jumlah sebelum PPN per item = ROUND(volume × harga satuan, 2); total sebelum PPN = Σ; total nilai = Σ jumlah; total PPN = total nilai − total sebelum PPN.
+- Pembulatan HALF_UP. Total tidak dibulatkan ke ribuan.
+- Bobot = jumlah / total nilai × 100, 6 desimal HALF_UP; selisih pembulatan ditambahkan ke ITEM dengan jumlah terbesar (urutan pertama bila sama) agar total tepat 100. Total nilai 0 → bobot 0.
+- Semua dihitung dengan Decimal di `packages/calc`. Draft dihitung saat dibaca; saat approve, nilai per baris dan total disimpan sebagai snapshot.
+- Format RAB antarproyek berbeda tetapi isinya sama (keterangan user): variasi format ditangani di tampilan, export (M14), dan import (M5), bukan dengan rumus per proyek.
+
 ## Keputusan Terbuka
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.
@@ -359,3 +401,9 @@ Matriks di `docs/PERMISSIONS.md` mengikuti PRD §2. Belum jelas:
 - default permission role sistem untuk fitur mendatang (role dinamis D-035 membuat matriks dapat diubah, tetapi default awal per milestone tetap perlu dikonfirmasi)
 
 Diputuskan sebelum: milestone yang pertama kali memakai izin tersebut (Milestone 5, 6, 9, 11).
+
+### OD-009 Verifikasi rumus RAB terhadap workbook kantor
+
+D-042 adalah rumus sementara dari spesifikasi. Perlu dicocokkan dengan contoh workbook: letak PPN (per item/total), tarif, pembulatan per baris dan total (mis. dibulatkan ke ribuan), dan dasar bobot (sebelum/sesudah PPN).
+
+Diputuskan sebelum: RAB resmi pertama di-approve untuk proyek nyata; paling lambat Milestone 5 (import).

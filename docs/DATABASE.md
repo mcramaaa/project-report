@@ -214,74 +214,58 @@ Status:
 
 ### rab_versions
 
+Milestone 4 (D-040). Kolom yang belum dibuat: `document_id` (M5), `effective_date` (M6).
+
 - id
-- project_id
-- version_type
-- revision_number
-- document_id
-- document_number
-- document_date
-- effective_date
-- previous_version_id
-- status
-- total_before_tax
-- total_tax
-- total_value
-- approved_by
-- approved_at
+- project_id → projects (RESTRICT)
+- version_type — CONTRACT | MC0 | ADDENDUM
+- revision_number — 0 untuk CONTRACT/MC0; 1, 2, … untuk ADDENDUM
+- document_number nullable
+- document_date nullable
+- previous_version_id nullable → rab_versions (versi approved yang disalin)
+- status — DRAFT | APPROVED | DISCARDED
+- total_before_tax, total_tax, total_value DECIMAL(20,2) nullable — snapshot saat approve; draft dihitung saat dibaca
+- created_by → users
+- approved_by, approved_at nullable
+- discarded_by, discarded_at, discard_reason nullable
 - created_at
 - updated_at
 
-version_type:
-- CONTRACT
-- MC0
-- ADDENDUM
+Index: `project_id, status`. Urutan versi dan "satu DRAFT per proyek" ditegakkan service dengan lock baris proyek.
 
 ### work_items
 
-Permanent project work identity.
+Permanent project work identity. Dibuat saat baris ITEM baru ditambahkan; terbawa ke versi berikutnya lewat salinan.
 
 - id
-- project_id
-- internal_code
+- project_id → projects (RESTRICT)
+- internal_code — `WI-0001`, unique per proyek
 - canonical_description
 - created_at
 
 ### rab_version_items
 
 - id
-- rab_version_id
-- work_item_id nullable for non-trackable structural rows
-- parent_item_id
-- sort_order
-- row_type
-- display_number
+- rab_version_id → rab_versions (RESTRICT)
+- work_item_id nullable → work_items (RESTRICT) — hanya ITEM
+- parent_item_id nullable → rab_version_items (RESTRICT), versi yang sama
+- sort_order — urutan di antara saudara
+- row_type — SECTION | SUBSECTION | PARENT_ITEM | ITEM
+- display_number nullable
 - description
-- volume
-- unit
-- analysis_version_id
-- unit_price
-- tax_percent
-- unit_price_with_tax
-- subtotal
-- weight
-- change_type
-- previous_version_item_id
-- is_progress_trackable
+- volume DECIMAL(18,4) nullable — hanya ITEM
+- unit nullable
+- analysis_code nullable — teks no analisa sampai AHSP (M7)
+- unit_price DECIMAL(20,2) nullable
+- tax_percent DECIMAL(5,2) nullable
+- unit_price_with_tax, subtotal DECIMAL(20,2), weight DECIMAL(12,6) nullable — snapshot saat approve (D-042)
+- previous_version_item_id nullable → rab_version_items (baris asal salinan)
+- created_at
+- updated_at
 
-change_type:
-- UNCHANGED
-- MODIFIED
-- NEW
-- REMOVED
+Unique: `rab_version_id + work_item_id`.
 
-row_type:
-- SECTION
-- SUBSECTION
-- PARENT_ITEM
-- ITEM
-- SUBTOTAL
-- TOTAL
+Tidak disimpan karena dihitung: `change_type` (dari `work_item_id` antarversi), `is_progress_trackable` (= ITEM), baris SUBTOTAL/TOTAL. Baris draft boleh dihapus; versi APPROVED/DISCARDED tidak diubah.
 
 ### baseline_assignments
 

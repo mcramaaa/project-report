@@ -44,10 +44,18 @@ export function toProjectInput(values: Record<string, string>, fields: ProjectFi
   return Object.fromEntries(fields.map((f) => [f, NUMBER_FIELDS.has(f) && values[f]?.trim() ? Number(values[f]) : (values[f] ?? '')]));
 }
 
+/** Decimal string -> Indonesian notation without float conversion ("1234567.50" -> "1.234.567,50"). */
+export function formatNumber(value: string | null, { trim = false } = {}): string {
+  if (value === null) return '–';
+  const [int, frac = ''] = value.split('.');
+  const shown = trim ? frac.replace(/0+$/, '') : frac;
+  return `${int!.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${shown ? `,${shown}` : ''}`;
+}
+
 export function formatRupiah(value: string | null): string {
   if (value === null) return 'Belum diisi';
-  const [int, frac] = value.split('.');
-  return `Rp ${int!.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${frac && frac !== '00' ? `,${frac}` : ''}`;
+  const [, frac] = value.split('.');
+  return `Rp ${formatNumber(value, { trim: frac === '00' })}`;
 }
 
 export function formatDate(date: string): string {

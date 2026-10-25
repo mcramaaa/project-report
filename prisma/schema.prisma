@@ -25,14 +25,17 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  sessions           AuthSession[]
-  memberships        ProjectUser[]    @relation("MembershipUser")
-  createdMemberships ProjectUser[]    @relation("MembershipCreatedBy")
-  revokedMemberships ProjectUser[]    @relation("MembershipRevokedBy")
-  globalRoles        UserGlobalRole[] @relation("GlobalRoleUser")
-  createdGlobalRoles UserGlobalRole[] @relation("GlobalRoleCreatedBy")
-  revokedGlobalRoles UserGlobalRole[] @relation("GlobalRoleRevokedBy")
-  auditLogs          AuditLog[]
+  sessions             AuthSession[]
+  memberships          ProjectUser[]    @relation("MembershipUser")
+  createdMemberships   ProjectUser[]    @relation("MembershipCreatedBy")
+  revokedMemberships   ProjectUser[]    @relation("MembershipRevokedBy")
+  globalRoles          UserGlobalRole[] @relation("GlobalRoleUser")
+  createdGlobalRoles   UserGlobalRole[] @relation("GlobalRoleCreatedBy")
+  revokedGlobalRoles   UserGlobalRole[] @relation("GlobalRoleRevokedBy")
+  auditLogs            AuditLog[]
+  createdRabVersions   RabVersion[]     @relation("RabVersionCreatedBy")
+  approvedRabVersions  RabVersion[]     @relation("RabVersionApprovedBy")
+  discardedRabVersions RabVersion[]     @relation("RabVersionDiscardedBy")
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -82,6 +85,8 @@ model Project {
   auditLogs     AuditLog[]
   weeks         ProjectWeek[]
   reportPeriods ReportPeriod[]
+  rabVersions   RabVersion[]
+  workItems     WorkItem[]
 
   @@map("projects")
 }
@@ -226,4 +231,112 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+enum RabVersionType {
+  CONTRACT
+  MC0
+  ADDENDUM
+}
+
+enum RabVersionStatus {
+  DRAFT
+  APPROVED
+  DISCARDED
+}
+
+/// Stored row types; SUBTOTAL/TOTAL are computed for display (D-040).
+enum RabRowType {
+  SECTION
+  SUBSECTION
+  PARENT_ITEM
+  ITEM
+}
+
+/// One RAB version per document; APPROVED/DISCARDED rows are never changed (D-040).
+model RabVersion {
+  id                String           @id @default(uuid(7)) @db.Char(36)
+  projectId         String           @map("project_id") @db.Char(36)
+  versionType       RabVersionType   @map("version_type")
+  /// 0 for CONTRACT/MC0; 1, 2, … for ADDENDUM.
+  revisionNumber    Int              @map("revision_number") @db.UnsignedSmallInt
+  documentNumber    String?          @map("document_number") @db.VarChar(100)
+  documentDate      DateTime?        @map("document_date") @db.Date
+  /// Approved version this one was copied from.
+  previousVersionId String?          @map("previous_version_id") @db.Char(36)
+  status            RabVersionStatus @default(DRAFT)
+  /// Snapshot at approval (D-042); drafts are computed on read.
+  totalBeforeTax    Decimal?         @map("total_before_tax") @db.Decimal(20, 2)
+  totalTax          Decimal?         @map("total_tax") @db.Decimal(20, 2)
+  totalValue        Decimal?         @map("total_value") @db.Decimal(20, 2)
+  createdBy         String           @map("created_by") @db.Char(36)
+  approvedBy        String?          @map("approved_by") @db.Char(36)
+  approvedAt        DateTime?        @map("approved_at") @db.DateTime(3)
+  discardedBy       String?          @map("discarded_by") @db.Char(36)
+  discardedAt       DateTime?        @map("discarded_at") @db.DateTime(3)
+  discardReason     String?          @map("discard_reason") @db.Text
+  createdAt         DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  previousVersion RabVersion?      @relation("RabVersionChain", fields: [previousVersionId], references: [id], onDelete: Restrict)
+  nextVersions    RabVersion[]     @relation("RabVersionChain")
+  createdByUser   User             @relation("RabVersionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser  User?            @relation("RabVersionApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  discardedByUser User?            @relation("RabVersionDiscardedBy", fields: [discardedBy], references: [id], onDelete: Restrict)
+  items           RabVersionItem[]
+
+  @@index([projectId, status])
+  @@map("rab_versions")
+}
+
+/// Permanent identity of a trackable work item across versions (PRD §9).
+model WorkItem {
+  id                   String   @id @default(uuid(7)) @db.Char(36)
+  projectId            String   @map("project_id") @db.Char(36)
+  internalCode         String   @map("internal_code") @db.VarChar(20)
+  canonicalDescription String   @map("canonical_description") @db.VarChar(1000)
+  createdAt            DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  versionItems RabVersionItem[]
+
+  @@unique([projectId, internalCode])
+  @@map("work_items")
+}
+
+model RabVersionItem {
+  id                    String     @id @default(uuid(7)) @db.Char(36)
+  rabVersionId          String     @map("rab_version_id") @db.Char(36)
+  /// ITEM rows only.
+  workItemId            String?    @map("work_item_id") @db.Char(36)
+  parentItemId          String?    @map("parent_item_id") @db.Char(36)
+  sortOrder             Int        @map("sort_order") @db.UnsignedInt
+  rowType               RabRowType @map("row_type")
+  displayNumber         String?    @map("display_number") @db.VarChar(30)
+  description           String     @db.VarChar(1000)
+  volume                Decimal?   @db.Decimal(18, 4)
+  unit                  String?    @db.VarChar(30)
+  /// Free-text "no analisa" until AHSP (M7).
+  analysisCode          String?    @map("analysis_code") @db.VarChar(50)
+  unitPrice             Decimal?   @map("unit_price") @db.Decimal(20, 2)
+  taxPercent            Decimal?   @map("tax_percent") @db.Decimal(5, 2)
+  /// Snapshot at approval (D-042).
+  unitPriceWithTax      Decimal?   @map("unit_price_with_tax") @db.Decimal(20, 2)
+  subtotal              Decimal?   @db.Decimal(20, 2)
+  weight                Decimal?   @db.Decimal(12, 6)
+  previousVersionItemId String?    @map("previous_version_item_id") @db.Char(36)
+  createdAt             DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt             DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  rabVersion          RabVersion       @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  workItem            WorkItem?        @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  parent              RabVersionItem?  @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
+  children            RabVersionItem[] @relation("RabItemTree")
+  previousVersionItem RabVersionItem?  @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
+  copies              RabVersionItem[] @relation("RabItemCopy")
+
+  @@unique([rabVersionId, workItemId])
+  @@index([rabVersionId, parentItemId, sortOrder])
+  @@map("rab_version_items")
 }

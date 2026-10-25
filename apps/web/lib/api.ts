@@ -5,6 +5,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly fieldErrors: Record<string, string> = {},
+    /** Raw error body, for endpoints that return structured details (e.g. RAB approval issues). */
+    readonly details?: unknown,
   ) {
     super(message);
   }
@@ -40,9 +42,9 @@ export async function api<T = void>(method: string, path: string, body?: unknown
     window.location.href = '/login';
   }
   const fieldErrors: Record<string, string> = {};
-  for (const e of (data?.errors ?? []) as { path: string; message: string }[]) fieldErrors[e.path] ??= e.message;
+  for (const e of (data?.errors ?? []) as { path?: string; message: string }[]) if (e.path !== undefined) fieldErrors[e.path] ??= e.message;
   const message = typeof data?.message === 'string' ? data.message : (FALLBACK[res.status] ?? 'Terjadi kesalahan. Coba lagi.');
-  throw new ApiError(res.status, message, fieldErrors);
+  throw new ApiError(res.status, message, fieldErrors, data);
 }
 
 export function errorMessage(err: unknown): string {

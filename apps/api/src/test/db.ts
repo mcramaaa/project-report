@@ -9,7 +9,7 @@ export function createTestPrisma(): PrismaService {
   return new PrismaService(url);
 }
 
-const TABLES = ['audit_logs', 'weeks', 'report_periods', 'user_global_roles', 'project_users', 'role_permissions', 'roles', 'auth_sessions', 'projects', 'users'];
+const TABLES = ['rab_version_items', 'rab_versions', 'work_items', 'audit_logs', 'weeks', 'report_periods', 'user_global_roles', 'project_users', 'role_permissions', 'roles', 'auth_sessions', 'projects', 'users'];
 
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   assertTestDatabase(process.env.DATABASE_URL ?? '');

@@ -32,8 +32,11 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `projects.create` | GLOBAL | Proyek | membuat proyek; pembuat menjadi MANAGER (D-039) |
 | `project.read` | PROJECT | Proyek | baca identitas, minggu, periode, tim proyek |
 | `project.update` | PROJECT | Proyek | ubah identitas, jadwal, tutup/buka kembali proyek |
+| `rab.read` | PROJECT | RAB | lihat versi RAB, grid, perbandingan (D-041) |
+| `rab.edit` | PROJECT | RAB | buat/ubah/discard draft RAB |
+| `rab.approve` | PROJECT | RAB | approve draft RAB |
 
-Rencana (ditambahkan saat milestone terkait, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `baseline.activate`, `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
+Rencana (ditambahkan saat milestone terkait; `rab.*` sudah ditambahkan di M4, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `baseline.activate`, `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
 
 ¹ **Reviewer tidak boleh memfinalisasi laporan yang ia input sendiri**, termasuk super admin. Aturan domain ini diimplementasikan dan diuji di backend saat fitur laporan dibuat (`docs/ACCEPTANCE_TESTS.md` bagian I).
 
@@ -43,8 +46,9 @@ FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2). Kode, scope, d
 
 | Role | Default permission |
 |---|---|
-| FILLER, REVIEWER, ADMIN | `project.read` |
-| MANAGER | `project.read`, `project.update` |
+| FILLER, REVIEWER | `project.read`, `rab.read` |
+| ADMIN | `project.read`, `rab.read`, `rab.edit` |
+| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve` |
 
 Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
 
@@ -84,6 +88,9 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `POST /projects` | `projects.create` |
 | `GET /projects/:id`, `/weeks`, `/report-periods`, `/team` | `project.read` di proyek itu, atau super admin |
 | `PATCH /projects/:id`, `PUT /schedule`, `POST /close`, `POST /reopen` | `project.update` di proyek itu, atau super admin |
+| `GET /projects/:id/rab-versions…` (daftar, detail, compare) | `rab.read` |
+| `POST/PATCH/DELETE /projects/:id/rab-versions…` (draft, baris, discard) | `rab.edit` |
+| `POST /projects/:id/rab-versions/:vid/approve` | `rab.approve` |
 
 ## 6. Respons Penolakan
 
@@ -114,6 +121,9 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `UPDATE_PROJECT` | identitas berubah | field yang berubah, lama & baru |
 | `CHANGE_PROJECT_SCHEDULE` | tanggal mulai/durasi berubah | mulai, durasi, tanggal selesai, jumlah minggu/periode lama & baru |
 | `CLOSE_PROJECT` / `REOPEN_PROJECT` | status proyek berubah | status lama & baru (alasan wajib) |
+| `CREATE_RAB_VERSION` / `UPDATE_RAB_VERSION` | versi RAB dibuat (jenis, revisi, versi asal) / dokumen diubah | jenis, revisi, nomor/tanggal dokumen |
+| `APPROVE_RAB_VERSION` | draft disetujui | total sebelum PPN, PPN, total, jumlah ITEM, warning yang dikonfirmasi |
+| `DISCARD_RAB_VERSION` | draft dibatalkan | status lama & baru (alasan wajib) |
 | `CHANGE_PASSWORD` | password diganti | tidak ada nilai |
 | `REVOKE_SESSIONS` | session dicabut karena nonaktivasi/ganti password | jumlah session, penyebab |
 

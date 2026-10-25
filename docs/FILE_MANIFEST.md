@@ -45,6 +45,9 @@
 - `apps/api/src/projects/project-calendar.ts`
 - `apps/api/src/projects/projects.service.ts`
 - `apps/api/src/projects/projects.spec.ts`
+- `apps/api/src/rab/rab.controller.ts`
+- `apps/api/src/rab/rab.service.ts`
+- `apps/api/src/rab/rab.spec.ts`
 - `apps/api/src/test/db.ts`
 - `apps/api/src/test/global-setup.ts`
 - `apps/api/src/test/http.ts`
@@ -71,6 +74,11 @@
 - `apps/web/app/(app)/profile/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/project-actions.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/create-rab-version.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/rab-editor.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/compare/page.tsx`
 - `apps/web/app/(app)/projects/new/page.tsx`
 - `apps/web/app/(app)/projects/new/project-wizard.tsx`
 - `apps/web/app/globals.css`
@@ -84,11 +92,13 @@
 - `apps/web/components/icon.tsx`
 - `apps/web/components/logout-button.tsx`
 - `apps/web/components/pager.tsx`
+- `apps/web/components/project-tabs.tsx`
 - `apps/web/components/ui.tsx`
 - `apps/web/eslint.config.mjs`
 - `apps/web/lib/api.ts`
 - `apps/web/lib/permissions.ts`
 - `apps/web/lib/project-fields.ts`
+- `apps/web/lib/rab-ui.ts`
 - `apps/web/lib/server-api.ts`
 - `apps/web/lib/use-project-roles.ts`
 - `apps/web/next.config.ts`
@@ -124,6 +134,8 @@
 - `packages/calc/src/index.ts`
 - `packages/calc/src/project-calendar.ts`
 - `packages/calc/src/project-calendar.test.ts`
+- `packages/calc/src/rab.ts`
+- `packages/calc/src/rab.test.ts`
 - `packages/calc/tsconfig.build.json`
 - `packages/calc/tsconfig.json`
 - `packages/config/eslint.base.js`
@@ -138,6 +150,7 @@
 - `packages/shared/src/auth.ts`
 - `packages/shared/src/index.ts`
 - `packages/shared/src/projects.ts`
+- `packages/shared/src/rab.ts`
 - `packages/shared/src/users.ts`
 - `packages/shared/tsconfig.build.json`
 - `packages/shared/tsconfig.json`
@@ -145,6 +158,7 @@
 - `prisma/migrations/20261025051445_init_base_schema/migration.sql`
 - `prisma/migrations/20261025070000_dynamic_roles/migration.sql`
 - `prisma/migrations/20261025090000_project_master/migration.sql`
+- `prisma/migrations/20261025110000_rab_versions/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

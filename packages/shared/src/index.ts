@@ -9,4 +9,5 @@ export * from './access.js';
 export * from './audit.js';
 export * from './auth.js';
 export * from './projects.js';
+export * from './rab.js';
 export * from './users.js';

@@ -59,17 +59,23 @@ Gunakan ini sebagai checklist saat vibe coding.
 
 ## B. RAB Versioning
 
-- [ ] CONTRACT dapat dibuat
-- [ ] MC0 membuat versi baru
-- [ ] ADDENDUM membuat versi baru
-- [ ] versi lama tidak di-overwrite
-- [ ] compare menunjukkan NEW/MODIFIED/REMOVED/UNCHANGED
+- [x] CONTRACT dapat dibuat
+- [x] MC0 membuat versi baru
+- [x] ADDENDUM membuat versi baru
+- [x] versi lama tidak di-overwrite (APPROVED terkunci)
+- [x] compare menunjukkan NEW/MODIFIED/REMOVED/UNCHANGED
+- [x] urutan versi linear dan hanya satu DRAFT per proyek
+- [x] approve memvalidasi error dan meminta konfirmasi warning; total disimpan sebagai snapshot
+- [x] discard wajib alasan; versi tidak dihapus
+- [x] rumus harga+PPN, jumlah, total, dan bobot (tepat 100) dengan Decimal (D-042, sementara)
+- [x] `rab.read`/`rab.edit`/`rab.approve` ditegakkan backend; proyek CLOSED menolak perubahan RAB
+- [ ] rumus diverifikasi dengan workbook kantor (OD-009)
 
 ## C. Work Item Identity
 
-- [ ] item yang sama antar baseline tetap work_item_id yang sama
-- [ ] item baru mendapat work_item_id baru
-- [ ] item removed tidak menghapus histori progress
+- [x] item yang sama antar baseline tetap work_item_id yang sama
+- [x] item baru mendapat work_item_id baru
+- [ ] item removed tidak menghapus histori progress (progress di M9; work item tidak pernah dihapus)
 
 ## D. Baseline Change
 

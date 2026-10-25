@@ -210,6 +210,8 @@ Filter:
 
 ## 9. RAB Single Version
 
+Milestone 4 (D-040): `/projects/:id/rab` (daftar versi, buat Kontrak/MC-0/Addendum) dan `/projects/:id/rab/:versionId` (grid). Draft dapat diedit per baris (tambah baris/sub-baris, ubah, hapus, naik/turun, pindah induk) oleh `rab.edit`; panel validasi menampilkan error/warning; approve oleh `rab.approve` dengan konfirmasi warning; discard wajib alasan. Header tabel dan kolom No/Uraian sticky; pilihan kolom tersimpan per browser.
+
 Tampilan familiar seperti Excel.
 
 Columns selectable:
@@ -227,6 +229,8 @@ Columns selectable:
 Hierarchical rows dapat collapse/expand.
 
 ## 10. RAB Compare
+
+Milestone 4: `/projects/:id/rab/compare?base=&target=`; filter perubahan (semua/berubah/baru/dihapus).
 
 ```text
 [Kontrak] vs [MC0]

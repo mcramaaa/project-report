@@ -114,6 +114,16 @@ Model lengkap: `docs/PERMISSIONS.md`.
 5. **Tutup proyek** (alasan wajib): identitas/jadwal terkunci, data tetap terbaca; **Buka kembali** membuka kuncinya.
 6. Tab **Tim**: nama dan role anggota; kelola anggota lewat Manajemen akses → Akses proyek.
 
+### Mencoba RAB Manual (Milestone 4)
+
+> Rumus RAB masih **sementara** (D-042). Jangan approve RAB resmi proyek nyata sebelum OD-009 (verifikasi dengan workbook kantor) selesai.
+
+1. Buka proyek → tab **RAB** → **Buat versi** (Kontrak).
+2. **Tambah baris teratas** (Bagian), lalu **+ Sub** untuk sub-bagian/induk/item. Item berisi volume, satuan, no analisa, harga satuan, PPN %.
+3. Panel **Pemeriksaan draft** menampilkan error (wajib diperbaiki) dan peringatan (wajib dikonfirmasi saat approve).
+4. **Approve RAB** (role MANAGER): versi terkunci, nilai disimpan sebagai snapshot.
+5. Buat **MC-0** atau **Addendum**: isi disalin dari versi approved terakhir; ubah, tambah, hapus baris; **Bandingkan** menampilkan Baru/Berubah/Dihapus/Tetap per kode pekerjaan (WI-xxxx).
+
 Proyek yang sudah ada sebelum M3 mendapat minggu/periode dari migration `20261025090000_project_master`; nilai kontraknya kosong sampai diisi lewat **Ubah identitas**.
 
 ### Menghapus schema
@@ -157,4 +167,4 @@ Jangan mengedit migration yang sudah diterapkan.
 
 ## Status
 
-Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit), dan Milestone 3 (Project Master: proyek, status, jadwal, minggu & periode 4 minggu, tim) selesai. Belum ada RAB, progres, atau laporan. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
+Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit), Milestone 3 (Project Master: proyek, status, jadwal, minggu & periode 4 minggu, tim), dan Milestone 4 (RAB manual: versi Kontrak/MC-0/Addendum, hierarki, grid, perbandingan, approval; rumus sementara D-042) selesai. Belum ada import/AI, baseline aktif, progres, atau laporan. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
