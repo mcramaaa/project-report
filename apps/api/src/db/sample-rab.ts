@@ -170,7 +170,7 @@ function numberAndDate(value: string): { number: string; date: string } {
 
 const field = (v: string) => v.replace(/^:\s*/, '').trim();
 
-export function parseSampleProject(workbook: ExcelJS.Workbook, contractValue: string): CreateProjectInput {
+export function parseSampleProject(workbook: ExcelJS.Workbook, contractValue: string, code = SAMPLE_PROJECT_CODE): CreateProjectInput {
   const sheet = workbook.getWorksheet(DATA_SHEET);
   if (!sheet) throw new Error(`Sheet "${DATA_SHEET}" tidak ditemukan.`);
   const d = (row: number) => text(sheet.getRow(row).getCell(4).value);
@@ -180,7 +180,7 @@ export function parseSampleProject(workbook: ExcelJS.Workbook, contractValue: st
   const contract = numberAndDate(d(5));
   const spmk = numberAndDate(d(6));
   return {
-    code: SAMPLE_PROJECT_CODE,
+    code,
     activityName: field(d(2)),
     subActivityName: field(d(3)),
     projectName: field(d(4)),

@@ -26,6 +26,7 @@
     "db:seed": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed -w @laporan-proyek/api",
     "db:seed:dev": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed:dev -w @laporan-proyek/api",
     "db:seed:sample": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed:sample -w @laporan-proyek/api --",
+    "db:seed:sample-ahsp": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed:sample-ahsp -w @laporan-proyek/api",
     "ai:ping": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run ai:ping -w @laporan-proyek/api",
     "schema:drop": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run schema:drop -w @laporan-proyek/api --"
   },

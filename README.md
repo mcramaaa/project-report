@@ -121,6 +121,21 @@ Model lengkap: `docs/PERMISSIONS.md`.
 5. **Tutup proyek** (alasan wajib): identitas/jadwal terkunci, data tetap terbaca; **Buka kembali** membuka kuncinya.
 6. Tab **Tim**: nama dan role anggota; kelola anggota lewat Manajemen akses → Akses proyek.
 
+### Mencoba Impor RAB + AHSP (M5/M7)
+
+**Seed contoh lewat alur impor** (development saja, D-053; tidak menyentuh proyek lain):
+
+```bash
+npm run db:seed                  # super admin dulu
+npm run db:seed:sample-ahsp      # storage/temp/00. RAB PENAWARAN… (Kontrak) dan 04. LAPORAN MINGGUAN… (MC-0)
+```
+
+Membuat proyek `SDN2-SERANGAN-2026-AHSP`: upload file asli → draft → keputusan reviewer dicatat eksplisit atas nama super admin (harga langsung SMKK; untuk MC-0 tautan ke analisa resmi Kontrak dan pencocokan pekerjaan) → approve impor → approve RAB (M4). Seed berhenti sebelum approve bila ada issue terbuka, rekonsiliasi analisa gagal, atau total berbeda dari workbook. Aman diulang dan melanjutkan dari langkah yang gagal.
+
+1. Proyek → tab **Impor RAB**: upload .xlsx, centang dokumen, pilih peran (RAB utama/pendukung) dan sheet, **Buat run impor**.
+2. Halaman review: rekonsiliasi total, issue, rantai rumus tiap item, kandidat, keputusan; **Approve impor** aktif setelah semua issue BLOCKING diputuskan.
+3. Tab **Analisa**: satu daftar analisa gabungan proyek; detail menampilkan komponen, sumber harga, subanalisa, dan item RAB yang merujuk. Kode analisa di grid RAB menautkan ke detailnya.
+
 ### Mencoba RAB Manual (Milestone 4)
 
 Rumus mengikuti workbook kantor (D-043): harga + PPN dan jumlah per item tanpa pembulatan, total **REAL COST** (2 desimal) dan **Dibulatkan** (dipotong ke rupiah).

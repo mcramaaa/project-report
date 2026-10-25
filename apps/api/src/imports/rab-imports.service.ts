@@ -57,9 +57,16 @@ export class RabImportsService implements OnModuleInit {
   }
 
   async list(projectId: string): Promise<RabImportSummaryDto[]> {
-    const rows = await this.prisma.rabImport.findMany({ where: { projectId }, include: IMPORT_INCLUDE, orderBy: { createdAt: 'desc' } });
+    // Drafts are several MB each: never sort rows that carry them (MySQL sort buffer); load per run instead.
+    const rows = await this.prisma.rabImport.findMany({ where: { projectId }, omit: { draft: true }, include: IMPORT_INCLUDE, orderBy: { createdAt: 'desc' } });
     const official = await this.officialVersions(projectId);
-    return Promise.all(rows.map(async (r) => this.summary(r, r.status === 'NEEDS_REVIEW' ? blockingIssues(this.evaluate(r, await this.decisions(r.id), official).issues).length : 0)));
+    return Promise.all(
+      rows.map(async (r) => {
+        if (r.status !== 'NEEDS_REVIEW') return this.summary({ ...r, draft: null }, 0);
+        const { draft } = await this.prisma.rabImport.findUniqueOrThrow({ where: { id: r.id }, select: { draft: true } });
+        return this.summary({ ...r, draft }, blockingIssues(this.evaluate({ ...r, draft }, await this.decisions(r.id), official).issues).length);
+      }),
+    );
   }
 
   async get(projectId: string, importId: string): Promise<RabImportDetailDto> {
@@ -487,7 +494,7 @@ export class RabImportsService implements OnModuleInit {
     return this.get(projectId, importId);
   }
 
-  private evaluate(row: ImportRow, decisions: DecisionRecord[], official: Map<string, OfficialVersion>) {
+  private evaluate(row: Pick<ImportRow, 'draft'>, decisions: DecisionRecord[], official: Map<string, OfficialVersion>) {
     return evaluateImport(row.draft as unknown as RabImportDraft, decisions, official);
   }
 

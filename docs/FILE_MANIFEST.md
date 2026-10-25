@@ -37,6 +37,9 @@
 - `apps/api/src/common/zod.pipe.ts`
 - `apps/api/src/config/env.ts`
 - `apps/api/src/db/drop-schema.ts`
+- `apps/api/src/db/sample-ahsp.spec.ts`
+- `apps/api/src/db/sample-ahsp.ts`
+- `apps/api/src/db/seed-sample-ahsp.ts`
 - `apps/api/src/db/sample-rab.ts`
 - `apps/api/src/db/sample-rab.spec.ts`
 - `apps/api/src/db/seed-dev.ts`
