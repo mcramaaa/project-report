@@ -87,26 +87,39 @@ export class AiClient {
   }
 
   private async call<T>(model: string, messages: AiMessage[], schema: z.ZodType<T>): Promise<{ parsed: T; raw: unknown }> {
+    // One deadline for the whole exchange: headers and body (SSE included) — a stalled stream must still time out.
     const controller = new AbortController();
+    const timedOut = () => new TechnicalError(`timeout setelah ${this.config.timeoutMs} ms`, true);
+    const deadline = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(timedOut()), { once: true }));
+    deadline.catch(() => undefined);
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
-    let res: Response;
-    try {
-      res = await this.fetchImpl(`${this.config.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${this.config.apiKey}` },
-        body: JSON.stringify({ model, messages, temperature: 0, stream: false, response_format: { type: 'json_object' } }),
-        signal: controller.signal,
+    const read = (res: Response) =>
+      Promise.race([res.text(), deadline]).catch((err: unknown) => {
+        throw err instanceof TechnicalError ? err : controller.signal.aborted ? timedOut() : new TechnicalError(`respons terputus: ${(err as Error).message}`, true);
       });
-    } catch (err) {
-      throw new TechnicalError(controller.signal.aborted ? `timeout setelah ${this.config.timeoutMs} ms` : `koneksi gagal: ${(err as Error).message}`, true);
+    let body: string;
+    try {
+      const res = await Promise.race([
+        this.fetchImpl(`${this.config.baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${this.config.apiKey}` },
+          body: JSON.stringify({ model, messages, temperature: 0, stream: false, response_format: { type: 'json_object' } }),
+          signal: controller.signal,
+        }),
+        deadline,
+      ]).catch((err: unknown) => {
+        throw err instanceof TechnicalError ? err : controller.signal.aborted ? timedOut() : new TechnicalError(`koneksi gagal: ${(err as Error).message}`, true);
+      });
+      if (!res.ok) {
+        const text = (await read(res).catch((err: unknown) => (controller.signal.aborted ? Promise.reject(err) : ''))).slice(0, 300);
+        throw new TechnicalError(`HTTP ${res.status}${text ? `: ${text}` : ''}`, res.status >= 500 || res.status === 429 || res.status === 408);
+      }
+      body = await read(res);
     } finally {
       clearTimeout(timer);
+      controller.abort(); // releases a body still streaming after an error
     }
-    if (!res.ok) {
-      const body = (await res.text().catch(() => '')).slice(0, 300);
-      throw new TechnicalError(`HTTP ${res.status}${body ? `: ${body}` : ''}`, res.status >= 500 || res.status === 429 || res.status === 408);
-    }
-    const content = messageContent(await res.text());
+    const content = messageContent(body);
     if (typeof content !== 'string') throw new TechnicalError('respons tanpa konten', true);
     let json: unknown;
     try {

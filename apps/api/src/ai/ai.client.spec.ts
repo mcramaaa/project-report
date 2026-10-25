@@ -70,6 +70,23 @@ describe('AiClient', () => {
     ]);
   });
 
+  it('the timeout covers a body or SSE stream that stalls after the headers; retry, fallback, then manual review (regression)', async () => {
+    // Headers arrive, then the stream never ends and ignores the abort signal.
+    const stalled = () => Promise.resolve(new Response(new ReadableStream({ start: (c) => c.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"{"}}]}\n')) }), { status: 200, headers: { 'content-type': 'text/event-stream' } }));
+    const fetchImpl = vi.fn().mockImplementationOnce(stalled).mockImplementationOnce(stalled).mockResolvedValueOnce(reply('{"ok":true}'));
+    const out = await new AiClient(config, fetchImpl as typeof fetch, noSleep).completeJson(schema, []);
+    expect(out).toMatchObject({ result: { ok: true }, model: 'backup' });
+    expect(out.attempts.map((a) => [a.model, a.status, a.error])).toEqual([
+      ['primary', 'FAILED', expect.stringContaining('timeout')],
+      ['primary', 'FAILED', expect.stringContaining('timeout')],
+      ['backup', 'SUCCEEDED', null],
+    ]);
+
+    const allStalled = await new AiClient(config, vi.fn(stalled) as typeof fetch, noSleep).completeJson(schema, []);
+    expect(allStalled).toMatchObject({ result: null, model: null });
+    expect(allStalled.attempts).toHaveLength(4);
+  });
+
   it('reads SSE streams that some routes return even with stream:false', async () => {
     const sse = ['data: {"choices":[{"delta":{"role":"assistant"}}]}', 'data: {"choices":[{"delta":{"content":"{\\"ok\\":"}}]}', 'data: {"choices":[{"delta":{"content":"true}"}}]}', 'data: [DONE]'].join('\n\n');
     const fetchImpl = vi.fn(async () => new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } }));

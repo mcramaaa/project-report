@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { existsSync } from 'node:fs';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { documentPath, DocumentsService } from '../documents/documents.service';
 import type { AiClient } from '../ai/ai.client';
 import { LoginRateLimiter } from '../auth/login-rate-limiter';
 import { createProject, createUser, resetDatabase, roleId, TEST_PASSWORD } from '../test/db';
@@ -140,6 +142,19 @@ describe('documents and permissions (D-049)', () => {
     expect((await (await loggedIn('luar@example.com')).get(base)).status).toBe(404);
     expect(await t.prisma.auditLog.count({ where: { action: 'UPLOAD_DOCUMENT' } })).toBe(1);
   });
+
+  it('a failure after the metadata commit keeps the stored file (regression)', async () => {
+    const spy = vi.spyOn(t.prisma.projectDocument, 'findMany').mockRejectedValueOnce(new Error('connection lost after commit'));
+    try {
+      const res = await admin.upload(`/projects/${project.id}/documents`, [{ name: 'rab.xlsx', data: await contractBook() }]);
+      expect(res.status).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+    const doc = await t.prisma.projectDocument.findFirstOrThrow({ where: { projectId: project.id } });
+    expect(existsSync(documentPath(project.id, doc.storedFilename))).toBe(true);
+    expect((await t.app.get(DocumentsService).read(project.id, doc.id)).data.subarray(0, 2).toString()).toBe('PK');
+  });
 });
 
 describe('contract import → approval', () => {
@@ -184,9 +199,22 @@ describe('contract import → approval', () => {
     // Approval of the RAB itself still goes through M4; the linked price cannot be edited directly.
     const rabBase = `/projects/${project.id}/rab-versions/${rab.id}`;
     expect((await admin.patch(`${rabBase}/items/${items[0]!.id}`, { unitPrice: '1' })).status).toBe(409);
+    // What the RAB form sends for a linked item (everything but the derived price) is accepted (regression).
+    const edited = await admin.patch(`${rabBase}/items/${items[0]!.id}`, {
+      displayNumber: '1',
+      description: 'Pek. Pasangan Dinding Bata (revisi)',
+      volume: '25',
+      unit: 'm2',
+      analysisCode: 'P.1',
+      taxPercent: '11',
+      parentId: items[0]!.parentItemId,
+    });
+    expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+    expect(await t.prisma.rabVersionItem.findUniqueOrThrow({ where: { id: items[0]!.id } })).toMatchObject({ analysisVersionId: p1.id, priceSource: 'ANALYSIS' });
+    expect((await t.prisma.rabVersionItem.findUniqueOrThrow({ where: { id: items[0]!.id } })).unitPrice?.toString()).toBe('59400');
     expect((await admin.post(`${rabBase}/approve`, { acknowledgeWarnings: true })).status).toBe(200);
     const grid = (await admin.get(rabBase)).body;
-    expect(grid.rows.find((r: { description: string }) => r.description === 'Pek. Pasangan Dinding Bata').analysis).toMatchObject({ code: 'P.1', versionId: p1.id });
+    expect(grid.rows.find((r: { description: string }) => r.description === 'Pek. Pasangan Dinding Bata (revisi)').analysis).toMatchObject({ code: 'P.1', versionId: p1.id });
 
     // Combined analysis list.
     const list = (await admin.get(`/projects/${project.id}/analyses`)).body;
@@ -318,6 +346,17 @@ describe('failures, retry, rejection, AI', () => {
     expect(row.analysisCandidates).toEqual([expect.objectContaining({ analysisVersionId: p1.id, origin: 'AI' })]);
     expect(withAi.aiRuns).toEqual([expect.objectContaining({ model: 'mock-primary', status: 'SUCCEEDED', instructionVersion: 'rab-import-guide@1' })]);
     expect(JSON.stringify(aiCalls)).toContain('rab-import-guide@1');
+
+    // The reviewer can change what the AI suggested: accept it, then replace it with a direct price.
+    const decide = async (d: object) => (await admin.post(`${base}/${withAi.import.id}/decisions`, { decisions: [d] })).body;
+    const linked = await decide({ rowKey: '0:14', kind: 'ANALYSIS_LINK', value: { analysisVersionId: p1.id }, reason: 'saran AI diterima' });
+    expect(linked.issues.map((i: { code: string; rowKey?: string }) => i.rowKey === '0:14' && i.code)).toContain('PRICE_MISMATCH'); // 59400 vs 59000
+    const edited = await decide({ rowKey: '0:14', kind: 'DIRECT_PRICE', value: { accept: true }, reason: 'reviewer: bukan analisa P.1' });
+    const rowIssues = edited.issues.filter((i: { rowKey?: string }) => i.rowKey === '0:14').map((i: { code: string }) => i.code);
+    expect(rowIssues).toContain('DIRECT_PRICE');
+    expect(rowIssues).not.toContain('PRICE_MISMATCH');
+    expect(edited.decisions.filter((d: { rowKey: string }) => d.rowKey === '0:14').map((d: { kind: string }) => d.kind)).toEqual(['ANALYSIS_LINK', 'DIRECT_PRICE']);
+    expect(edited.draft.rows.find((r: { key: string }) => r.key === '0:14').analysisCandidates).toEqual([expect.objectContaining({ origin: 'AI' })]); // suggestion kept as evidence
 
     aiReply = () => null;
     const noAi = await runImport(admin, { targetVersionType: 'MC0', sources: [{ documentId: mc0Doc.id }] });

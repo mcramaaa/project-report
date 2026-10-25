@@ -67,13 +67,14 @@ export class DocumentsService {
     const dir = join(storageRoot(), 'projects', projectId, 'documents');
     await mkdir(dir, { recursive: true });
     const written: string[] = [];
+    let ids: string[];
     try {
       for (const p of prepared) {
         const path = join(dir, p.storedFilename);
         await writeFile(path, p.buffer, { flag: 'wx' });
         written.push(path);
       }
-      const ids = await this.prisma.$transaction(async (tx) => {
+      ids = await this.prisma.$transaction(async (tx) => {
         const out: string[] = [];
         for (const p of prepared) {
           const doc = await tx.projectDocument.create({
@@ -100,12 +101,13 @@ export class DocumentsService {
         }
         return out;
       });
-      const docs = await this.prisma.projectDocument.findMany({ where: { id: { in: ids } }, include: { uploader: USER_REF }, orderBy: { uploadedAt: 'asc' } });
-      return docs.map(toDto);
     } catch (err) {
       await Promise.all(written.map((path) => rm(path, { force: true })));
       throw err;
     }
+    // Committed: the files now belong to metadata, so a failure from here on must not remove them.
+    const docs = await this.prisma.projectDocument.findMany({ where: { id: { in: ids } }, include: { uploader: USER_REF }, orderBy: { uploadedAt: 'asc' } });
+    return docs.map(toDto);
   }
 
   async list(projectId: string): Promise<DocumentDto[]> {

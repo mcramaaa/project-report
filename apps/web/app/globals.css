@@ -271,3 +271,17 @@ svg { flex-shrink: 0; }
   .access-tabs button:hover { color: var(--text); }
   .access-tabs button[aria-pressed='true'] { background: var(--blue-wash); color: var(--blue); }
 }
+@layer components {
+  /* Long formula chains and decision buttons wrap instead of stretching the review table. */
+  .rab-grid td.rab-wrap { white-space: normal; min-width: 16rem; max-width: 26rem; overflow-wrap: anywhere; }
+  /* The edit form spans the whole (wide) row; keep it in view of the scroll box instead of where the row was scrolled. */
+  .rab-grid-wrap { container-type: inline-size; }
+  .rab-grid td.rab-form-cell { white-space: normal; padding: 0; }
+  .rab-grid td.rab-form-cell > form { position: sticky; left: 0; width: 100cqw; max-width: 100cqw; box-sizing: border-box; }
+  /* Phones: a sticky Uraian (~260 of ~356px) covered the scrolled columns and hid the row actions; only No stays sticky. */
+  @media (max-width: 767px) {
+    .rab-grid .rab-sticky-no { min-width: 40px; }
+    .rab-grid .rab-sticky-desc { position: static; min-width: 11rem; max-width: 14rem; box-shadow: none; }
+    .rab-grid td.rab-wrap { min-width: 14rem; }
+  }
+}

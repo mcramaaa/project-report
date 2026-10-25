@@ -339,7 +339,7 @@ function RowReview({
         {formatNumber(row.volume, { trim: true })} {row.unit}
       </td>
       <td className="num">{formatRounded(row.sourceUnitPrice, 2)}</td>
-      <td>
+      <td className="rab-wrap">
         {row.price.kind === 'ANALYSIS' && analysis ? (
           <span>
             <Badge tone="green">Terbukti rumus</Badge> {analysis.code} — {analysis.name}
@@ -368,7 +368,7 @@ function RowReview({
           </p>
         ))}
       </td>
-      <td>
+      <td className="rab-wrap">
         <div className="space-y-1 text-xs">
           {link && <p>Analisa dipilih oleh {link.decidedBy.name}</p>}
           {direct && <p>Harga langsung diterima oleh {direct.decidedBy.name}</p>}

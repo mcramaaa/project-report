@@ -179,12 +179,12 @@ Expected:
 - [x] pipeline memakai instruksi impor tetap dari RAB_IMPORT_GUIDE, versi instruksi tercatat, serta hasil AI tetap divalidasi backend
 - [x] hanya analisa yang dirujuk item RAB beserta komponen/harga yang diperlukan diimpor; referensi lain di workbook tidak menjadi record domain
 - [x] analisa yang dipakai beberapa item tidak diduplikasi; referensi hilang/ambigu ditampilkan untuk review
-- [ ] volume 0 tidak otomatis menyebabkan analisa item terpilih dibuang; koefisien 0 pada analisa terpilih tetap terlacak
+- [x] volume 0 tidak otomatis menyebabkan analisa item terpilih dibuang; koefisien 0 pada analisa terpilih tetap terlacak
 - [x] harga komponen × koefisien membentuk harga analisa, lalu × volume membentuk nilai item/rekap, dengan decimal dan aturan pajak/rounding yang sudah disetujui
 - [x] selisih harga hasil analisa dengan RAB sumber ditampilkan pada review; perubahan sumber tidak menimpa RAB approved atau histori
 - [ ] satu file multi-sheet atau beberapa file Struktur/Arsitektur/MEP menghasilkan satu draft versi RAB dengan hierarki disiplin tetap ada
 - [x] paket lengkap menyimpan file RAB, rekap, analisa, upah, bahan, dan alat beserta locator sumber setiap baris
-- [ ] analisa gabungan lintas disiplin dan blok RAB/analisa pada file/sheet yang sama dapat dipetakan tanpa mewajibkan pemisahan file
+- [x] analisa gabungan lintas disiplin dan blok RAB/analisa pada file/sheet yang sama dapat dipetakan tanpa mewajibkan pemisahan file
 - [x] analisa dari sumber gabungan maupun terpisah Struktur/Arsitektur/MEP muncul di satu daftar analisa proyek; sumber/disiplin dapat ditelusuri tanpa pemisahan daftar wajib
 - [x] beberapa item RAB dapat merujuk satu analisa tervalidasi tanpa menggandakan komponennya; konflik referensi tetap direview
 - [ ] rekap/subtotal/total sumber tidak dihitung dua kali sebagai ITEM
@@ -196,7 +196,7 @@ Expected:
 - [x] extraction memiliki source locator
 - [x] invalid schema retry maksimal sesuai kebijakan
 - [x] failed extraction tidak menjadi official RAB
-- [ ] review dapat edit hasil AI
+- [x] review dapat edit hasil AI
 - [x] UNCERTAIN item match wajib human decision
 - [x] approval membuat official RAB transactionally
 - [x] audit dibuat
@@ -206,7 +206,7 @@ Expected:
 - [x] analisa bertingkat ikut diimpor; siklus ditolak; hanya rantai terpakai menjadi record domain
 - [x] harga analisa = Σ(harga × koefisien) + overhead sumber, dibulatkan sesuai sumber; direkonsiliasi dengan workbook (D-051)
 - [x] selisih harga analisa vs RAB memblokir approve sampai reviewer memilih harga analisa atau override beralasan; kedua nilai, harga efektif, alasan, actor, waktu tersimpan
-- [ ] harga langsung diperbolehkan dengan warning; baris judul tanpa kode tidak dianggap item harga langsung
+- [x] harga langsung diperbolehkan dengan warning; baris judul tanpa kode tidak dianggap item harga langsung
 - [x] AI hanya untuk baris putus/ambigu; fallback model dipakai saat model utama gagal teknis; model, attempt, versi instruksi tercatat; kedua model gagal → review manual
 - [x] impor MC-0/Addendum: work item dicocokkan lewat keputusan reviewer, kandidat tidak diterapkan otomatis (D-053)
 - [x] RAB approved tetap menunjuk versi analisa/harga lama setelah impor berikutnya

@@ -249,7 +249,7 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
               {rows.filter((row) => !hidden(row)).map((row) =>
                 editingId === row.id && editable ? (
                   <tr key={row.id}>
-                    <td colSpan={shown.length + 3}>
+                    <td colSpan={shown.length + 3} className="rab-form-cell">
                       <RowForm
                         title={`Ubah ${RAB_ROW_TYPE_LABEL[row.rowType].toLowerCase()}`}
                         row={row}
@@ -439,6 +439,7 @@ function RowForm({
 }) {
   const [rowType, setRowType] = useState<RabRowType>(row?.rowType ?? allowedTypes?.at(-1) ?? 'ITEM');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const linked = Boolean(row?.analysis);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -448,7 +449,8 @@ function RowForm({
       description: String(form.get('description') ?? ''),
     };
     if (!row) body.rowType = rowType;
-    if (rowType === 'ITEM') for (const f of ITEM_FIELDS) body[f.name] = String(form.get(f.name) ?? '');
+    // A linked item's price follows its analysis (D-051): never send it, so volume/description edits succeed.
+    if (rowType === 'ITEM') for (const f of ITEM_FIELDS) if (!(linked && f.name === 'unitPrice')) body[f.name] = String(form.get(f.name) ?? '');
     if (row && parents && row.rowType !== 'SECTION') body.parentId = String(form.get('parentId') ?? '') || null;
     setErrors((await onSubmit(body)).fieldErrors);
   }
@@ -491,7 +493,16 @@ function RowForm({
         <Field id="rab-display-number" name="displayNumber" label="No" defaultValue={row?.displayNumber ?? ''} error={errors.displayNumber} />
         <Field id="rab-description" name="description" label="Uraian" required defaultValue={row?.description ?? ''} error={errors.description} />
         {rowType === 'ITEM' &&
-          ITEM_FIELDS.map((f) => (
+          ITEM_FIELDS.map((f) =>
+            linked && f.name === 'unitPrice' ? (
+              <div key={f.name}>
+                <span className="field-label">{f.label}</span>
+                <p className="field tabular-nums" aria-readonly="true">
+                  {row?.unitPrice}
+                </p>
+                <p className="field-hint">Mengikuti analisa {row?.analysis?.code ?? row?.analysis?.name}; ubah lewat impor/analisa.</p>
+              </div>
+            ) : (
             <div key={f.name}>
               <Field
                 id={`rab-${f.name}`}
@@ -503,7 +514,8 @@ function RowForm({
               />
               {'hint' in f && <p className="field-hint">{f.hint}</p>}
             </div>
-          ))}
+            ),
+          )}
       </div>
       <div className="row-actions">
         <Button type="submit" disabled={busy}>
