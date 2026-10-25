@@ -30,6 +30,7 @@
 - `apps/api/src/auth/session-token.ts`
 - `apps/api/src/common/zod.pipe.ts`
 - `apps/api/src/config/env.ts`
+- `apps/api/src/db/drop-schema.ts`
 - `apps/api/src/db/seed-dev.ts`
 - `apps/api/src/db/seeding.spec.ts`
 - `apps/api/src/db/seeding.ts`

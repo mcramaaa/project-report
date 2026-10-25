@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:seed": "node dist/db/seed.js",
-    "db:seed:dev": "node dist/db/seed-dev.js"
+    "db:seed:dev": "node dist/db/seed-dev.js",
+    "schema:drop": "node dist/db/drop-schema.js"
   },
   "dependencies": {
     "@laporan-proyek/calc": "0.0.0",

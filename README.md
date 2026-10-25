@@ -116,6 +116,16 @@ Model lengkap: `docs/PERMISSIONS.md`.
 
 Proyek yang sudah ada sebelum M3 mendapat minggu/periode dari migration `20261025090000_project_master`; nilai kontraknya kosong sampai diisi lewat **Ubah identitas**.
 
+### Menghapus schema
+
+```bash
+npm run schema:drop            # minta konfirmasi: ketik nama database
+npm run schema:drop -- --yes   # tanpa konfirmasi (untuk skrip)
+npm run db:migrate && npm run db:seed
+```
+
+Menghapus **semua tabel dan data** (termasuk `_prisma_migrations`) di database `DATABASE_URL`; database `_test`/`_shadow` tidak disentuh kecuali `DATABASE_URL` diarahkan ke sana. Ditolak bila `NODE_ENV=production`. Buat backup dulu bila datanya masih dibutuhkan.
+
 ### Volume MySQL lama
 
 Skrip `docker/mysql/init/01-databases.sh` (membuat `<db>_test` dan `<db>_shadow`) hanya otomatis jalan saat volume baru dibuat. Untuk volume yang sudah ada, jalankan sekali:
