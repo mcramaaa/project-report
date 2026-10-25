@@ -230,7 +230,7 @@ Hierarchical rows dapat collapse/expand.
 
 ## 10. RAB Compare
 
-Milestone 4: `/projects/:id/rab/compare?base=&target=`; filter perubahan (semua/berubah/baru/dihapus).
+Milestone 4: `/projects/:id/rab/compare?base=&target=`; filter perubahan (semua/berubah/baru/dihapus). Volume dan harga versi target serta Δ volume berwarna hijau dengan ▲ bila naik dan merah dengan ▼ bila turun (teks "naik"/"turun" untuk pembaca layar); baris baru/dihapus tidak diwarnai.
 
 ```text
 [Kontrak] vs [MC0]

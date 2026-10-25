@@ -253,6 +253,9 @@ svg { flex-shrink: 0; }
   .rab-code { margin-left: 8px; color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; font-weight: 400; }
   .rab-change-removed td { color: var(--muted); text-decoration: line-through; }
   .rab-change-removed td:nth-child(3) { text-decoration: none; }
+  /* Compare: volume/price up = green, down = red (same hues as badge-green/badge-red). */
+  .rab-trend-up { color: #287554; font-weight: 600; }
+  .rab-trend-down { color: #b44059; font-weight: 600; }
   .column-picker { position: relative; }
   .column-picker fieldset { position: absolute; z-index: 5; margin-top: 6px; display: grid; gap: 6px; padding: 12px 14px; min-width: 180px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-popover); }
   .column-picker summary { list-style: none; }

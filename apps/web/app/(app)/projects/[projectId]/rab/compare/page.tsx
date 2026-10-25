@@ -27,6 +27,25 @@ function delta(base: string | null, target: string | null, scale: number): strin
   return diff.isZero() ? shown : `${diff.isNegative() ? '-' : '+'}${shown}`;
 }
 
+/** Rising/falling volume or price between two versions of the same work item; null when either side is missing or equal. */
+function trend(base: string | null | undefined, target: string | null | undefined): 'up' | 'down' | null {
+  if (base == null || target == null) return null;
+  const cmp = new Decimal(target).comparedTo(base);
+  return cmp > 0 ? 'up' : cmp < 0 ? 'down' : null;
+}
+
+/** Colour plus an arrow and screen-reader text, so the change is not shown by colour alone. */
+function Trend({ dir, children }: { dir: 'up' | 'down' | null; children: string }) {
+  if (!dir) return <>{children}</>;
+  return (
+    <span className={`rab-trend-${dir}`}>
+      <span aria-hidden="true">{dir === 'up' ? '▲ ' : '▼ '}</span>
+      <span className="sr-only">{dir === 'up' ? 'naik ' : 'turun '}</span>
+      {children}
+    </span>
+  );
+}
+
 const value = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') => (row ? (key === 'volume' ? formatNumber(row[key], { trim: true }) : formatRounded(row[key], 2)) : '–');
 
 export default async function RabComparePage({
@@ -110,10 +129,16 @@ export default async function RabComparePage({
                           <Badge tone={CHANGE[r.change].tone}>{CHANGE[r.change].label}</Badge>
                         </td>
                         <td className="num">{value(r.base, 'volume')}</td>
-                        <td className="num">{value(r.target, 'volume')}</td>
-                        <td className="num">{delta(r.base?.volume ?? null, r.target?.volume ?? null, 4)}</td>
+                        <td className="num">
+                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>{value(r.target, 'volume')}</Trend>
+                        </td>
+                        <td className="num">
+                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>{delta(r.base?.volume ?? null, r.target?.volume ?? null, 4)}</Trend>
+                        </td>
                         <td className="num">{value(r.base, 'unitPrice')}</td>
-                        <td className="num">{value(r.target, 'unitPrice')}</td>
+                        <td className="num">
+                          <Trend dir={trend(r.base?.unitPrice, r.target?.unitPrice)}>{value(r.target, 'unitPrice')}</Trend>
+                        </td>
                         <td className="num">{value(r.base, 'subtotal')}</td>
                         <td className="num">{value(r.target, 'subtotal')}</td>
                         <td className="num">{delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}</td>
