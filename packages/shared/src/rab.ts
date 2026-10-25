@@ -55,7 +55,7 @@ export type UpdateRabVersionInput = z.infer<typeof updateRabVersionSchema>;
 
 const rowFields = {
   displayNumber: optionalText(30),
-  volume: decimal('Volume', 14, 4),
+  volume: decimal('Volume', 18, 12),
   unit: optionalText(30),
   analysisCode: optionalText(50),
   unitPrice: decimal('Harga satuan', 18, 2),
@@ -82,10 +82,13 @@ export type MoveRabItemInput = z.infer<typeof moveRabItemSchema>;
 export const approveRabVersionSchema = z.object({ acknowledgeWarnings: z.boolean().default(false) });
 export type ApproveRabVersionInput = z.infer<typeof approveRabVersionSchema>;
 
+/** Exact sums (D-043) plus the workbook's REAL COST (2 decimals) and DIBULATKAN (whole rupiah). */
 export interface RabTotalsDto {
   beforeTax: string;
   tax: string;
   value: string;
+  realCost: string;
+  rounded: string;
 }
 
 export interface RabVersionSummaryDto {

@@ -145,7 +145,8 @@ GET   /projects/:projectId/rab-versions/:baseId/compare/:targetId -> { base, tar
 POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 ```
 
-- angka (volume, harga, PPN, jumlah, bobot) berupa decimal string; volume maks. 4 desimal, harga 2 desimal, PPN 0–100 maks. 2 desimal
+- angka (volume, harga, PPN, jumlah, bobot) berupa decimal string eksak (D-043); input volume maks. 12 desimal, harga 2 desimal, PPN 0–100 maks. 2 desimal
+- `totals`: `{ beforeTax, tax, value, realCost, rounded }` — `realCost` = ROUND(value, 2), `rounded` = DIBULATKAN (dipotong ke rupiah)
 - MC0/ADDENDUM menyalin versi approved terakhir; urutan salah atau masih ada DRAFT: `409`
 - versi bukan DRAFT atau proyek CLOSED: `409` untuk semua perubahan
 - baris: SECTION hanya di tingkat teratas; induk bukan ITEM dan dari versi yang sama: `400`; menghapus baris yang punya sub-baris: `409`

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { aggregateRabGroups, calculateRab, Decimal, type RabRowValues } from '@laporan-proyek/calc';
+import { aggregateRabGroups, calculateRab, Decimal, rabTotals, type RabRowValues } from '@laporan-proyek/calc';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   rabVersionLabel,
@@ -61,17 +61,17 @@ const ITEM_SELECT = {
   taxPercent: true,
   unitPriceWithTax: true,
   subtotal: true,
-  weight: true,
 } as const satisfies Prisma.RabVersionItemSelect;
 type ItemRow = Prisma.RabVersionItemGetPayload<{ select: typeof ITEM_SELECT }>;
 
 const ITEM_ONLY_FIELDS = ['volume', 'unit', 'analysisCode', 'unitPrice', 'taxPercent'] as const;
 const NOT_DRAFT = 'Versi RAB ini sudah tidak berstatus draft dan tidak dapat diubah.';
-/** Largest value DECIMAL(20,2) can store; snapshots above it would fail or truncate. */
-const MONEY_MAX = new Decimal('999999999999999999.99');
-const exceeds = (value: string | null) => value !== null && new Decimal(value).gt(MONEY_MAX);
+/** Snapshot columns (D-043): integer digits each can hold; larger values would fail or truncate on approval. */
+const LIMITS = { unitPriceWithTax: 20, subtotal: 30, total: 32 } as const;
+const exceeds = (value: string | null, integerDigits: number) => value !== null && new Decimal(value).abs().gte(new Decimal(10).pow(integerDigits));
 
-const dec = (value: Prisma.Decimal | null, scale: number) => (value === null ? null : value.toFixed(scale));
+/** Exact decimal string without trailing zeros or exponent (DB scale padding is not meaningful). */
+const num = (value: Prisma.Decimal | null) => (value === null ? null : new Decimal(value.toString()).toFixed());
 
 /** Depth-first order by sort_order, with depth (the grid and exports show the hierarchy). */
 function treeOrder(items: ItemRow[]): (ItemRow & { depth: number })[] {
@@ -94,22 +94,26 @@ function rowValues(status: string, items: ItemRow[]): { values: Map<string, RabR
     id: i.id,
     parentId: i.parentItemId,
     rowType: i.rowType,
-    volume: dec(i.volume, 4),
-    unitPrice: dec(i.unitPrice, 2),
-    taxPercent: dec(i.taxPercent, 2),
+    volume: num(i.volume),
+    unitPrice: num(i.unitPrice),
+    taxPercent: num(i.taxPercent),
   }));
   if (status !== 'APPROVED') {
     const { rows, totals } = calculateRab(inputs);
     return { values: rows, totals };
   }
   const values = new Map<string, RabRowValues>();
+  let beforeTax = new Decimal(0);
+  let value = new Decimal(0);
   for (const i of items) {
     if (i.rowType !== 'ITEM') continue;
-    const beforeTax = i.volume && i.unitPrice ? i.volume.times(i.unitPrice).toDecimalPlaces(2).toFixed(2) : null;
-    values.set(i.id, { unitPriceWithTax: dec(i.unitPriceWithTax, 2), subtotalBeforeTax: beforeTax, subtotal: dec(i.subtotal, 2), weight: dec(i.weight, 6) });
+    const itemBeforeTax = i.volume && i.unitPrice ? new Decimal(i.volume.toString()).times(i.unitPrice.toString()) : null;
+    if (itemBeforeTax) beforeTax = beforeTax.plus(itemBeforeTax);
+    if (i.subtotal) value = value.plus(i.subtotal.toString());
+    values.set(i.id, { unitPriceWithTax: num(i.unitPriceWithTax), subtotalBeforeTax: itemBeforeTax?.toFixed() ?? null, subtotal: num(i.subtotal), weight: null });
   }
-  aggregateRabGroups(inputs, values);
-  return { values, totals: { beforeTax: '', tax: '', value: '' } };
+  aggregateRabGroups(inputs, values, value.toFixed());
+  return { values, totals: rabTotals(beforeTax, value) };
 }
 
 function toRows(items: ItemRow[], values: Map<string, RabRowValues>): RabRowDto[] {
@@ -124,11 +128,11 @@ function toRows(items: ItemRow[], values: Map<string, RabRowValues>): RabRowDto[
       workItemCode: i.workItem?.internalCode ?? null,
       displayNumber: i.displayNumber,
       description: i.description,
-      volume: dec(i.volume, 4),
+      volume: num(i.volume),
       unit: i.unit,
       analysisCode: i.analysisCode,
-      unitPrice: dec(i.unitPrice, 2),
-      taxPercent: dec(i.taxPercent, 2),
+      unitPrice: num(i.unitPrice),
+      taxPercent: num(i.taxPercent),
       unitPriceWithTax: v?.unitPriceWithTax ?? null,
       subtotalBeforeTax: v?.subtotalBeforeTax ?? null,
       subtotal: v?.subtotal ?? null,
@@ -147,10 +151,7 @@ function toSummary(v: VersionRow, totals: RabTotalsDto, itemCount: number): RabV
     documentNumber: v.documentNumber,
     documentDate: v.documentDate ? fromDbDate(v.documentDate) : null,
     previousVersionId: v.previousVersionId,
-    totals:
-      v.status === 'APPROVED'
-        ? { beforeTax: v.totalBeforeTax!.toFixed(2), tax: v.totalTax!.toFixed(2), value: v.totalValue!.toFixed(2) }
-        : totals,
+    totals: v.status === 'APPROVED' ? rabTotals(v.totalBeforeTax!.toString(), v.totalValue!.toString()) : totals,
     itemCount,
     createdBy: v.createdByUser,
     createdAt: v.createdAt.toISOString(),
@@ -175,14 +176,15 @@ function validate(rows: RabRowDto[], totals: RabTotalsDto, contractValue: string
   // Valid inputs can still overflow DECIMAL(20,2) after tax or multiplication; block before the snapshot is stored.
   for (const r of items) {
     const label = `${r.displayNumber ?? ''} ${r.description}`.trim();
-    if (exceeds(r.unitPriceWithTax)) errors.push({ itemId: r.id, message: `${label}: harga + PPN melebihi batas nilai yang dapat disimpan (maks. 999.999.999.999.999.999,99).` });
-    else if (exceeds(r.subtotal)) errors.push({ itemId: r.id, message: `${label}: jumlah (volume × harga + PPN) melebihi batas nilai yang dapat disimpan.` });
+    if (exceeds(r.unitPriceWithTax, LIMITS.unitPriceWithTax)) errors.push({ itemId: r.id, message: `${label}: harga + PPN melebihi batas nilai yang dapat disimpan (maks. 20 digit rupiah).` });
+    else if (exceeds(r.subtotal, LIMITS.subtotal)) errors.push({ itemId: r.id, message: `${label}: jumlah (volume × harga + PPN) melebihi batas nilai yang dapat disimpan.` });
   }
-  if (exceeds(totals.value) || exceeds(totals.beforeTax)) errors.push({ message: 'Total RAB melebihi batas nilai yang dapat disimpan (maks. 999.999.999.999.999.999,99).' });
+  if (exceeds(totals.value, LIMITS.total) || exceeds(totals.beforeTax, LIMITS.total)) errors.push({ message: 'Total RAB melebihi batas nilai yang dapat disimpan (maks. 32 digit rupiah).' });
   const hasChild = new Set(rows.map((r) => r.parentId));
   for (const r of rows) if (r.rowType !== 'ITEM' && !hasChild.has(r.id)) warnings.push({ itemId: r.id, message: `${r.displayNumber ?? ''} ${r.description}: tidak memiliki sub-baris.`.trim() });
-  if (versionType === 'CONTRACT' && contractValue !== null && !new Decimal(contractValue).equals(totals.value)) {
-    warnings.push({ message: `Total RAB Kontrak (${totals.value}) berbeda dengan nilai kontrak proyek (${contractValue}).` });
+  // The contract may state the REAL COST or the DIBULATKAN figure (D-043).
+  if (versionType === 'CONTRACT' && contractValue !== null && !new Decimal(contractValue).equals(totals.realCost) && !new Decimal(contractValue).equals(totals.rounded)) {
+    warnings.push({ message: `Total RAB Kontrak (${totals.realCost}; dibulatkan ${totals.rounded}) berbeda dengan nilai kontrak proyek (${contractValue}).` });
   }
   return { errors, warnings };
 }
@@ -367,7 +369,7 @@ export class RabService {
         throw new ConflictException({ message: 'Konfirmasi peringatan sebelum approve.', errors: [], warnings: issues.warnings });
       }
       for (const row of rows.filter((r) => r.rowType === 'ITEM')) {
-        await tx.rabVersionItem.update({ where: { id: row.id }, data: { unitPriceWithTax: row.unitPriceWithTax, subtotal: row.subtotal, weight: row.weight } });
+        await tx.rabVersionItem.update({ where: { id: row.id }, data: { unitPriceWithTax: row.unitPriceWithTax, subtotal: row.subtotal } });
       }
       const approvedAt = new Date();
       await tx.rabVersion.update({

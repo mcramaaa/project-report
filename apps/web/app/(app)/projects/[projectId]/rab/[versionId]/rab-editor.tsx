@@ -4,12 +4,12 @@ import { RAB_ROW_TYPES, type RabIssue, type RabRowDto, type RabRowType, type Rab
 import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, Field, Select } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
-import { formatDate, formatNumber } from '@/lib/project-fields';
+import { formatDate, formatNumber, formatRounded } from '@/lib/project-fields';
 import { RAB_COLUMNS, RAB_ROW_TYPE_LABEL, RAB_STATUS_BADGE, type RabColumn } from '@/lib/rab-ui';
 
 const COLUMNS_KEY = 'rab-columns';
 const ITEM_FIELDS = [
-  { name: 'volume', label: 'Volume', hint: 'maks. 4 desimal', inputMode: 'decimal' },
+  { name: 'volume', label: 'Volume', hint: 'maks. 12 desimal', inputMode: 'decimal' },
   { name: 'unit', label: 'Satuan' },
   { name: 'analysisCode', label: 'No analisa' },
   { name: 'unitPrice', label: 'Harga satuan (Rp)', hint: 'tanpa pemisah ribuan', inputMode: 'decimal' },
@@ -40,9 +40,10 @@ function cell(row: RabRowDto, column: RabColumn): string {
     case 'taxPercent':
       return row.taxPercent === null ? '' : formatNumber(row.taxPercent, { trim: true });
     case 'weight':
-      return formatNumber(row.weight);
+      return formatRounded(row.weight, 4);
     default:
-      return row[column] === null ? '' : formatNumber(row[column]);
+      // Amounts are exact (D-043); show them like the workbook, to 2 decimals.
+      return row[column] === null ? '' : formatRounded(row[column], 2);
   }
 }
 
@@ -110,15 +111,15 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
         <dl className="calendar-preview">
           <div>
             <dt>Total sebelum PPN</dt>
-            <dd className="tabular-nums">Rp {formatNumber(totals.beforeTax)}</dd>
+            <dd className="tabular-nums">Rp {formatRounded(totals.beforeTax, 2)}</dd>
           </div>
           <div>
-            <dt>PPN</dt>
-            <dd className="tabular-nums">Rp {formatNumber(totals.tax)}</dd>
+            <dt>Total (real cost)</dt>
+            <dd className="tabular-nums">Rp {formatNumber(totals.realCost)}</dd>
           </div>
           <div>
-            <dt>Total</dt>
-            <dd className="tabular-nums">Rp {formatNumber(totals.value)}</dd>
+            <dt>Dibulatkan</dt>
+            <dd className="tabular-nums">Rp {formatNumber(totals.rounded)}</dd>
           </div>
         </dl>
       </section>
@@ -258,7 +259,7 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
                 </th>
                 {shown.map((c) => (
                   <td key={c.key} className="num">
-                    {c.key === 'subtotal' ? formatNumber(totals.value) : c.key === 'weight' && totals.value !== '0.00' ? '100,000000' : ''}
+                    {c.key === 'subtotal' ? formatNumber(totals.realCost) : c.key === 'weight' && totals.realCost !== '0.00' ? '100,0000' : ''}
                   </td>
                 ))}
                 {editable && <td />}

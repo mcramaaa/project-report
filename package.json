@@ -25,6 +25,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed -w @laporan-proyek/api",
     "db:seed:dev": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed:dev -w @laporan-proyek/api",
+    "db:seed:sample": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed:sample -w @laporan-proyek/api --",
     "schema:drop": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run schema:drop -w @laporan-proyek/api --"
   },
   "devDependencies": {
@@ -36,6 +37,7 @@
     "vitest": "^5.0.5"
   },
   "overrides": {
-    "multer": "2.5.0"
+    "multer": "2.5.0",
+    "uuid": "11.1.1"
   }
 }

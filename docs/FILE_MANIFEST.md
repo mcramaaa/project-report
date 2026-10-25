@@ -31,7 +31,10 @@
 - `apps/api/src/common/zod.pipe.ts`
 - `apps/api/src/config/env.ts`
 - `apps/api/src/db/drop-schema.ts`
+- `apps/api/src/db/sample-rab.ts`
+- `apps/api/src/db/sample-rab.spec.ts`
 - `apps/api/src/db/seed-dev.ts`
+- `apps/api/src/db/seed-sample.ts`
 - `apps/api/src/db/seeding.spec.ts`
 - `apps/api/src/db/seeding.ts`
 - `apps/api/src/db/seed.ts`
@@ -159,6 +162,7 @@
 - `prisma/migrations/20261025070000_dynamic_roles/migration.sql`
 - `prisma/migrations/20261025090000_project_master/migration.sql`
 - `prisma/migrations/20261025110000_rab_versions/migration.sql`
+- `prisma/migrations/20261025130000_rab_exact_amounts/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

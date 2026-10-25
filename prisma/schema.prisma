@@ -265,10 +265,10 @@ model RabVersion {
   /// Approved version this one was copied from.
   previousVersionId String?          @map("previous_version_id") @db.Char(36)
   status            RabVersionStatus @default(DRAFT)
-  /// Snapshot at approval (D-042); drafts are computed on read.
-  totalBeforeTax    Decimal?         @map("total_before_tax") @db.Decimal(20, 2)
-  totalTax          Decimal?         @map("total_tax") @db.Decimal(20, 2)
-  totalValue        Decimal?         @map("total_value") @db.Decimal(20, 2)
+  /// Exact snapshot at approval (D-043); drafts are computed on read.
+  totalBeforeTax    Decimal?         @map("total_before_tax") @db.Decimal(50, 18)
+  totalTax          Decimal?         @map("total_tax") @db.Decimal(50, 18)
+  totalValue        Decimal?         @map("total_value") @db.Decimal(50, 18)
   createdBy         String           @map("created_by") @db.Char(36)
   approvedBy        String?          @map("approved_by") @db.Char(36)
   approvedAt        DateTime?        @map("approved_at") @db.DateTime(3)
@@ -315,16 +315,16 @@ model RabVersionItem {
   rowType               RabRowType @map("row_type")
   displayNumber         String?    @map("display_number") @db.VarChar(30)
   description           String     @db.VarChar(1000)
-  volume                Decimal?   @db.Decimal(18, 4)
+  /// 12 decimals: office workbooks use long volumes to balance MC-0 totals (D-043).
+  volume                Decimal?   @db.Decimal(30, 12)
   unit                  String?    @db.VarChar(30)
   /// Free-text "no analisa" until AHSP (M7).
   analysisCode          String?    @map("analysis_code") @db.VarChar(50)
   unitPrice             Decimal?   @map("unit_price") @db.Decimal(20, 2)
   taxPercent            Decimal?   @map("tax_percent") @db.Decimal(5, 2)
-  /// Snapshot at approval (D-042).
-  unitPriceWithTax      Decimal?   @map("unit_price_with_tax") @db.Decimal(20, 2)
-  subtotal              Decimal?   @db.Decimal(20, 2)
-  weight                Decimal?   @db.Decimal(12, 6)
+  /// Exact snapshot at approval (D-043); weights are derived from subtotals.
+  unitPriceWithTax      Decimal?   @map("unit_price_with_tax") @db.Decimal(26, 6)
+  subtotal              Decimal?   @db.Decimal(48, 18)
   previousVersionItemId String?    @map("previous_version_item_id") @db.Char(36)
   createdAt             DateTime   @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt             DateTime   @updatedAt @map("updated_at") @db.DateTime(3)

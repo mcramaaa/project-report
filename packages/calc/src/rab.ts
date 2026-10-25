@@ -1,11 +1,12 @@
 import { Decimal } from 'decimal.js';
 
-// RAB math (D-042, provisional until OD-009). Inputs/outputs are decimal strings.
-// Default decimal.js precision (20 significant digits) is too small for DECIMAL(18,4) × DECIMAL(20,2).
-const D = Decimal.clone({ precision: 64, rounding: Decimal.ROUND_HALF_UP });
-const MONEY = 2;
-const WEIGHT = 6;
+// RAB math as in the office workbook (D-043). Inputs/outputs are decimal strings.
+// Item values are exact; only the total is rounded (REAL COST) and truncated (DIBULATKAN).
+// Default decimal.js precision (20 significant digits) is too small for these products.
+const D = Decimal.clone({ precision: 80, rounding: Decimal.ROUND_HALF_UP });
 const HUNDRED = new D(100);
+/** Weight digits sent to clients; weights are not stored (derived from subtotals). */
+const WEIGHT_SCALE = 10;
 
 export type RabRowType = 'SECTION' | 'SUBSECTION' | 'PARENT_ITEM' | 'ITEM';
 
@@ -31,76 +32,82 @@ export interface RabTotals {
   beforeTax: string;
   tax: string;
   value: string;
+  /** ROUND(value, 2): "REAL COST". */
+  realCost: string;
+  /** REAL COST truncated to whole rupiah: "DIBULATKAN". */
+  rounded: string;
 }
 
+/** Exact: price × (1 + tax / 100), as `G + G*H/100` in the workbook. */
 export function unitPriceWithTax(unitPrice: string, taxPercent: string): string {
-  return new D(unitPrice).times(HUNDRED.plus(taxPercent)).div(HUNDRED).toDecimalPlaces(MONEY).toFixed(MONEY);
+  return new D(unitPrice).times(HUNDRED.plus(taxPercent)).div(HUNDRED).toFixed();
+}
+
+export function rabTotals(beforeTax: Decimal.Value, value: Decimal.Value): RabTotals {
+  const v = new D(value);
+  const realCost = v.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+  return {
+    beforeTax: new D(beforeTax).toFixed(),
+    tax: v.minus(beforeTax).toFixed(),
+    value: v.toFixed(),
+    realCost: realCost.toFixed(2),
+    rounded: realCost.toDecimalPlaces(0, Decimal.ROUND_DOWN).toFixed(0),
+  };
 }
 
 export function calculateRab(rows: RabCalcInput[]): { rows: Map<string, RabRowValues>; totals: RabTotals } {
   const values = new Map<string, RabRowValues>();
-  const items: { id: string; beforeTax: Decimal; subtotal: Decimal }[] = [];
-
+  let beforeTax = new D(0);
+  let value = new D(0);
   for (const row of rows) {
-    if (row.rowType !== 'ITEM' || row.unitPrice === null || row.taxPercent === null || row.volume === null) {
-      const withTax = row.rowType === 'ITEM' && row.unitPrice !== null && row.taxPercent !== null ? unitPriceWithTax(row.unitPrice, row.taxPercent) : null;
+    const complete = row.rowType === 'ITEM' && row.unitPrice !== null && row.taxPercent !== null;
+    const withTax = complete ? unitPriceWithTax(row.unitPrice!, row.taxPercent!) : null;
+    if (!complete || row.volume === null) {
       values.set(row.id, { unitPriceWithTax: withTax, subtotalBeforeTax: null, subtotal: null, weight: null });
       continue;
     }
-    const withTax = unitPriceWithTax(row.unitPrice, row.taxPercent);
-    const beforeTax = new D(row.volume).times(row.unitPrice).toDecimalPlaces(MONEY);
-    const subtotal = new D(row.volume).times(withTax).toDecimalPlaces(MONEY);
-    items.push({ id: row.id, beforeTax, subtotal });
-    values.set(row.id, { unitPriceWithTax: withTax, subtotalBeforeTax: beforeTax.toFixed(MONEY), subtotal: subtotal.toFixed(MONEY), weight: null });
+    const itemBeforeTax = new D(row.volume).times(row.unitPrice!);
+    const subtotal = new D(row.volume).times(withTax!);
+    beforeTax = beforeTax.plus(itemBeforeTax);
+    value = value.plus(subtotal);
+    values.set(row.id, { unitPriceWithTax: withTax, subtotalBeforeTax: itemBeforeTax.toFixed(), subtotal: subtotal.toFixed(), weight: null });
   }
-
-  const beforeTax = items.reduce((sum, i) => sum.plus(i.beforeTax), new D(0));
-  const value = items.reduce((sum, i) => sum.plus(i.subtotal), new D(0));
-
-  // Weights: 6 decimals; the rounding remainder goes to the largest amount (first on ties) so they total exactly 100.
-  const weights = new Map<string, Decimal>();
-  if (value.gt(0)) {
-    for (const i of items) weights.set(i.id, i.subtotal.div(value).times(HUNDRED).toDecimalPlaces(WEIGHT));
-    const largest = items.reduce((best, i) => (i.subtotal.gt(best.subtotal) ? i : best));
-    const remainder = HUNDRED.minus([...weights.values()].reduce((sum, w) => sum.plus(w), new D(0)));
-    weights.set(largest.id, weights.get(largest.id)!.plus(remainder));
-  } else {
-    for (const i of items) weights.set(i.id, new D(0));
-  }
-  for (const [id, weight] of weights) values.get(id)!.weight = weight.toFixed(WEIGHT);
-
-  aggregateRabGroups(rows, values);
-
-  return { rows: values, totals: { beforeTax: beforeTax.toFixed(MONEY), tax: value.minus(beforeTax).toFixed(MONEY), value: value.toFixed(MONEY) } };
+  aggregateRabGroups(rows, values, value.toFixed());
+  return { rows: values, totals: rabTotals(beforeTax, value) };
 }
 
 /**
- * Fills group rows (SECTION/SUBSECTION/PARENT_ITEM) with the sums of their descendants' item values.
- * Used for drafts (after calculateRab) and for approved versions (stored snapshot values).
+ * Fills group rows (SECTION/SUBSECTION/PARENT_ITEM) with the sums of their descendants and sets every
+ * row's weight = subtotal / total × 100 (D-043). Used for drafts and for approved snapshots.
  */
-export function aggregateRabGroups(rows: Pick<RabCalcInput, 'id' | 'parentId' | 'rowType'>[], values: Map<string, RabRowValues>): void {
+export function aggregateRabGroups(rows: Pick<RabCalcInput, 'id' | 'parentId' | 'rowType'>[], values: Map<string, RabRowValues>, totalValue: string): void {
+  assertAcyclic(rows);
   const children = new Map<string | null, string[]>();
   for (const row of rows) children.set(row.parentId, [...(children.get(row.parentId) ?? []), row.id]);
   const types = new Map(rows.map((r) => [r.id, r.rowType]));
-  assertAcyclic(rows);
-  const sum = (id: string): { beforeTax: Decimal; subtotal: Decimal; weight: Decimal } => {
+  const sum = (id: string): { beforeTax: Decimal; subtotal: Decimal } => {
     if (types.get(id) === 'ITEM') {
       const v = values.get(id);
-      return { beforeTax: new D(v?.subtotalBeforeTax ?? 0), subtotal: new D(v?.subtotal ?? 0), weight: new D(v?.weight ?? 0) };
+      return { beforeTax: new D(v?.subtotalBeforeTax ?? 0), subtotal: new D(v?.subtotal ?? 0) };
     }
-    const total = { beforeTax: new D(0), subtotal: new D(0), weight: new D(0) };
+    const total = { beforeTax: new D(0), subtotal: new D(0) };
     for (const child of children.get(id) ?? []) {
       const c = sum(child);
       total.beforeTax = total.beforeTax.plus(c.beforeTax);
       total.subtotal = total.subtotal.plus(c.subtotal);
-      total.weight = total.weight.plus(c.weight);
     }
     return total;
   };
+  const total = new D(totalValue);
+  const weight = (subtotal: Decimal) => (total.gt(0) ? subtotal.div(total).times(HUNDRED).toDecimalPlaces(WEIGHT_SCALE).toFixed(WEIGHT_SCALE) : new D(0).toFixed(WEIGHT_SCALE));
   for (const row of rows) {
-    if (row.rowType === 'ITEM') continue;
+    if (row.rowType === 'ITEM') {
+      const v = values.get(row.id);
+      if (v?.subtotal != null) v.weight = weight(new D(v.subtotal));
+      continue;
+    }
     const a = sum(row.id);
-    values.set(row.id, { unitPriceWithTax: null, subtotalBeforeTax: a.beforeTax.toFixed(MONEY), subtotal: a.subtotal.toFixed(MONEY), weight: a.weight.toFixed(WEIGHT) });
+    values.set(row.id, { unitPriceWithTax: null, subtotalBeforeTax: a.beforeTax.toFixed(), subtotal: a.subtotal.toFixed(), weight: weight(a.subtotal) });
   }
 }
 

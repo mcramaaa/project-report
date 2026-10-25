@@ -20,7 +20,6 @@ export default async function RabVersionsPage({ params }: { params: Promise<{ pr
     <>
       <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
       <ProjectTabs projectId={project.id} active="rab" permissions={project.permissions} />
-      <Alert kind="info">Rumus RAB masih sementara (D-042) sampai dicocokkan dengan workbook kantor (OD-009). Jangan approve RAB resmi proyek nyata sebelum itu.</Alert>
       {versions.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat RAB.</Alert>
       ) : !versions.data ? (
@@ -38,7 +37,7 @@ export default async function RabVersionsPage({ params }: { params: Promise<{ pr
                     <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Versi</th>
                     <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Dokumen</th>
                     <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Status</th>
-                    <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Total (Rp)</th>
+                    <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Total (real cost)</th>
                     <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Aksi</th>
                   </tr>
                 </thead>
@@ -55,9 +54,11 @@ export default async function RabVersionsPage({ params }: { params: Promise<{ pr
                         {v.approvedBy && <span className="block text-xs text-slate-500">oleh {v.approvedBy.name}</span>}
                         {v.discardReason && <span className="block text-xs text-slate-500">{v.discardReason}</span>}
                       </td>
-                      <td role="cell" data-label="Total (Rp)" className="px-3 py-2 tabular-nums">
-                        {formatRupiah(v.totals.value)}
-                        <span className="block text-xs text-slate-500">{v.itemCount} item</span>
+                      <td role="cell" data-label="Total (real cost)" className="px-3 py-2 tabular-nums">
+                        {formatRupiah(v.totals.realCost)}
+                        <span className="block text-xs text-slate-500">
+                          dibulatkan {formatRupiah(v.totals.rounded)} · {v.itemCount} item
+                        </span>
                       </td>
                       <td role="cell" data-label="Aksi">
                         <div className="row-actions">

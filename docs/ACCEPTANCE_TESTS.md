@@ -67,9 +67,9 @@ Gunakan ini sebagai checklist saat vibe coding.
 - [x] urutan versi linear dan hanya satu DRAFT per proyek
 - [x] approve memvalidasi error dan meminta konfirmasi warning; total disimpan sebagai snapshot
 - [x] discard wajib alasan; versi tidak dihapus
-- [x] rumus harga+PPN, jumlah, total, dan bobot (tepat 100) dengan Decimal (D-042, sementara)
+- [x] rumus harga+PPN, jumlah, total, REAL COST, DIBULATKAN, dan bobot sama dengan workbook kantor (D-043)
 - [x] `rab.read`/`rab.edit`/`rab.approve` ditegakkan backend; proyek CLOSED menolak perubahan RAB
-- [ ] rumus diverifikasi dengan workbook kantor (OD-009)
+- [x] rumus diverifikasi dengan workbook kantor (OD-009 → D-043): seed contoh SDN 2 Serangan menghasilkan total Kontrak dan MC-0 yang sama dengan workbook
 
 ## C. Work Item Identity
 

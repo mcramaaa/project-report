@@ -67,6 +67,7 @@ docker compose up -d --wait   # MySQL 8.4 + database _test dan _shadow
 npm run db:migrate            # terapkan migration
 npm run db:seed               # buat system admin pertama dari SEED_ADMIN_* (.env)
 npm run db:seed:dev           # opsional, development saja: proyek contoh DEV-001
+npm run db:seed:sample        # opsional, development saja: proyek SDN 2 Serangan + RAB Kontrak & MC-0 dari workbook di storage/temp
 npm run dev                   # api :3001 dan web :3000 bersamaan
 ```
 
@@ -116,7 +117,17 @@ Model lengkap: `docs/PERMISSIONS.md`.
 
 ### Mencoba RAB Manual (Milestone 4)
 
-> Rumus RAB masih **sementara** (D-042). Jangan approve RAB resmi proyek nyata sebelum OD-009 (verifikasi dengan workbook kantor) selesai.
+Rumus mengikuti workbook kantor (D-043): harga + PPN dan jumlah per item tanpa pembulatan, total **REAL COST** (2 desimal) dan **Dibulatkan** (dipotong ke rupiah).
+
+**Seed contoh dari workbook kantor** (development saja, D-044):
+
+```bash
+npm run db:seed                # super admin dulu
+npm run db:seed:sample         # baca storage/temp/04. LAPORAN MINGGUAN SDN 2 SERANGAN (MC 0).xlsx
+npm run db:seed:sample -- --file "/path/lain.xlsx"   # workbook lain dengan format yang sama
+```
+
+Membuat proyek `SDN2-SERANGAN-2026` (identitas dari sheet Data, 210 hari, 30 minggu) dengan RAB Kontrak dan MC-0 approved dari sheet `RAB + PPN`; super admin seed menjadi MANAGER dan penyetuju. Seed membandingkan total aplikasi dengan JUMLAH TOTAL/DIBULATKAN workbook dan **membatalkan tanpa menulis apa pun bila berbeda**. Dijalankan ulang tidak mengubah apa-apa. File workbook tetap di `storage/temp/` (tidak masuk Git).
 
 1. Buka proyek → tab **RAB** → **Buat versi** (Kontrak).
 2. **Tambah baris teratas** (Bagian), lalu **+ Sub** untuk sub-bagian/induk/item. Item berisi volume, satuan, no analisa, harga satuan, PPN %.
@@ -167,4 +178,4 @@ Jangan mengedit migration yang sudah diterapkan.
 
 ## Status
 
-Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit), Milestone 3 (Project Master: proyek, status, jadwal, minggu & periode 4 minggu, tim), dan Milestone 4 (RAB manual: versi Kontrak/MC-0/Addendum, hierarki, grid, perbandingan, approval; rumus sementara D-042) selesai. Belum ada import/AI, baseline aktif, progres, atau laporan. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
+Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit), Milestone 3 (Project Master: proyek, status, jadwal, minggu & periode 4 minggu, tim), dan Milestone 4 (RAB manual: versi Kontrak/MC-0/Addendum, hierarki, grid, perbandingan, approval; rumus sesuai workbook kantor D-043, seed contoh SDN 2 Serangan) selesai. Belum ada import/AI, baseline aktif, progres, atau laporan. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".

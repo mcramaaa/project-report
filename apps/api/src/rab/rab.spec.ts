@@ -96,9 +96,9 @@ describe('contract draft and approval', () => {
       ['1', 1],
     ]);
     const galian = detail.rows.find((r: { description: string }) => r.description === 'Galian tanah');
-    // 125000.50 × 1.11 = 138750.555 -> 138750.56; × 39.39 = 5465384.5584 -> 5465384.56
-    expect(galian).toMatchObject({ unitPriceWithTax: '138750.56', subtotal: '5465384.56', volume: '39.3900', workItemCode: 'WI-0002' });
-    expect(detail.totals).toEqual({ beforeTax: '134923769.70', tax: '14841614.86', value: '149765384.56' });
+    // D-043: no per-row rounding. 125000.50 × 1.11 = 138750.555; × 39.39 = 5465384.36145
+    expect(galian).toMatchObject({ unitPriceWithTax: '138750.555', subtotal: '5465384.36145', volume: '39.39', workItemCode: 'WI-0002' });
+    expect(detail.totals).toEqual({ beforeTax: '134923769.695', tax: '14841614.66645', value: '149765384.36145', realCost: '149765384.36', rounded: '149765384' });
     // Project contract value (test fixture has none) -> only the volume/structure checks apply.
     expect(detail.issues).toEqual({ errors: [], warnings: [] });
 
@@ -117,15 +117,17 @@ describe('contract draft and approval', () => {
     expect(warned.body.warnings[0].message).toContain('berbeda dengan nilai kontrak');
 
     const approved = await ok(approve(v.id, true), 200);
-    expect(approved.version).toMatchObject({ status: 'APPROVED', label: 'Kontrak', totals: { value: '149765384.56' }, approvedBy: { name: 'Super' } });
+    expect(approved.version).toMatchObject({ status: 'APPROVED', label: 'Kontrak', totals: { value: '149765384.36145', realCost: '149765384.36' }, approvedBy: { name: 'Super' } });
     const stored = await t.prisma.rabVersionItem.findMany({ where: { rabVersionId: v.id, rowType: 'ITEM' } });
-    expect(stored.every((i) => i.subtotal !== null && i.weight !== null && i.unitPriceWithTax !== null)).toBe(true);
-    expect(stored.reduce((sum, i) => sum + Number(i.weight), 0)).toBeCloseTo(100, 6);
+    expect(stored.every((i) => i.subtotal !== null && i.unitPriceWithTax !== null)).toBe(true);
+    expect(stored.find((i) => i.description === 'Galian tanah')!.subtotal!.toString()).toBe('5465384.36145');
+    const weights = approved.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM').map((r: { weight: string }) => Number(r.weight));
+    expect(weights.reduce((a: number, b: number) => a + b, 0)).toBeCloseTo(100, 8);
     const version = await t.prisma.rabVersion.findUniqueOrThrow({ where: { id: v.id } });
-    expect(version.totalValue?.toFixed(2)).toBe('149765384.56');
+    expect(version.totalValue?.toString()).toBe('149765384.36145');
 
     const audit = await t.prisma.auditLog.findFirstOrThrow({ where: { action: 'APPROVE_RAB_VERSION' } });
-    expect(audit.newValue).toMatchObject({ status: 'APPROVED', value: '149765384.56', itemCount: 3, acknowledgedWarnings: [expect.stringContaining('nilai kontrak')] });
+    expect(audit.newValue).toMatchObject({ status: 'APPROVED', value: '149765384.36145', realCost: '149765384.36', rounded: '149765384', itemCount: 3, acknowledgedWarnings: [expect.stringContaining('nilai kontrak')] });
   });
 
   it('protects an approved version from every write', async () => {
@@ -150,13 +152,12 @@ describe('contract draft and approval', () => {
 
   it('blocks approval when amounts would overflow DECIMAL(20,2) (regression)', async () => {
     const v = await ok(admin.post(base, { versionType: 'CONTRACT' }));
-    // Each input is valid on its own; price + tax and volume × price exceed 18 integer digits.
-    await ok(admin.post(`${base}/${v.version.id}/items`, { rowType: 'ITEM', description: 'Mahal', volume: '1', unit: 'ls', unitPrice: '999999999999999999.99', taxPercent: '11' }));
-    await ok(admin.post(`${base}/${v.version.id}/items`, { rowType: 'ITEM', description: 'Banyak', volume: '99999999999999.9999', unit: 'm3', unitPrice: '99999', taxPercent: '0' }));
+    // Each input is valid on its own; the largest price + tax still fits, but volume × price exceeds the snapshot columns.
+    await ok(admin.post(`${base}/${v.version.id}/items`, { rowType: 'ITEM', description: 'Mahal', volume: '1', unit: 'ls', unitPrice: '999999999999999999.99', taxPercent: '100' }));
+    await ok(admin.post(`${base}/${v.version.id}/items`, { rowType: 'ITEM', description: 'Banyak', volume: '999999999999999999', unit: 'm3', unitPrice: '99999999999999', taxPercent: '0' }));
     const res = await approve(v.version.id);
     expect(res.status).toBe(409);
     expect(res.body.errors.map((e: { message: string }) => e.message)).toEqual([
-      expect.stringContaining('Mahal: harga + PPN melebihi batas'),
       expect.stringContaining('Banyak: jumlah (volume × harga + PPN) melebihi batas'),
       expect.stringContaining('Total RAB melebihi batas'),
     ]);
@@ -167,7 +168,7 @@ describe('contract draft and approval', () => {
     const v = await ok(admin.post(base, { versionType: 'CONTRACT' }));
     const items = `${base}/${v.version.id}/items`;
     for (const bad of [
-      { rowType: 'ITEM', description: 'X', volume: '1.12345' },
+      { rowType: 'ITEM', description: 'X', volume: '1.1234567890123' },
       { rowType: 'ITEM', description: 'X', unitPrice: '1.000,00' },
       { rowType: 'ITEM', description: 'X', taxPercent: '100.5' },
       { rowType: 'ITEM', description: 'X', volume: '-1' },

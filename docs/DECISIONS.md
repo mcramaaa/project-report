@@ -338,7 +338,7 @@ Disetujui 2026-10-25.
 
 Penyetuju boleh sama dengan pembuat draft (tidak ada maker-checker); pembuat dan penyetuju tercatat. Migration menambahkan default ke role sistem yang sudah ada.
 
-## D-042 Rumus RAB (sementara)
+## D-042 Rumus RAB (sementara) — digantikan D-043
 
 Disetujui 2026-10-25 sebagai **rumus sementara**, diturunkan dari spesifikasi (UI_UX §9 kolom harga/PPN/harga+PPN/subtotal/bobot; `tax_percent` per item). Wajib diverifikasi dengan workbook kantor (OD-009) sebelum dipakai untuk data resmi.
 
@@ -349,6 +349,28 @@ Disetujui 2026-10-25 sebagai **rumus sementara**, diturunkan dari spesifikasi (U
 - Bobot = jumlah / total nilai × 100, 6 desimal HALF_UP; selisih pembulatan ditambahkan ke ITEM dengan jumlah terbesar (urutan pertama bila sama) agar total tepat 100. Total nilai 0 → bobot 0.
 - Semua dihitung dengan Decimal di `packages/calc`. Draft dihitung saat dibaca; saat approve, nilai per baris dan total disimpan sebagai snapshot.
 - Format RAB antarproyek berbeda tetapi isinya sama (keterangan user): variasi format ditangani di tampilan, export (M14), dan import (M5), bukan dengan rumus per proyek.
+
+## D-043 Rumus RAB Mengikuti Workbook Kantor (menutup OD-009)
+
+Disetujui 2026-10-25 setelah membaca contoh workbook proyek SDN 2 Serangan (`RAB + PPN`, `REKAP RAB`, laporan mingguan MC-0). Menggantikan D-042.
+
+- Harga + PPN = harga satuan × (1 + PPN% / 100), **tanpa pembulatan**. Workbook: `G + G*H/100`, PPN 11% per item.
+- Jumlah = volume × (harga + PPN), **tanpa pembulatan** (`D*I`).
+- Jumlah sebelum PPN per item = volume × harga satuan; total sebelum PPN = Σ; total nilai = Σ jumlah; total PPN = total nilai − total sebelum PPN. Semua eksak.
+- **REAL COST** = ROUND(total nilai, 2) HALF_UP (`TRUNC(ROUND(SUM(..),2),2)`).
+- **DIBULATKAN** = REAL COST dipotong ke rupiah (`TRUNC(..,0)`).
+- Bobot = jumlah / total nilai × 100, tanpa pembulatan dan tanpa penyesuaian ke item terbesar; API mengirim 10 desimal, UI menampilkan 4 desimal.
+- Presisi penyimpanan agar hasil sama dengan workbook: volume DECIMAL(30,12) (workbook MC-0 memakai volume 13 desimal untuk menyeimbangkan total; 4 desimal menggeser total Rp 9,49), harga satuan DECIMAL(20,2), PPN DECIMAL(5,2), harga + PPN DECIMAL(26,6), jumlah DECIMAL(48,18), total DECIMAL(50,18). Bobot tidak disimpan; dihitung dari snapshot jumlah.
+- Peringatan nilai kontrak: muncul bila nilai kontrak proyek tidak sama dengan REAL COST maupun DIBULATKAN.
+- Tetap per versi tidak ada rumus per proyek; format berbeda ditangani tampilan/export/import.
+
+## D-044 Library Excel dan Seed Contoh RAB
+
+Disetujui 2026-10-25.
+
+- `exceljs` 4.4.0 (MIT) di `apps/api` untuk membaca workbook. Dipakai seed contoh sekarang dan import Excel (M5). `uuid` di-override ke 11.1.1 (GHSA-w5hq-g745-h8pq pada uuid 8 yang dipakai exceljs; exceljs hanya memakai `v4`).
+- `npm run db:seed:sample`: hanya development; membaca workbook dari `storage/temp/` (tidak masuk Git, data proyek nyata tidak di-commit). Membuat proyek contoh SDN 2 Serangan beserta RAB Kontrak dan MC-0 (keduanya approved) dari sheet `RAB + PPN` laporan mingguan MC-0, dengan super admin seed sebagai pembuat/penyetuju. Idempotent: tidak berbuat apa-apa bila kode proyek sudah ada.
+- Pemetaan baris workbook: kode `A`…`H` → SECTION; `B.I` dst → SUBSECTION; nomor dengan volume → ITEM; nomor tanpa volume yang diikuti baris tanpa nomor → PARENT_ITEM dengan sub-item; baris tanpa nomor dan tanpa volume → lanjutan uraian baris sebelumnya; baris `JUMLAH`/`JUMLAH TOTAL`/`DIBULATKAN` dilewati (dihitung). Item bervolume 0 di MC-0 tidak disalin ke MC-0 (REMOVED).
 
 ## Keputusan Terbuka
 
@@ -404,6 +426,10 @@ Diputuskan sebelum: milestone yang pertama kali memakai izin tersebut (Milestone
 
 ### OD-009 Verifikasi rumus RAB terhadap workbook kantor
 
-D-042 adalah rumus sementara dari spesifikasi. Perlu dicocokkan dengan contoh workbook: letak PPN (per item/total), tarif, pembulatan per baris dan total (mis. dibulatkan ke ribuan), dan dasar bobot (sebelum/sesudah PPN).
+Sudah diputuskan: lihat D-043.
 
-Diputuskan sebelum: RAB resmi pertama di-approve untuk proyek nyata; paling lambat Milestone 5 (import).
+### OD-010 TKDN pada RAB
+
+Workbook kantor memuat kolom TKDN (%) per item (dari REKAP ANALISA) dan nilai TKDN = jumlah × TKDN%, beserta rekap TKDN per bagian dan total. Belum ada di PRD. Perlu diputuskan: apakah disimpan per item RAB atau diturunkan dari AHSP, dan apakah ditampilkan/diekspor.
+
+Diputuskan sebelum: Milestone 7 (AHSP) atau Milestone 14 (export), mana yang lebih dulu membutuhkannya.

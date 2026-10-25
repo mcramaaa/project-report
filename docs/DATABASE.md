@@ -224,7 +224,7 @@ Milestone 4 (D-040). Kolom yang belum dibuat: `document_id` (M5), `effective_dat
 - document_date nullable
 - previous_version_id nullable → rab_versions (versi approved yang disalin)
 - status — DRAFT | APPROVED | DISCARDED
-- total_before_tax, total_tax, total_value DECIMAL(20,2) nullable — snapshot saat approve; draft dihitung saat dibaca
+- total_before_tax, total_tax, total_value DECIMAL(50,18) nullable — snapshot eksak saat approve (D-043); draft dihitung saat dibaca. REAL COST (2 desimal) dan DIBULATKAN dihitung dari total_value
 - created_by → users
 - approved_by, approved_at nullable
 - discarded_by, discarded_at, discard_reason nullable
@@ -253,19 +253,19 @@ Permanent project work identity. Dibuat saat baris ITEM baru ditambahkan; terbaw
 - row_type — SECTION | SUBSECTION | PARENT_ITEM | ITEM
 - display_number nullable
 - description
-- volume DECIMAL(18,4) nullable — hanya ITEM
+- volume DECIMAL(30,12) nullable — hanya ITEM (D-043)
 - unit nullable
 - analysis_code nullable — teks no analisa sampai AHSP (M7)
 - unit_price DECIMAL(20,2) nullable
 - tax_percent DECIMAL(5,2) nullable
-- unit_price_with_tax, subtotal DECIMAL(20,2), weight DECIMAL(12,6) nullable — snapshot saat approve (D-042)
+- unit_price_with_tax DECIMAL(26,6), subtotal DECIMAL(48,18) nullable — snapshot eksak saat approve (D-043)
 - previous_version_item_id nullable → rab_version_items (baris asal salinan)
 - created_at
 - updated_at
 
 Unique: `rab_version_id + work_item_id`.
 
-Tidak disimpan karena dihitung: `change_type` (dari `work_item_id` antarversi), `is_progress_trackable` (= ITEM), baris SUBTOTAL/TOTAL. Baris draft boleh dihapus; versi APPROVED/DISCARDED tidak diubah.
+Tidak disimpan karena dihitung: bobot (dari jumlah snapshot), `change_type` (dari `work_item_id` antarversi), `is_progress_trackable` (= ITEM), baris SUBTOTAL/TOTAL. Baris draft boleh dihapus; versi APPROVED/DISCARDED tidak diubah.
 
 ### baseline_assignments
 
@@ -545,7 +545,7 @@ Append-only: aplikasi tidak pernah update/delete baris audit.
 
 ## 12. Decimal Recommendations
 
-- volume: DECIMAL(18,4)
+- volume: DECIMAL(18,4); volume RAB DECIMAL(30,12) mengikuti workbook (D-043)
 - coefficient: DECIMAL(18,6)
 - unit_price: DECIMAL(20,2)
 - subtotal: DECIMAL(20,2)

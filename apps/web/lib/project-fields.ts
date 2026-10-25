@@ -1,3 +1,4 @@
+import { Decimal } from '@laporan-proyek/calc';
 import type { CreateProjectInput } from '@laporan-proyek/shared';
 
 export type ProjectField = keyof CreateProjectInput;
@@ -50,6 +51,11 @@ export function formatNumber(value: string | null, { trim = false } = {}): strin
   const [int, frac = ''] = value.split('.');
   const shown = trim ? frac.replace(/0+$/, '') : frac;
   return `${int!.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${shown ? `,${shown}` : ''}`;
+}
+
+/** Exact decimal string (D-043) rounded for display only, e.g. jumlah to 2 and bobot to 4 decimals. */
+export function formatRounded(value: string | null, scale: number): string {
+  return value === null ? '–' : formatNumber(new Decimal(value).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP).toFixed(scale));
 }
 
 export function formatRupiah(value: string | null): string {

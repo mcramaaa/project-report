@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectTabs } from '@/components/project-tabs';
 import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
-import { formatNumber } from '@/lib/project-fields';
+import { Decimal } from '@laporan-proyek/calc';
+import { formatNumber, formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
 const CHANGE: Record<RabChangeType, { label: string; tone: 'slate' | 'blue' | 'green' | 'red' }> = {
@@ -19,19 +20,14 @@ const FILTERS: { key: string; label: string; match: (c: RabChangeType) => boolea
   { key: 'removed', label: 'Dihapus', match: (c) => c === 'REMOVED' },
 ];
 
-/** Decimal-string difference without floats: target − base, both scaled to `scale` digits. */
+/** target − base with Decimal (no floats), rounded for display. */
 function delta(base: string | null, target: string | null, scale: number): string {
-  const toInt = (v: string | null) => {
-    const [i, f = ''] = (v ?? '0').split('.');
-    return BigInt(i! + f.padEnd(scale, '0').slice(0, scale));
-  };
-  const diff = toInt(target) - toInt(base);
-  const sign = diff < 0n ? '-' : diff > 0n ? '+' : '';
-  const digits = (diff < 0n ? -diff : diff).toString().padStart(scale + 1, '0');
-  return `${sign}${formatNumber(`${digits.slice(0, -scale)}.${digits.slice(-scale)}`, { trim: true })}`;
+  const diff = new Decimal(target ?? 0).minus(base ?? 0);
+  const shown = formatRounded(diff.abs().toFixed(), scale);
+  return diff.isZero() ? shown : `${diff.isNegative() ? '-' : '+'}${shown}`;
 }
 
-const value = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') => (row ? formatNumber(row[key], { trim: key === 'volume' }) : '–');
+const value = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') => (row ? (key === 'volume' ? formatNumber(row[key], { trim: true }) : formatRounded(row[key], 2)) : '–');
 
 export default async function RabComparePage({
   params,
