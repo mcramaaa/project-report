@@ -44,15 +44,15 @@ export function calculateAnalysisPrice(
 }
 
 /**
- * Excel keeps 15 significant digits of a float; a cached workbook value matches an exact Decimal result
- * when both agree at that precision (157822.49999999997 vs 157822.5).
+ * Whether an exact Decimal result equals a cached workbook float. Excel computes in binary floating point
+ * (≈15–17 significant digits) and accumulates rounding error across operations, so the comparison allows a
+ * relative difference of 1e-13 (below Rp 0.001 on billions). The application's own values stay exact.
  */
 export function matchesWorkbookValue(exact: DecimalValue, cached: number): boolean {
   if (!Number.isFinite(cached)) return false;
-  const c = new Decimal(cached.toPrecision(15));
-  const e = new Decimal(exact);
-  if (c.isZero() || e.isZero()) return e.abs().lt('1e-9') && c.abs().lt('1e-9');
-  return e.toSignificantDigits(15, Decimal.ROUND_HALF_UP).equals(c);
+  const c = new Decimal(cached.toPrecision(17));
+  const diff = new Decimal(exact).minus(c).abs();
+  return diff.lte(Decimal.max(new Decimal('1e-9'), c.abs().times('1e-13')));
 }
 
 /** Depth-first cycle check over analysis -> sub-analysis edges; returns the cycle path or null. */

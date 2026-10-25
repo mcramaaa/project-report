@@ -38,7 +38,10 @@ describe('calculateAnalysisPrice (D-051)', () => {
 });
 
 describe('matchesWorkbookValue', () => {
-  it('compares at the 15 significant digits Excel keeps', () => {
+  it('tolerates Excel float error but not real differences', () => {
+    expect(matchesWorkbookValue('222727.407407407669', 222727.40740740742)).toBe(true);
+    expect(matchesWorkbookValue('5121250896.4818', 5121250896.481801)).toBe(true);
+    expect(matchesWorkbookValue('5121250896.49', 5121250896.481801)).toBe(false);
     expect(matchesWorkbookValue('99', 98.99999999999999)).toBe(true);
     expect(matchesWorkbookValue('746294.07', 746294.0700000001)).toBe(true);
     expect(matchesWorkbookValue('157822.5', 157822.5)).toBe(true);
