@@ -1,4 +1,5 @@
-import { PROJECT_ROLE_LABELS, type MyProjectDto } from '@laporan-proyek/shared';
+import { Icon } from '@/components/icon';
+import type { MyProjectDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
 import { getMe, serverGet } from '@/lib/server-api';
@@ -8,24 +9,27 @@ export default async function HomePage() {
 
   return (
     <>
-      <PageTitle subtitle="Proyek tempat Anda terdaftar sebagai anggota.">Proyek Saya</PageTitle>
+      <PageTitle subtitle="Semua proyek Anda, dalam satu ruang kerja.">Proyek saya</PageTitle>
+      <section className="panel welcome-panel">
+        <div><span className="eyebrow">Selamat bekerja</span><h2 className="mt-2">Halo, {me?.name ?? 'rekan proyek'}.</h2><p>Pilih proyek untuk melihat informasi pekerjaan dan melanjutkan aktivitas bersama tim Anda.</p></div>
+        <span className="metric-icon"><Icon name="building" size={25} /></span>
+      </section>
+      <div className="section-caption"><h2>Daftar proyek</h2>{status === 200 && projects && <span>{projects.length} proyek tersedia</span>}</div>
       {status !== 200 || !projects ? (
         <Alert>Daftar proyek tidak dapat dimuat.</Alert>
       ) : projects.length === 0 ? (
         <EmptyState>
-          Anda belum menjadi anggota proyek mana pun.
-          {me?.isSystemAdmin && ' Sebagai system admin, tambahkan diri Anda melalui menu Admin: Anggota Proyek bila perlu mengakses data proyek.'}
+          {me?.isSystemAdmin ? 'Belum ada proyek.' : 'Anda belum memiliki akses ke proyek mana pun. Hubungi administrator untuk mendapatkan akses.'}
         </EmptyState>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+        <ul className="project-grid">
           {projects.map((p) => (
-            <li key={p.id}>
-              <Link href={`/projects/${p.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-slate-50">
-                <span>
-                  <span className="font-mono text-xs text-slate-500">{p.code}</span>
-                  <span className="ml-3 text-sm font-medium text-slate-900">{p.projectName}</span>
-                </span>
-                <Badge tone="blue">{PROJECT_ROLE_LABELS[p.role]}</Badge>
+            <li key={p.id} className="min-w-0">
+              <Link href={`/projects/${p.id}`} className="panel project-card h-full">
+                <div className="flex items-center justify-between gap-3"><span className="metric-icon"><Icon name="building" /></span><Badge tone={p.role ? 'blue' : 'slate'}>{p.role?.name ?? 'Akses super admin'}</Badge></div>
+                <h2>{p.projectName}</h2>
+                <span className="font-mono text-xs text-slate-500">{p.code}</span>
+                <div className="project-card-footer"><span>Lihat informasi proyek</span><Icon name="arrow" size={17} /></div>
               </Link>
             </li>
           ))}

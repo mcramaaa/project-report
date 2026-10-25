@@ -9,7 +9,7 @@ export class ProjectsController {
 
   @Get()
   listMine(@CurrentAuth() auth: AuthContext) {
-    return this.projects.listMine(auth.user.id);
+    return this.projects.listMine(auth.user);
   }
 
   @Get(':projectId')

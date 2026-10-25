@@ -11,5 +11,10 @@ export const AUDIT_ACTIONS = [
   'REVOKE_PROJECT_MEMBER',
   'CHANGE_PASSWORD',
   'REVOKE_SESSIONS',
+  'CREATE_ROLE',
+  'UPDATE_ROLE',
+  'UPDATE_ROLE_PERMISSIONS',
+  'GRANT_GLOBAL_ROLE',
+  'REVOKE_GLOBAL_ROLE',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

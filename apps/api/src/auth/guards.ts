@@ -11,14 +11,16 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { roleHasPermission, type ProjectPermission } from '@laporan-proyek/shared';
+import type { GlobalPermission, ProjectPermission } from '@laporan-proyek/shared';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccessService } from './access.service';
 import type { AppRequest } from './auth-context';
 import { hashSessionToken, readCookie, SESSION_COOKIE } from './session-token';
 
 const IS_PUBLIC = 'auth:isPublic';
 const PROJECT_PERMISSION = 'auth:projectPermission';
+const GLOBAL_PERMISSIONS = 'auth:globalPermissions';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -74,47 +76,60 @@ export class SessionGuard implements CanActivate {
 }
 
 @Injectable()
-export class SystemAdminGuard implements CanActivate {
+export class SuperAdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     if (!context.switchToHttp().getRequest<AppRequest>().auth?.user.isSystemAdmin) {
-      throw new ForbiddenException('Hanya system admin yang dapat mengakses fitur ini.');
+      throw new ForbiddenException('Hanya super admin yang dapat melakukan aksi ini.');
     }
     return true;
   }
 }
 
-/** System-admin-only routes (docs/PERMISSIONS.md §1). */
-export const SystemAdminOnly = () => UseGuards(SystemAdminGuard);
+/** Super-admin-only actions (D-035 anti-escalation). */
+export const SuperAdminOnly = () => UseGuards(SuperAdminGuard);
+
+/** Requires any of the global permissions (super admin has all). Read from the database per request. */
+@Injectable()
+export class GlobalPermissionGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly access: AccessService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const required = this.reflector.getAllAndOverride<GlobalPermission[]>(GLOBAL_PERMISSIONS, [context.getHandler(), context.getClass()]);
+    const user = context.switchToHttp().getRequest<AppRequest>().auth?.user;
+    if (!required?.length || !user) throw new ForbiddenException();
+    const granted = await this.access.globalPermissions(user);
+    if (!required.some((code) => granted.has(code))) throw new ForbiddenException('Anda tidak memiliki izin untuk aksi ini.');
+    return true;
+  }
+}
+
+export const RequirePermission = (...anyOf: GlobalPermission[]) =>
+  applyDecorators(SetMetadata(GLOBAL_PERMISSIONS, anyOf), UseGuards(GlobalPermissionGuard));
 
 /**
- * Requires an active membership in :projectId whose role grants the permission (docs/PERMISSIONS.md §2).
- * No system-admin bypass. Non-members get 404 so project existence is not revealed (D-033).
+ * Requires an active membership in :projectId whose active role grants the permission (docs/PERMISSIONS.md).
+ * Super admins pass (D-035). Non-members get 404 so project existence is not revealed (D-033).
  */
 @Injectable()
 export class ProjectPermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly prisma: PrismaService,
+    private readonly access: AccessService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const permission = this.reflector.get<ProjectPermission>(PROJECT_PERMISSION, context.getHandler());
     const req = context.switchToHttp().getRequest<AppRequest>();
     const projectId = req.params.projectId;
-    const userId = req.auth?.user.id;
-    if (!permission || !userId || typeof projectId !== 'string') throw new ForbiddenException();
+    const user = req.auth?.user;
+    if (!permission || !user || typeof projectId !== 'string') throw new ForbiddenException();
 
-    const membership = UUID_PATTERN.test(projectId)
-      ? await this.prisma.projectUser.findUnique({
-          where: { projectId_userId: { projectId, userId } },
-          select: { role: true, revokedAt: true },
-        })
-      : null;
-    if (!membership || membership.revokedAt) throw new NotFoundException('Proyek tidak ditemukan.');
-    if (!roleHasPermission(membership.role, permission)) {
-      throw new ForbiddenException('Role Anda di proyek ini tidak memiliki izin untuk aksi ini.');
-    }
-    req.membership = { projectId, role: membership.role };
+    const allowed = UUID_PATTERN.test(projectId) ? await this.access.hasProjectPermission(user, projectId, permission) : null;
+    if (allowed === null) throw new NotFoundException('Proyek tidak ditemukan.');
+    if (!allowed) throw new ForbiddenException('Role Anda di proyek ini tidak memiliki izin untuk aksi ini.');
     return true;
   }
 }

@@ -14,12 +14,15 @@ Prinsip:
 
 ## 2. Pengguna
 
-Izin dibagi dua lapis (D-026, detail di `docs/PERMISSIONS.md`):
+Izin mengikuti pola role & permission modular (D-035, detail di `docs/PERMISSIONS.md`):
 
-- **System admin** (`users.is_system_admin`): administrasi global — pengelolaan user, pembuatan proyek, pengelolaan anggota/role proyek. Tidak otomatis boleh membaca/mengubah data proyek.
-- **Role proyek** (`project_users.role`): akses per proyek. Satu user dapat memiliki role berbeda di proyek berbeda. Role bukan level berurutan.
+- **Super admin** (`users.is_system_admin`): seluruh akses, global dan semua proyek.
+- **Role administrasi** (global): delegasi pengelolaan user, role, dan akses proyek melalui permission.
+- **Role proyek**: akses per proyek. Satu user satu role per proyek, dapat berbeda di proyek berbeda.
+- Role adalah data yang dapat dibuat dan diatur permission-nya; permission ditentukan per kemampuan, bukan nama role.
 
-Role proyek:
+Role proyek bawaan (role sistem, permission dapat diatur):
+
 
 ### FILLER
 - input progres
@@ -42,15 +45,15 @@ Role proyek:
 - upload dokumen
 - review hasil ekstraksi AI
 
-Membuat proyek, pengelolaan user, dan konfigurasi sistem adalah wewenang system admin.
+Membuat proyek, pengelolaan user, dan konfigurasi sistem adalah wewenang super admin atau pemegang role administrasi yang sesuai.
 
 ### Akun User
 
-- tidak ada pendaftaran publik; akun dibuat system admin dengan password awal
+- tidak ada pendaftaran publik; akun dibuat super admin atau pemegang `users.manage` dengan password awal
 - user dinonaktifkan, tidak dihapus permanen
-- system admin aktif terakhir tidak boleh dinonaktifkan atau dicabut haknya
+- super admin aktif terakhir tidak boleh dinonaktifkan atau dicabut haknya
 - nonaktivasi dan perubahan password mencabut semua session user tersebut
-- perubahan izin berlaku pada request berikutnya
+- perubahan role, permission, dan penugasan berlaku pada request berikutnya
 - pembuat proyek otomatis menjadi MANAGER proyek tersebut
 
 ## 3. Identitas Proyek
@@ -434,7 +437,7 @@ Action penting:
 - UPDATE_PROGRESS
 - FINALIZE_REPORT
 - REOPEN_REPORT
-- aksi user, system admin, membership, password, dan session (daftar di `docs/PERMISSIONS.md` §4)
+- aksi user, super admin, role & permission, akses proyek, password, dan session (daftar di `docs/PERMISSIONS.md` §7)
 
 Audit global (misalnya pengelolaan user) tidak memiliki project. Password, hash, token, dan secret tidak pernah dicatat.
 

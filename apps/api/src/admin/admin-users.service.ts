@@ -1,6 +1,7 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { CreateUserInput, ListUsersQuery, Paginated, UpdateUserInput, UserDto } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
+import type { AuthUser } from '../auth/auth-context';
 import { revokeAllSessions } from '../auth/auth.service';
 import { hashPassword } from '../auth/password';
 import type { Prisma } from '../generated/prisma/client';
@@ -25,6 +26,12 @@ function toDto(user: PublicUser): UserDto {
 }
 
 const EMAIL_TAKEN = 'Email sudah terdaftar.';
+const SUPER_ADMIN_ONLY = 'Akun super admin hanya dapat diatur oleh super admin.';
+
+/** Delegates with users.manage may not create or modify super admin accounts (D-035). */
+function assertMayTouch(actor: AuthUser, target: { isSystemAdmin: boolean }): void {
+  if (target.isSystemAdmin && !actor.isSystemAdmin) throw new ForbiddenException(SUPER_ADMIN_ONLY);
+}
 const LAST_ADMIN = 'Tidak dapat menonaktifkan atau mencabut system admin aktif terakhir.';
 
 /**
@@ -66,7 +73,8 @@ export class AdminUsersService {
     return toDto(user);
   }
 
-  async create(actorId: string, input: CreateUserInput): Promise<UserDto> {
+  async create(actor: AuthUser, input: CreateUserInput): Promise<UserDto> {
+    assertMayTouch(actor, input);
     const passwordHash = await hashPassword(input.password);
     try {
       const user = await this.prisma.$transaction(async (tx) => {
@@ -75,7 +83,7 @@ export class AdminUsersService {
           select: USER_PUBLIC_SELECT,
         });
         await writeAudit(tx, {
-          actorId,
+          actorId: actor.id,
           action: 'CREATE_USER',
           entityType: 'USER',
           entityId: created.id,
@@ -90,11 +98,12 @@ export class AdminUsersService {
     }
   }
 
-  async update(actorId: string, userId: string, input: UpdateUserInput): Promise<UserDto> {
+  async update(actor: AuthUser, userId: string, input: UpdateUserInput): Promise<UserDto> {
     try {
       const user = await this.prisma.$transaction(async (tx) => {
         const current = await tx.user.findUnique({ where: { id: userId }, select: USER_PUBLIC_SELECT });
         if (!current) throw new NotFoundException('User tidak ditemukan.');
+        assertMayTouch(actor, current);
 
         const oldValue: Record<string, string> = {};
         const newValue: Record<string, string> = {};
@@ -108,7 +117,7 @@ export class AdminUsersService {
         if (Object.keys(newValue).length === 0) return current;
 
         const updated = await tx.user.update({ where: { id: userId }, data: newValue, select: USER_PUBLIC_SELECT });
-        await writeAudit(tx, { actorId, action: 'UPDATE_USER', entityType: 'USER', entityId: userId, oldValue, newValue, reason: input.reason });
+        await writeAudit(tx, { actorId: actor.id, action: 'UPDATE_USER', entityType: 'USER', entityId: userId, oldValue, newValue, reason: input.reason });
         return updated;
       });
       return toDto(user);
@@ -119,16 +128,18 @@ export class AdminUsersService {
   }
 
   /** Deactivation also revokes every session of the user (D-030). */
-  async setActive(actorId: string, userId: string, isActive: boolean, reason?: string): Promise<UserDto> {
+  async setActive(actor: AuthUser, userId: string, isActive: boolean, reason?: string): Promise<UserDto> {
     const user = await retryOnWriteConflict(() => this.prisma.$transaction(async (tx) => {
+      // Authorize before the business check so delegates get 403, not the last-admin 409.
+      if (!actor.isSystemAdmin) assertMayTouch(actor, await this.findOrThrow(tx, userId));
       if (!isActive) await assertNotLastActiveSystemAdmin(tx, userId);
-      const current = await tx.user.findUnique({ where: { id: userId }, select: USER_PUBLIC_SELECT });
-      if (!current) throw new NotFoundException('User tidak ditemukan.');
+      const current = await this.findOrThrow(tx, userId);
+      assertMayTouch(actor, current);
       if (current.isActive === isActive) return current;
 
       const updated = await tx.user.update({ where: { id: userId }, data: { isActive }, select: USER_PUBLIC_SELECT });
       await writeAudit(tx, {
-        actorId,
+        actorId: actor.id,
         action: isActive ? 'ACTIVATE_USER' : 'DEACTIVATE_USER',
         entityType: 'USER',
         entityId: userId,
@@ -136,13 +147,19 @@ export class AdminUsersService {
         newValue: { isActive },
         reason,
       });
-      if (!isActive) await revokeAllSessions(tx, userId, actorId, 'DEACTIVATE_USER');
+      if (!isActive) await revokeAllSessions(tx, userId, actor.id, 'DEACTIVATE_USER');
       return updated;
     }));
     return toDto(user);
   }
 
-  async setSystemAdmin(actorId: string, userId: string, isSystemAdmin: boolean, reason?: string): Promise<UserDto> {
+  private async findOrThrow(tx: Prisma.TransactionClient, userId: string): Promise<PublicUser> {
+    const user = await tx.user.findUnique({ where: { id: userId }, select: USER_PUBLIC_SELECT });
+    if (!user) throw new NotFoundException('User tidak ditemukan.');
+    return user;
+  }
+
+  async setSystemAdmin(actor: AuthUser, userId: string, isSystemAdmin: boolean, reason?: string): Promise<UserDto> {
     const user = await retryOnWriteConflict(() => this.prisma.$transaction(async (tx) => {
       if (!isSystemAdmin) await assertNotLastActiveSystemAdmin(tx, userId);
       const current = await tx.user.findUnique({ where: { id: userId }, select: USER_PUBLIC_SELECT });
@@ -151,7 +168,7 @@ export class AdminUsersService {
 
       const updated = await tx.user.update({ where: { id: userId }, data: { isSystemAdmin }, select: USER_PUBLIC_SELECT });
       await writeAudit(tx, {
-        actorId,
+        actorId: actor.id,
         action: isSystemAdmin ? 'GRANT_SYSTEM_ADMIN' : 'REVOKE_SYSTEM_ADMIN',
         entityType: 'USER',
         entityId: userId,

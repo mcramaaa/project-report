@@ -1,13 +1,22 @@
 'use client';
 
 import { PASSWORD_MIN_LENGTH, type Paginated, type UserDto } from '@laporan-proyek/shared';
+import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, EmptyState, Field, Loading } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 
 const PAGE_SIZE = 20;
 
-export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
+export interface UsersAdminProps {
+  currentUserId: string;
+  /** users.manage; delegates still cannot touch super admin accounts (API enforced). */
+  canManage: boolean;
+  isSuperAdmin: boolean;
+  canViewAccess: boolean;
+}
+
+export function UsersAdmin({ currentUserId, canManage, isSuperAdmin, canViewAccess }: UsersAdminProps) {
   const [query, setQuery] = useState({ search: '', page: 1 });
   const [data, setData] = useState<Paginated<UserDto>>();
   const [loadError, setLoadError] = useState<string>();
@@ -54,9 +63,9 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="toolbar">
         <form
-          className="flex flex-1 items-end gap-2"
+          className="flex min-w-0 flex-1 items-end gap-2"
           role="search"
           onSubmit={(e) => {
             e.preventDefault();
@@ -70,13 +79,16 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
             Cari
           </Button>
         </form>
-        <Button onClick={() => setShowCreate((v) => !v)} aria-expanded={showCreate}>
-          {showCreate ? 'Tutup form' : 'Tambah user'}
-        </Button>
+        {canManage && (
+          <Button onClick={() => setShowCreate((v) => !v)} aria-expanded={showCreate}>
+            {showCreate ? 'Tutup form' : 'Tambah user'}
+          </Button>
+        )}
       </div>
 
-      {showCreate && (
+      {showCreate && canManage && (
         <CreateUserForm
+          allowSuperAdmin={isSuperAdmin}
           onCreated={(user) => {
             setShowCreate(false);
             setNotice({ kind: 'success', text: `User ${user.email} dibuat.` });
@@ -93,21 +105,21 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
       ) : data && data.items.length === 0 ? (
         <EmptyState>{query.search ? 'Tidak ada user yang cocok dengan pencarian.' : 'Belum ada user.'}</EmptyState>
       ) : data ? (
-        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
-          <table className="min-w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
-              <tr>
-                <th scope="col" className="px-3 py-2 font-medium">Nama</th>
-                <th scope="col" className="px-3 py-2 font-medium">Email</th>
-                <th scope="col" className="px-3 py-2 font-medium">Status</th>
-                <th scope="col" className="px-3 py-2 font-medium">Aksi</th>
+        <div className="panel data-panel">
+          <table role="table" className="data-table">
+            <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
+              <tr role="row">
+                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Nama</th>
+                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Email</th>
+                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Status</th>
+                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody role="rowgroup" className="divide-y divide-slate-100">
               {data.items.map((user) =>
                 editingId === user.id ? (
-                  <tr key={user.id}>
-                    <td colSpan={4} className="px-3 py-3">
+                  <tr role="row" key={user.id}>
+                    <td role="cell" colSpan={4} className="px-3 py-3">
                       <EditUserForm
                         user={user}
                         onCancel={() => setEditingId(undefined)}
@@ -120,17 +132,23 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
                     </td>
                   </tr>
                 ) : (
-                  <tr key={user.id}>
-                    <td className="px-3 py-2">
+                  <tr role="row" key={user.id}>
+                    <td role="cell" data-label="Nama" className="px-3 py-2">
                       {user.name}
                       {user.id === currentUserId && <span className="ml-1 text-slate-500">(Anda)</span>}
                     </td>
-                    <td className="px-3 py-2">{user.email}</td>
-                    <td className="space-x-1 px-3 py-2">
+                    <td role="cell" data-label="Email" className="px-3 py-2">{user.email}</td>
+                    <td role="cell" data-label="Status" className="px-3 py-2"><span className="flex flex-wrap gap-1">
                       {user.isActive ? <Badge tone="green">Aktif</Badge> : <Badge tone="red">Nonaktif</Badge>}
-                      {user.isSystemAdmin && <Badge tone="blue">System admin</Badge>}
+                      {user.isSystemAdmin && <Badge tone="blue">Super admin</Badge>}</span>
                     </td>
-                    <td className="space-x-2 whitespace-nowrap px-3 py-2">
+                    <td role="cell" data-label="Aksi"><div className="row-actions">
+                      {canViewAccess && (
+                        <Link className="btn btn-secondary" href={`/admin/users/${user.id}`}>
+                          Akses
+                        </Link>
+                      )}
+                      {canManage && (isSuperAdmin || !user.isSystemAdmin) && (<>
                       <Button variant="secondary" disabled={busyId === user.id} onClick={() => setEditingId(user.id)}>
                         Ubah
                       </Button>
@@ -149,24 +167,27 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
                           Aktifkan
                         </Button>
                       )}
-                      {user.isSystemAdmin ? (
+                      </>)}
+                      {isSuperAdmin && (user.isSystemAdmin ? (
                         <Button
                           variant="danger"
                           disabled={busyId === user.id}
-                          onClick={() => runAction(user, 'revoke-system-admin', `Cabut hak system admin dari ${user.email}?`, `Hak system admin ${user.email} dicabut.`)}
+                          onClick={() => runAction(user, 'revoke-system-admin', `Cabut hak super admin dari ${user.email}?`, `Hak super admin ${user.email} dicabut.`)}
                         >
-                          Cabut admin
+                          Cabut super admin
                         </Button>
                       ) : (
                         <Button
                           variant="secondary"
                           disabled={busyId === user.id}
-                          onClick={() => runAction(user, 'grant-system-admin', `Jadikan ${user.email} system admin?`, `${user.email} menjadi system admin.`)}
+                          onClick={() =>
+                            runAction(user, 'grant-system-admin', `Jadikan ${user.email} super admin? Super admin memiliki akses penuh ke semua proyek.`, `${user.email} menjadi super admin.`)
+                          }
                         >
-                          Jadikan admin
+                          Jadikan super admin
                         </Button>
-                      )}
-                    </td>
+                      ))}
+                    </div></td>
                   </tr>
                 ),
               )}
@@ -176,7 +197,7 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
       ) : null}
 
       {data && data.total > data.pageSize && (
-        <nav aria-label="Halaman" className="flex items-center gap-3 text-sm">
+        <nav aria-label="Halaman" className="pagination">
           <Button variant="secondary" disabled={query.page <= 1} onClick={() => setQuery((q) => ({ ...q, page: q.page - 1 }))}>
             Sebelumnya
           </Button>
@@ -192,7 +213,7 @@ export function UsersAdmin({ currentUserId }: { currentUserId: string }) {
   );
 }
 
-function CreateUserForm({ onCreated }: { onCreated: (user: UserDto) => void }) {
+function CreateUserForm({ onCreated, allowSuperAdmin }: { onCreated: (user: UserDto) => void; allowSuperAdmin: boolean }) {
   const [error, setError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -220,7 +241,7 @@ function CreateUserForm({ onCreated }: { onCreated: (user: UserDto) => void }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 rounded-md border border-slate-200 bg-white p-4" noValidate>
+    <form onSubmit={onSubmit} className="panel form-panel space-y-4" noValidate>
       <h2 className="text-base font-semibold">User baru</h2>
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-3 sm:grid-cols-3">
@@ -236,9 +257,11 @@ function CreateUserForm({ onCreated }: { onCreated: (user: UserDto) => void }) {
           error={fieldErrors.password}
         />
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="isSystemAdmin" /> Jadikan system admin
-      </label>
+      {allowSuperAdmin && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="isSystemAdmin" /> Jadikan super admin (akses penuh ke semua proyek)
+        </label>
+      )}
       <Button type="submit" disabled={submitting}>
         {submitting ? 'Menyimpan…' : 'Buat user'}
       </Button>

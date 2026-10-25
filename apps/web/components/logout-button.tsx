@@ -11,7 +11,7 @@ export function LogoutButton() {
     <button
       type="button"
       disabled={busy}
-      className="text-sm text-slate-600 hover:text-slate-900 disabled:opacity-50"
+      className="btn btn-secondary"
       onClick={async () => {
         setBusy(true);
         try {
@@ -22,7 +22,7 @@ export function LogoutButton() {
         }
       }}
     >
-      {busy ? 'Keluar…' : 'Logout'}
+      {busy ? 'Keluar…' : 'Keluar'}
     </button>
   );
 }

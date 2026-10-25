@@ -9,11 +9,9 @@ datasource db {
   provider = "mysql"
 }
 
-enum ProjectRole {
-  FILLER
-  REVIEWER
-  MANAGER
-  ADMIN
+enum RoleScope {
+  GLOBAL
+  PROJECT
 }
 
 model User {
@@ -28,9 +26,12 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   sessions           AuthSession[]
-  memberships        ProjectUser[] @relation("MembershipUser")
-  createdMemberships ProjectUser[] @relation("MembershipCreatedBy")
-  revokedMemberships ProjectUser[] @relation("MembershipRevokedBy")
+  memberships        ProjectUser[]    @relation("MembershipUser")
+  createdMemberships ProjectUser[]    @relation("MembershipCreatedBy")
+  revokedMemberships ProjectUser[]    @relation("MembershipRevokedBy")
+  globalRoles        UserGlobalRole[] @relation("GlobalRoleUser")
+  createdGlobalRoles UserGlobalRole[] @relation("GlobalRoleCreatedBy")
+  revokedGlobalRoles UserGlobalRole[] @relation("GlobalRoleRevokedBy")
   auditLogs          AuditLog[]
 
   @@index([isSystemAdmin, isActive])
@@ -79,26 +80,82 @@ model Project {
   @@map("projects")
 }
 
+/// Roles are data (D-035). System roles: code, scope, and isActive are locked.
+model Role {
+  id          String    @id @default(uuid(7)) @db.Char(36)
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(120)
+  description String?   @db.VarChar(255)
+  scope       RoleScope
+  isSystem    Boolean   @default(false) @map("is_system")
+  /// Inactive roles grant no permissions.
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  permissions       RolePermission[]
+  memberships       ProjectUser[]
+  globalAssignments UserGlobalRole[]
+
+  @@map("roles")
+}
+
+/// permission_code refers to the code catalog in packages/shared (PERMISSIONS).
+model RolePermission {
+  roleId         String   @map("role_id") @db.Char(36)
+  permissionCode String   @map("permission_code") @db.VarChar(80)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionCode])
+  @@map("role_permissions")
+}
+
 model ProjectUser {
-  id        String      @id @default(uuid(7)) @db.Char(36)
-  projectId String      @map("project_id") @db.Char(36)
-  userId    String      @map("user_id") @db.Char(36)
-  role      ProjectRole
-  createdBy String?     @map("created_by") @db.Char(36)
-  createdAt DateTime    @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  id        String    @id @default(uuid(7)) @db.Char(36)
+  projectId String    @map("project_id") @db.Char(36)
+  userId    String    @map("user_id") @db.Char(36)
+  /// Must reference a PROJECT-scoped role (enforced in the service).
+  roleId    String    @map("role_id") @db.Char(36)
+  createdBy String?   @map("created_by") @db.Char(36)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
   /// Soft revoke (D-029); active membership = revokedAt IS NULL.
-  revokedAt DateTime?   @map("revoked_at") @db.DateTime(3)
-  revokedBy String?     @map("revoked_by") @db.Char(36)
+  revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
+  revokedBy String?   @map("revoked_by") @db.Char(36)
 
   project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
   user          User    @relation("MembershipUser", fields: [userId], references: [id], onDelete: Restrict)
+  role          Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
   createdByUser User?   @relation("MembershipCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   revokedByUser User?   @relation("MembershipRevokedBy", fields: [revokedBy], references: [id], onDelete: Restrict)
 
   @@unique([projectId, userId])
   @@index([userId])
+  @@index([roleId])
   @@map("project_users")
+}
+
+/// Administration role assignment without a project (D-035). Must reference a GLOBAL-scoped role.
+model UserGlobalRole {
+  id        String    @id @default(uuid(7)) @db.Char(36)
+  userId    String    @map("user_id") @db.Char(36)
+  roleId    String    @map("role_id") @db.Char(36)
+  createdBy String?   @map("created_by") @db.Char(36)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  revokedAt DateTime? @map("revoked_at") @db.DateTime(3)
+  revokedBy String?   @map("revoked_by") @db.Char(36)
+
+  user          User  @relation("GlobalRoleUser", fields: [userId], references: [id], onDelete: Restrict)
+  role          Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  createdByUser User? @relation("GlobalRoleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  revokedByUser User? @relation("GlobalRoleRevokedBy", fields: [revokedBy], references: [id], onDelete: Restrict)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_global_roles")
 }
 
 /// Append-only. Never store passwords, hashes, tokens, or secrets (D-034).

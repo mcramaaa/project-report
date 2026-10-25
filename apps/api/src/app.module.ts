@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { AdminAccessController } from './admin/admin-access.controller';
+import { AdminAccessService } from './admin/admin-access.service';
 import { AdminProjectsController } from './admin/admin-projects.controller';
 import { AdminProjectsService } from './admin/admin-projects.service';
 import { AdminUsersController } from './admin/admin-users.controller';
 import { AdminUsersService } from './admin/admin-users.service';
+import { AccessService } from './auth/access.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthService } from './auth/auth.service';
 import { CsrfGuard, SessionGuard } from './auth/guards';
@@ -15,13 +18,15 @@ import { ProjectsService } from './projects/projects.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, AdminUsersController, AdminProjectsController],
+  controllers: [HealthController, AuthController, ProjectsController, AdminUsersController, AdminProjectsController, AdminAccessController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: SessionGuard },
     { provide: LoginRateLimiter, useFactory: () => new LoginRateLimiter() },
+    AccessService,
     AuthService,
+    AdminAccessService,
     ProjectsService,
     AdminUsersService,
     AdminProjectsService,

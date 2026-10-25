@@ -1,10 +1,10 @@
 import { BadRequestException, HttpException, HttpStatus, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
-import { LOGIN_FAILED_MESSAGE, type ChangePasswordInput, type LoginInput, type MeResponse } from '@laporan-proyek/shared';
+import { LOGIN_FAILED_MESSAGE, type ChangePasswordInput, type LoginInput } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { AuthContext } from './auth-context';
+import type { AuthContext, AuthUser } from './auth-context';
 import { LoginRateLimiter } from './login-rate-limiter';
 import { getDummyPasswordHash, hashPassword, verifyPassword } from './password';
 import { hashSessionToken, newSessionToken } from './session-token';
@@ -34,7 +34,7 @@ export class AuthService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async login(input: LoginInput, client: ClientInfo): Promise<{ token: string; expiresAt: Date; user: MeResponse }> {
+  async login(input: LoginInput, client: ClientInfo): Promise<{ token: string; expiresAt: Date; user: AuthUser }> {
     if (this.limiter.isBlocked(input.email)) {
       throw new HttpException('Terlalu banyak percobaan login. Coba lagi beberapa menit lagi.', HttpStatus.TOO_MANY_REQUESTS);
     }

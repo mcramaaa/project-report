@@ -5,6 +5,9 @@
 - `apps/api/nest-cli.json`
 - `apps/api/package.json`
 - `apps/api/README.md`
+- `apps/api/src/admin/admin-access.controller.ts`
+- `apps/api/src/admin/admin-access.service.ts`
+- `apps/api/src/admin/admin-access.spec.ts`
 - `apps/api/src/admin/admin-projects.controller.ts`
 - `apps/api/src/admin/admin-projects.service.ts`
 - `apps/api/src/admin/admin-projects.spec.ts`
@@ -14,6 +17,7 @@
 - `apps/api/src/app.module.ts`
 - `apps/api/src/app.setup.ts`
 - `apps/api/src/audit/audit.ts`
+- `apps/api/src/auth/access.service.ts`
 - `apps/api/src/auth/auth-context.ts`
 - `apps/api/src/auth/auth.controller.ts`
 - `apps/api/src/auth/auth.service.ts`
@@ -50,7 +54,13 @@
 - `apps/web/app/(app)/admin/projects/page.tsx`
 - `apps/web/app/(app)/admin/projects/[projectId]/members/members-admin.tsx`
 - `apps/web/app/(app)/admin/projects/[projectId]/members/page.tsx`
+- `apps/web/app/(app)/admin/roles/create-role-form.tsx`
+- `apps/web/app/(app)/admin/roles/page.tsx`
+- `apps/web/app/(app)/admin/roles/[roleId]/page.tsx`
+- `apps/web/app/(app)/admin/roles/[roleId]/role-editor.tsx`
 - `apps/web/app/(app)/admin/users/page.tsx`
+- `apps/web/app/(app)/admin/users/[userId]/page.tsx`
+- `apps/web/app/(app)/admin/users/[userId]/user-access.tsx`
 - `apps/web/app/(app)/admin/users/users-admin.tsx`
 - `apps/web/app/(app)/layout.tsx`
 - `apps/web/app/(app)/page.tsx`
@@ -61,12 +71,17 @@
 - `apps/web/app/layout.tsx`
 - `apps/web/app/login/login-form.tsx`
 - `apps/web/app/login/page.tsx`
-- `apps/web/app/page.tsx`
+- `apps/web/components/access-tabs.tsx`
+- `apps/web/components/app-shell.tsx`
+- `apps/web/components/brand.tsx`
+- `apps/web/components/icon.tsx`
 - `apps/web/components/logout-button.tsx`
 - `apps/web/components/ui.tsx`
 - `apps/web/eslint.config.mjs`
 - `apps/web/lib/api.ts`
+- `apps/web/lib/permissions.ts`
 - `apps/web/lib/server-api.ts`
+- `apps/web/lib/use-project-roles.ts`
 - `apps/web/next.config.ts`
 - `apps/web/package.json`
 - `apps/web/postcss.config.mjs`
@@ -107,6 +122,7 @@
 - `packages/shared/eslint.config.js`
 - `packages/shared/package.json`
 - `packages/shared/README.md`
+- `packages/shared/src/access.ts`
 - `packages/shared/src/audit.ts`
 - `packages/shared/src/auth.ts`
 - `packages/shared/src/index.ts`
@@ -116,6 +132,7 @@
 - `packages/shared/tsconfig.json`
 - `prisma.config.ts`
 - `prisma/migrations/20261025051445_init_base_schema/migration.sql`
+- `prisma/migrations/20261025070000_dynamic_roles/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

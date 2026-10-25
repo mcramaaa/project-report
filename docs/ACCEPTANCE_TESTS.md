@@ -19,14 +19,25 @@ Gunakan ini sebagai checklist saat vibe coding.
 - [x] user nonaktif tidak bisa memakai session lama
 - [x] ganti password: password lama wajib benar, semua session dicabut, password lama ditolak setelahnya
 - [x] request mengubah data tanpa Origin yang sesuai ditolak
-- [x] endpoint administrasi menolak non-system-admin
-- [x] system admin tanpa membership tidak dapat membaca data proyek
+- [x] endpoint administrasi menolak user tanpa permission
+- [x] super admin dapat membaca semua proyek tanpa membership (D-035)
+- [x] pemegang permission administrasi tidak otomatis membaca data proyek
 - [x] isolasi akses antarproyek
 - [x] perubahan role dan pencabutan membership berlaku pada request berikutnya
 - [x] membership ganda ditolak
-- [x] system admin aktif terakhir tidak bisa dinonaktifkan/dicabut, termasuk pada request bersamaan
+- [x] super admin aktif terakhir tidak bisa dinonaktifkan/dicabut, termasuk pada request bersamaan
 - [x] audit dibuat untuk aksi user/membership/password/session tanpa data rahasia
 - [x] response user tidak berisi password hash/token
+- [x] role sistem bawaan dengan `project.read`; kode/status terkunci
+- [x] role baru dapat dibuat; kode unik
+- [x] permission tidak dikenal atau beda scope ditolak
+- [x] perubahan permission/status role berlaku pada request berikutnya
+- [x] role nonaktif tidak dapat ditugaskan dan tidak memberi akses
+- [x] delegasi: `users.*`, `roles.*`, `assignments.*` sesuai permission
+- [x] delegasi tidak dapat menyentuh akun/status super admin, role administrasi, atau akses dirinya sendiri
+- [x] pencabutan role administrasi berlaku pada request berikutnya
+- [x] halaman akses user menampilkan role administrasi dan proyek yang dapat diakses
+- [x] migration mempertahankan role membership yang sudah ada
 
 ## A. Project Setup
 

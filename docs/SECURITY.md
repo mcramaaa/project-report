@@ -15,12 +15,13 @@
 
 Periksa di API (matriks lengkap: `docs/PERMISSIONS.md`):
 
-- system admin vs role proyek; tanpa bypass universal
+- super admin (akses penuh), role administrasi (delegasi global), role proyek (per proyek); batasan anti-eskalasi `docs/PERMISSIONS.md` §4
 - project role
 - self-review restriction
 - baseline activation permission
 - reopen permission
 - AI approval permission
+- permission dibaca dari database setiap request
 
 ## Files
 

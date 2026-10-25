@@ -1,5 +1,4 @@
 import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
-import type { ProjectRole } from '@laporan-proyek/shared';
 import type { Request } from 'express';
 
 export interface AuthUser {
@@ -17,7 +16,6 @@ export interface AuthContext {
 /** Populated per request from the database by the guards; never trusted from the client. */
 export interface AppRequest extends Request {
   auth?: AuthContext;
-  membership?: { projectId: string; role: ProjectRole };
 }
 
 export const CurrentAuth = createParamDecorator((_: unknown, ctx: ExecutionContext): AuthContext => {

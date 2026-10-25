@@ -179,7 +179,7 @@ Alasan:
 
 ## D-026 Dua Lapis Administrasi
 
-Disetujui 2026-10-25 (menutup OD-002).
+Disetujui 2026-10-25 (menutup OD-002). **Sebagian digantikan D-035** (super admin kini memiliki akses penuh; role proyek menjadi dinamis; administrasi dapat didelegasikan).
 
 - `users.is_system_admin`: administrasi global, pengelolaan user, pembuatan proyek, pengelolaan anggota/role proyek
 - `project_users.role` (FILLER, REVIEWER, MANAGER, ADMIN): akses per proyek
@@ -237,6 +237,23 @@ Endpoint khusus system admin berada di bawah `/api/admin/*`; endpoint data proye
 - `action` disimpan sebagai string; daftar resmi ada di `packages/shared` dan `docs/PERMISSIONS.md`
 - audit ditulis dalam transaksi yang sama dengan perubahan datanya
 
+## D-035 Role Dinamis, Super Admin, dan Delegasi (pola olmat-backoffice)
+
+Disetujui 2026-10-25, menggantikan bagian D-026 yang bertentangan.
+
+- **Super admin** = `users.is_system_admin` (akun pertama dari seed `.env`). Memiliki seluruh permission secara implisit, global maupun di semua proyek, tanpa perlu penugasan. Aturan domain tetap berlaku untuknya (mis. reviewer tidak memfinalisasi input sendiri). Proteksi super admin aktif terakhir tetap (D-029).
+- **Permission** didefinisikan di kode (`packages/shared`, `PERMISSIONS`) karena backend yang menegakkannya; database hanya menyimpan kode permission per role. Setiap permission memiliki scope `GLOBAL` atau `PROJECT`. Katalog hanya memuat permission yang sudah ditegakkan; permission baru ditambahkan per milestone.
+- **Role** adalah data (`roles`): kode, nama, deskripsi, scope (`PROJECT` / `GLOBAL`), aktif, sistem. Permission role harus sesuai scope role. Role nonaktif tidak memberi permission. Role tidak dihapus.
+- **Role sistem bawaan**: FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah. Default permission: `project.read`.
+- **Penugasan proyek**: `project_users.role_id` → role scope `PROJECT`, satu role per user per proyek (unique `project_id, user_id` tetap).
+- **Penugasan administrasi**: `user_global_roles` → role scope `GLOBAL`, tanpa proyek, boleh lebih dari satu per user. Tidak ada penugasan proyek "semua proyek"; akses ke semua proyek hanya milik super admin.
+- **Delegasi** lewat permission global: `users.read`, `users.manage`, `roles.read`, `roles.manage`, `assignments.read`, `assignments.manage`.
+- **Batasan anti-eskalasi**:
+  - hanya super admin: memberi/mencabut super admin, membuat atau mengubah akun super admin, membuat/mengubah role `GLOBAL` dan permission-nya, memberi/mencabut role administrasi
+  - pemegang delegasi tidak boleh menambah, mengubah, atau mencabut akses proyeknya sendiri
+  - risiko yang diterima: pemegang `roles.manage` dapat mengubah permission role proyek yang juga ia pegang; semua perubahan diaudit
+- Permission dibaca dari database setiap request; perubahan role, permission, atau penugasan berlaku pada request berikutnya.
+
 ## Keputusan Terbuka
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.
@@ -287,6 +304,6 @@ Matriks di `docs/PERMISSIONS.md` mengikuti PRD §2. Belum jelas:
 
 - apakah MANAGER juga memiliki fungsi FILLER (PRD hanya menyebut "semua fungsi reviewer")
 - siapa "authorized user" selain ADMIN proyek yang boleh approve ekstraksi AI (`docs/ARCHITECTURE.md` §7)
-- apakah ADMIN proyek boleh melihat/mengelola anggota proyeknya sendiri (saat ini hanya system admin, D-026)
+- default permission role sistem untuk fitur mendatang (role dinamis D-035 membuat matriks dapat diubah, tetapi default awal per milestone tetap perlu dikonfirmasi)
 
 Diputuskan sebelum: milestone yang pertama kali memakai izin tersebut (Milestone 5, 6, 9, 11).

@@ -3,7 +3,8 @@ import { changePasswordSchema, loginSchema, type ChangePasswordInput, type Login
 import type { Response } from 'express';
 import { ZodPipe } from '../common/zod.pipe';
 import { APP_CONFIG, type AppConfig } from '../config/env';
-import { CurrentAuth, type AppRequest, type AuthContext } from './auth-context';
+import { AccessService } from './access.service';
+import { CurrentAuth, type AppRequest, type AuthContext, type AuthUser } from './auth-context';
 import { AuthService } from './auth.service';
 import { Public } from './guards';
 import { SESSION_COOKIE } from './session-token';
@@ -12,6 +13,7 @@ import { SESSION_COOKIE } from './session-token';
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly access: AccessService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -25,7 +27,7 @@ export class AuthController {
   ): Promise<MeResponse> {
     const { token, expiresAt, user } = await this.auth.login(body, { ip: req.ip ?? 'unknown', userAgent: req.headers['user-agent'] });
     res.cookie(SESSION_COOKIE, token, { ...this.cookieOptions(), expires: expiresAt });
-    return user;
+    return this.toMe(user);
   }
 
   @Post('logout')
@@ -36,8 +38,8 @@ export class AuthController {
   }
 
   @Get('me')
-  me(@CurrentAuth() auth: AuthContext): MeResponse {
-    return auth.user;
+  me(@CurrentAuth() auth: AuthContext): Promise<MeResponse> {
+    return this.toMe(auth.user);
   }
 
   @Post('change-password')
@@ -50,6 +52,10 @@ export class AuthController {
     await this.auth.changePassword(auth, body);
     res.clearCookie(SESSION_COOKIE, this.cookieOptions());
     return { reloginRequired: true };
+  }
+
+  private async toMe(user: AuthUser): Promise<MeResponse> {
+    return { ...user, permissions: [...(await this.access.globalPermissions(user))].sort() };
   }
 
   private cookieOptions() {

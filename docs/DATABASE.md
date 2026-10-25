@@ -4,7 +4,7 @@ Dokumen ini adalah ERD konseptual. Implementasi detail dituangkan ke Prisma sche
 
 ## 1. Core Tables
 
-Dibuat di Milestone 1 (D-028). Semua `id` adalah UUID v7 `CHAR(36)` (D-027). Timestamp `DATETIME(3)` UTC. Foreign key memakai `ON DELETE RESTRICT`; data inti tidak di-hard-delete.
+Dibuat di Milestone 1 (D-028); tabel role ditambahkan oleh migration `dynamic_roles` (D-035). Semua `id` adalah UUID v7 `CHAR(36)` (D-027). Timestamp `DATETIME(3)` UTC. Foreign key memakai `ON DELETE RESTRICT`; data inti tidak di-hard-delete.
 
 ### users
 
@@ -13,7 +13,7 @@ Dibuat di Milestone 1 (D-028). Semua `id` adalah UUID v7 `CHAR(36)` (D-027). Tim
 - email — dinormalisasi trim + huruf kecil; unique
 - password_hash — scrypt (D-030), tidak pernah dikirim ke client
 - is_active — default true; nonaktivasi menggantikan delete
-- is_system_admin — default false (D-026)
+- is_system_admin — default false; super admin (D-035)
 - created_at
 - updated_at
 
@@ -58,12 +58,49 @@ Kolom identitas mengikuti PRD §3 (data minimum, wajib diisi):
 
 `status` dan `planned_finish_date` belum dibuat (OD-007, Milestone 3).
 
+### roles
+
+- id
+- code — unique, huruf besar
+- name
+- description nullable
+- scope — GLOBAL | PROJECT
+- is_system — role bawaan FILLER/REVIEWER/MANAGER/ADMIN; kode, scope, status terkunci
+- is_active — role nonaktif tidak memberi permission
+- created_at
+- updated_at
+
+Role tidak di-hard-delete.
+
+### role_permissions
+
+- role_id → roles
+- permission_code — kode dari katalog `packages/shared` (`PERMISSIONS`), harus sesuai scope role
+- created_at
+
+Primary key: `role_id + permission_code`.
+
+### user_global_roles
+
+Penugasan role administrasi (scope GLOBAL) tanpa proyek.
+
+- id
+- user_id → users
+- role_id → roles
+- created_by nullable → users
+- created_at
+- updated_at
+- revoked_at nullable
+- revoked_by nullable → users
+
+Unique: `user_id + role_id` (memberi ulang mengaktifkan baris yang sama).
+
 ### project_users
 
 - id
 - project_id → projects
 - user_id → users
-- role — FILLER | REVIEWER | MANAGER | ADMIN
+- role_id → roles (scope PROJECT)
 - created_by nullable → users
 - created_at
 - updated_at
@@ -73,7 +110,7 @@ Kolom identitas mengikuti PRD §3 (data minimum, wajib diisi):
 Unique:
 - project_id + user_id
 
-Index: `user_id`.
+Index: `user_id`, `role_id`.
 
 Membership aktif = `revoked_at IS NULL`.
 

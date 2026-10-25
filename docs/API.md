@@ -13,7 +13,7 @@ Base:
 ```text
 POST /auth/login            { email, password }  -> set cookie, user aktif
 POST /auth/logout           -> cabut session saat ini, hapus cookie
-GET  /auth/me               -> { id, name, email, isSystemAdmin }
+GET  /auth/me               -> { id, name, email, isSystemAdmin, permissions }  (permission global efektif)
 POST /auth/change-password  { currentPassword, newPassword } -> cabut semua session, wajib login ulang
 ```
 
@@ -26,15 +26,15 @@ POST /auth/change-password  { currentPassword, newPassword } -> cabut semua sess
 ## 2. Projects (membership aktif)
 
 ```text
-GET /projects              -> proyek dengan membership aktif user + role
-GET /projects/:projectId   -> identitas proyek (izin project.read)
+GET /projects              -> [{ id, code, projectName, role: { id, code, name } | null }]
+GET /projects/:projectId   -> identitas proyek (permission project.read)
 ```
 
-Tanpa membership aktif: `404`, termasuk system admin (D-033). Create/update proyek dikerjakan di Milestone 3.
+Super admin melihat semua proyek (`role: null` bila tanpa membership). User lain tanpa membership aktif: `404` (D-033). Create/update proyek dikerjakan di Milestone 3.
 
-## 3. Administrasi (system admin saja)
+## 3. Manajemen Akses
 
-Semua endpoint `/admin/*` mengembalikan `403` untuk non-system-admin.
+Permission per endpoint: `docs/PERMISSIONS.md` §5. Tanpa permission: `403`.
 
 ### Users
 
@@ -47,25 +47,43 @@ POST  /admin/users/:userId/activate      { reason? }
 POST  /admin/users/:userId/deactivate    { reason? }  -> cabut semua session
 POST  /admin/users/:userId/grant-system-admin   { reason? }
 POST  /admin/users/:userId/revoke-system-admin  { reason? }
+GET   /admin/users/:userId/access        -> { user, globalRoles, projects }
+POST  /admin/users/:userId/global-roles  { roleId }
+DELETE /admin/users/:userId/global-roles/:roleId
 ```
 
 - response user: `{ id, name, email, isActive, isSystemAdmin, createdAt, updatedAt }`; tanpa password hash/token
 - email duplikat: `409`
-- menonaktifkan/mencabut system admin aktif terakhir: `409`
+- menonaktifkan/mencabut super admin aktif terakhir: `409`
 - `pageSize` maksimal 100
+
+### Roles
+
+```text
+GET   /admin/permissions                 -> katalog PERMISSIONS
+GET   /admin/roles?scope=PROJECT|GLOBAL  -> RoleDto[]
+POST  /admin/roles                       { code, name, description?, scope }
+GET   /admin/roles/:roleId
+PATCH /admin/roles/:roleId               { code?, name?, description?, isActive? }
+PUT   /admin/roles/:roleId/permissions   { permissionCodes }
+```
+
+- `RoleDto`: `{ id, code, name, description, scope, isSystem, isActive, permissionCodes, createdAt, updatedAt }`
+- kode duplikat: `409`; kode/status role sistem diubah: `400`; permission tidak dikenal/beda scope: `400`
 
 ### Projects & Members
 
 ```text
 GET    /admin/projects?search=                       -> [{ id, code, projectName }]
 GET    /admin/projects/:projectId/members            -> { project, members: [{ userId, name, email, isActive, role, createdAt }] }
-POST   /admin/projects/:projectId/members            { userId, role }
-PATCH  /admin/projects/:projectId/members/:userId    { role }
+POST   /admin/projects/:projectId/members            { userId, roleId }
+PATCH  /admin/projects/:projectId/members/:userId    { roleId }
 DELETE /admin/projects/:projectId/members/:userId    { reason? }
 ```
 
-- hanya metadata minimum (D-026)
-- user harus aktif; membership aktif ganda: `409`
+- hanya metadata minimum; `role` = `{ id, code, name, isActive }`
+- user harus aktif; role harus scope PROJECT dan aktif; membership aktif ganda: `409`
+- pemegang delegasi tidak boleh mengubah akses dirinya sendiri: `403`
 - DELETE mencabut membership (`revoked_at`), tidak menghapus user atau histori; menambah ulang mengaktifkan baris yang sama
 
 ## 4. Documents

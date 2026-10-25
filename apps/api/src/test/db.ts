@@ -1,4 +1,5 @@
 import { PrismaService } from '../prisma/prisma.service';
+import { ensureSystemRoles } from '../admin/admin-access.service';
 import { hashPassword } from '../auth/password';
 import { assertTestDatabase } from './test-database';
 
@@ -8,7 +9,7 @@ export function createTestPrisma(): PrismaService {
   return new PrismaService(url);
 }
 
-const TABLES = ['audit_logs', 'project_users', 'auth_sessions', 'projects', 'users'];
+const TABLES = ['audit_logs', 'user_global_roles', 'project_users', 'role_permissions', 'roles', 'auth_sessions', 'projects', 'users'];
 
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   assertTestDatabase(process.env.DATABASE_URL ?? '');
@@ -18,6 +19,11 @@ export async function resetDatabase(prisma: PrismaService): Promise<void> {
     for (const table of TABLES) await tx.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\``);
     await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS = 1');
   });
+  await ensureSystemRoles(prisma);
+}
+
+export async function roleId(prisma: PrismaService, code: string): Promise<string> {
+  return (await prisma.role.findUniqueOrThrow({ where: { code }, select: { id: true } })).id;
 }
 
 export const TEST_PASSWORD = 'rahasia-test-123';

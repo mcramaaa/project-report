@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { MyProjectDto, ProjectDto } from '@laporan-proyek/shared';
+import type { AuthUser } from '../auth/auth-context';
 import { PrismaService } from '../prisma/prisma.service';
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
@@ -8,14 +9,19 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Only projects where the user has an active membership. */
-  async listMine(userId: string): Promise<MyProjectDto[]> {
-    const rows = await this.prisma.projectUser.findMany({
-      where: { userId, revokedAt: null },
-      select: { role: true, project: { select: { id: true, code: true, projectName: true } } },
-      orderBy: { project: { code: 'asc' } },
+  /** Projects with an active membership; a super admin sees every project (D-035). */
+  async listMine(user: AuthUser): Promise<MyProjectDto[]> {
+    const projects = await this.prisma.project.findMany({
+      where: user.isSystemAdmin ? {} : { members: { some: { userId: user.id, revokedAt: null } } },
+      select: {
+        id: true,
+        code: true,
+        projectName: true,
+        members: { where: { userId: user.id, revokedAt: null }, select: { role: { select: { id: true, code: true, name: true } } } },
+      },
+      orderBy: { code: 'asc' },
     });
-    return rows.map((row) => ({ ...row.project, role: row.role }));
+    return projects.map(({ members, ...project }) => ({ ...project, role: members[0]?.role ?? null }));
   }
 
   /** Caller must already be authorized for the project (ProjectPermissionGuard). */

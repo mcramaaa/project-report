@@ -1,5 +1,23 @@
 # UI / UX Flow
 
+## Arah visual aplikasi
+
+Acuan: OLMAT v2 Backoffice (`olmat-v2/olmat-backoffice/docs/STYLE-GUIDE.md`
+dan `src/styles/tokens.css` pada workspace referensi). Implementasi mandiri
+di aplikasi ini; build tidak bergantung pada direktori OLMAT.
+
+- Latar ice blue `#f5f8fc`, panel putih, teks slate, aksen biru `#2563eb`.
+- Border tipis, radius 10–18px, shadow ringan; font sistem tanpa unduhan font.
+- Sidebar terang pada desktop (mulai 1024px), topbar dengan breadcrumb dan akun.
+- Pada mobile: drawer native dialog, navigasi bawah, tabel user/anggota menjadi
+  kartu berlabel di bawah 768px. Focus keyboard, skip link, dan reduced motion tersedia.
+- Login dua kolom pada desktop dan satu kolom pada mobile, dengan toggle password.
+- Komponen tombol, input, badge, alert, loading, empty state memakai token yang sama.
+- Daftar proyek menggunakan kartu dari data API; tidak menampilkan progres/statistik
+  yang belum tersedia. Navigasi hanya menuju fitur yang sudah diimplementasikan.
+- Halaman profil memisahkan identitas akun dan penggantian password.
+- Visibilitas menu mengikuti akun; authorization tetap diperiksa di backend.
+
 ## 1. Sidebar
 
 ```text
@@ -41,26 +59,29 @@ Audit Log
 Pengaturan
 ```
 
-## 1a. Akun & Administrasi (Milestone 2)
-
-Halaman:
+## 1a. Akun & Manajemen Akses (Milestone 2, pola olmat-backoffice)
 
 | URL | Untuk | Isi |
 |---|---|---|
 | `/login` | publik | email + password; pesan gagal generik; info bila baru ganti password |
-| `/` | user login | daftar proyek dengan membership aktif + role |
-| `/projects/:projectId` | anggota proyek | identitas proyek |
+| `/` | user login | proyek yang dapat diakses + role (super admin: semua proyek) |
+| `/projects/:projectId` | `project.read` | identitas proyek |
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
-| `/admin/users` | system admin | cari, pagination, buat user, ubah nama/email, aktif/nonaktif, beri/cabut system admin |
-| `/admin/projects` | system admin | daftar proyek (kode, nama) untuk memilih pengelolaan anggota |
-| `/admin/projects/:projectId/members` | system admin | daftar anggota, tambah user aktif, ubah role, cabut akses |
+| `/admin/users` | `users.read` | cari, pagination; dengan `users.manage`: buat, ubah, aktif/nonaktif; super admin: beri/cabut super admin |
+| `/admin/users/:userId` | `assignments.read` | role administrasi user dan daftar proyek yang dapat diaksesnya; tambah/ubah/cabut akses proyek |
+| `/admin/roles` | `roles.read` | kartu role proyek & role administrasi; tambah role |
+| `/admin/roles/:roleId` | `roles.read` | identitas role, permission per modul dengan pencarian dan pilih grup |
+| `/admin/projects` | `assignments.read` | daftar proyek (kode, nama) |
+| `/admin/projects/:projectId/members` | `assignments.read` | anggota proyek; dengan `assignments.manage`: tambah, ubah role, cabut |
 
 Aturan UX:
 
-- header menampilkan nama user, tautan Profil, Logout; menu Administrasi hanya untuk system admin (kenyamanan saja, backend tetap memeriksa)
+- menu "Manajemen akses" (Pengguna, Role & permission, Akses proyek) dan tab di halaman admin hanya tampil sesuai permission; backend tetap memeriksa
 - setiap daftar memiliki loading, empty state, dan pesan error
 - form menampilkan pesan validasi per field / pesan error dari server
-- konfirmasi wajib sebelum menonaktifkan user, mencabut system admin, atau mencabut membership
+- konfirmasi wajib sebelum menonaktifkan user, mencabut super admin/role/akses, dan menyimpan permission role
+- pemberian akses proyek membutuhkan checklist "sudah memeriksa" dan menampilkan permission role yang dipilih
+- kontrol akses diri sendiri dinonaktifkan untuk pemegang delegasi
 - session tidak valid saat navigasi: diarahkan ke `/login`
 
 ## 2. Dashboard

@@ -25,11 +25,11 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   return (
     <>
       <PageTitle subtitle={p.code}>{p.projectName}</PageTitle>
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 rounded-md border border-slate-200 bg-white p-4 sm:grid-cols-[12rem_1fr]">
+      <dl className="panel detail-list">
         {rows.map(([label, value]) => (
-          <div key={label} className="contents">
-            <dt className="text-sm text-slate-500">{label}</dt>
-            <dd className="text-sm text-slate-900">{value}</dd>
+          <div key={label} className="min-w-0">
+            <dt >{label}</dt>
+            <dd >{value}</dd>
           </div>
         ))}
       </dl>

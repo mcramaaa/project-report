@@ -38,6 +38,8 @@ export interface MeResponse {
   name: string;
   email: string;
   isSystemAdmin: boolean;
+  /** Effective global permissions (all of them for a super admin). UX only; the API checks every call. */
+  permissions: string[];
 }
 
 export const LOGIN_FAILED_MESSAGE = 'Email atau password salah.';

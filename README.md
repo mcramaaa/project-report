@@ -82,23 +82,26 @@ Seed hanya membuat akun bila email belum ada. Akun yang sudah ada tidak diubah, 
 
 ### Mencoba alur user & role
 
-| URL | Siapa | Fungsi |
-|---|---|---|
-| http://localhost:3000/login | semua | login |
-| http://localhost:3000/ | user login | proyek dengan membership aktif |
-| http://localhost:3000/profile | user login | ganti password (login ulang setelahnya) |
-| http://localhost:3000/admin/users | system admin | buat, cari, ubah, aktif/nonaktif user, beri/cabut system admin |
-| http://localhost:3000/admin/projects | system admin | pilih proyek → kelola anggota & role |
+| URL | Fungsi |
+|---|---|
+| http://localhost:3000/login | login |
+| http://localhost:3000/ | proyek yang dapat diakses (super admin: semua) |
+| http://localhost:3000/profile | ganti password (login ulang setelahnya) |
+| http://localhost:3000/admin/users | Pengguna: buat, cari, ubah, aktif/nonaktif; tombol **Akses** per user |
+| http://localhost:3000/admin/users/:id | role administrasi + proyek yang dapat diakses user |
+| http://localhost:3000/admin/roles | Role & permission: role proyek dan role administrasi |
+| http://localhost:3000/admin/projects | Akses proyek: anggota & role per proyek |
 
 Langkah singkat:
 
-1. `npm run db:seed` lalu `npm run db:seed:dev` (proyek contoh DEV-001).
-2. Login sebagai system admin dari `SEED_ADMIN_EMAIL`.
-3. Buat user di Admin: User.
-4. Tambahkan user itu ke DEV-001 di Admin: Anggota Proyek dengan role tertentu.
-5. Login sebagai user tersebut: proyek DEV-001 tampil di Proyek Saya.
+1. `npm run db:seed` (super admin dari `SEED_ADMIN_*` + 4 role sistem) lalu `npm run db:seed:dev` (proyek contoh DEV-001).
+2. Login sebagai super admin.
+3. Pengguna → Tambah user.
+4. Klik **Akses** pada user tersebut → Tambah akses proyek (DEV-001, role misalnya Filler).
+5. Opsional: Role & permission → buat role administrasi (cakupan Global), pilih permission, lalu berikan ke user dari halaman Akses untuk mendelegasikan pengelolaan.
+6. Login sebagai user tersebut: hanya proyek dan menu sesuai permission yang tampil.
 
-System admin tidak otomatis melihat data proyek; tambahkan dirinya sebagai anggota bila perlu. Izin lengkap: `docs/PERMISSIONS.md`.
+Model lengkap: `docs/PERMISSIONS.md`.
 
 ### Volume MySQL lama
 
@@ -131,4 +134,4 @@ Jangan mengedit migration yang sudah diterapkan.
 
 ## Status
 
-Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), dan Milestone 2 (login/session, user management, role proyek, audit) selesai. Belum ada fitur bisnis proyek (RAB, progres, laporan). Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
+Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), dan Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit) selesai. Belum ada fitur bisnis proyek (RAB, progres, laporan). Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".

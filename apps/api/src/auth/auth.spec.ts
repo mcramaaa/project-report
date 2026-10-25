@@ -27,7 +27,7 @@ describe('login', () => {
     const res = await c.login('  BUDI@Example.com ', TEST_PASSWORD);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ id: expect.any(String), name: 'Budi', email: 'budi@example.com', isSystemAdmin: false });
+    expect(res.body).toEqual({ id: expect.any(String), name: 'Budi', email: 'budi@example.com', isSystemAdmin: false, permissions: [] });
     const cookie = res.setCookie.find((v) => v.startsWith('lp_session='))!;
     expect(cookie).toMatch(/HttpOnly/i);
     expect(cookie).toMatch(/SameSite=Lax/i);

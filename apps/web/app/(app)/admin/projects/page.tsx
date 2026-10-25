@@ -1,27 +1,32 @@
+import { Icon } from '@/components/icon';
 import type { AdminProjectDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { Alert, EmptyState, PageTitle } from '@/components/ui';
-import { serverGet } from '@/lib/server-api';
+import { AccessTabs } from '@/components/access-tabs';
+import { requireMe, serverGet } from '@/lib/server-api';
 
 export default async function AdminProjectsPage() {
-  const { data: projects } = await serverGet<AdminProjectDto[]>('/admin/projects');
+  const [me, { data: projects }] = await Promise.all([requireMe(), serverGet<AdminProjectDto[]>('/admin/projects')]);
 
   return (
     <>
-      <PageTitle subtitle="Pilih proyek untuk mengelola anggota dan role. Halaman ini tidak memberi akses ke data proyek.">
-        Anggota Proyek
+      <PageTitle subtitle="Pilih proyek untuk melihat dan mengatur siapa saja yang dapat mengaksesnya. Halaman ini tidak membuka data proyek.">
+        Akses proyek
       </PageTitle>
+      <AccessTabs me={me} active="projects" />
       {!projects ? (
         <Alert>Daftar proyek tidak dapat dimuat.</Alert>
       ) : projects.length === 0 ? (
-        <EmptyState>Belum ada proyek. Untuk development jalankan `npm run db:seed:dev`.</EmptyState>
+        <EmptyState>Belum ada proyek yang tersedia untuk dikelola.</EmptyState>
       ) : (
-        <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+        <ul className="project-grid">
           {projects.map((p) => (
-            <li key={p.id}>
-              <Link href={`/admin/projects/${p.id}/members`} className="block px-4 py-3 hover:bg-slate-50">
+            <li key={p.id} className="min-w-0">
+              <Link href={`/admin/projects/${p.id}/members`} className="panel project-card h-full">
+                <span className="metric-icon"><Icon name="users" /></span>
+                <h2>{p.projectName}</h2>
                 <span className="font-mono text-xs text-slate-500">{p.code}</span>
-                <span className="ml-3 text-sm font-medium text-slate-900">{p.projectName}</span>
+                <div className="project-card-footer"><span>Lihat anggota & role</span><Icon name="arrow" size={17} /></div>
               </Link>
             </li>
           ))}

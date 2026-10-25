@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AddMemberInput, AdminProjectDto, ProjectMemberDto, ProjectMembersResponse, ProjectRole } from '@laporan-proyek/shared';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { AddMemberInput, AdminProjectDto, ProjectMemberDto, ProjectMembersResponse } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
+import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
 import { isUniqueViolation } from '../prisma/errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,6 +9,19 @@ import { PrismaService } from '../prisma/prisma.service';
 /** Minimum project metadata for system admins (D-026). */
 const PROJECT_META_SELECT = { id: true, code: true, projectName: true } as const satisfies Prisma.ProjectSelect;
 const ALREADY_MEMBER = 'User sudah menjadi anggota aktif proyek ini.';
+const ROLE_SUMMARY_SELECT = { id: true, code: true, name: true, isActive: true } as const satisfies Prisma.RoleSelect;
+
+/** Delegates may not grant, change, or revoke their own project access (D-035). */
+function assertNotSelf(actor: AuthUser, userId: string): void {
+  if (actor.id === userId && !actor.isSystemAdmin) throw new ForbiddenException('Anda tidak dapat mengubah akses proyek Anda sendiri.');
+}
+
+async function findAssignableProjectRole(tx: Prisma.TransactionClient, roleId: string) {
+  const role = await tx.role.findUnique({ where: { id: roleId }, select: { ...ROLE_SUMMARY_SELECT, scope: true } });
+  if (!role || role.scope !== 'PROJECT') throw new BadRequestException('Role proyek tidak ditemukan.');
+  if (!role.isActive) throw new BadRequestException('Role nonaktif tidak dapat ditugaskan.');
+  return role;
+}
 
 @Injectable()
 export class AdminProjectsService {
@@ -27,7 +41,7 @@ export class AdminProjectsService {
     const project = await this.findProject(this.prisma, projectId);
     const rows = await this.prisma.projectUser.findMany({
       where: { projectId, revokedAt: null },
-      select: { role: true, createdAt: true, user: { select: { id: true, name: true, email: true, isActive: true } } },
+      select: { role: { select: ROLE_SUMMARY_SELECT }, createdAt: true, user: { select: { id: true, name: true, email: true, isActive: true } } },
       orderBy: { user: { name: 'asc' } },
     });
     const members: ProjectMemberDto[] = rows.map((row) => ({
@@ -41,10 +55,12 @@ export class AdminProjectsService {
     return { project, members };
   }
 
-  async addMember(actorId: string, projectId: string, input: AddMemberInput): Promise<void> {
+  async addMember(actor: AuthUser, projectId: string, input: AddMemberInput): Promise<void> {
+    assertNotSelf(actor, input.userId);
     try {
       await this.prisma.$transaction(async (tx) => {
         await this.findProject(tx, projectId);
+        const role = await findAssignableProjectRole(tx, input.roleId);
         const user = await tx.user.findUnique({ where: { id: input.userId }, select: { isActive: true } });
         if (!user) throw new NotFoundException('User tidak ditemukan.');
         if (!user.isActive) throw new BadRequestException('User nonaktif tidak dapat ditambahkan ke proyek.');
@@ -59,19 +75,19 @@ export class AdminProjectsService {
           // Re-activate the same row (unique project_id + user_id); conditional so concurrent re-adds cannot both win.
           const { count } = await tx.projectUser.updateMany({
             where: { id: existing.id, revokedAt: { not: null } },
-            data: { role: input.role, revokedAt: null, revokedBy: null },
+            data: { roleId: role.id, revokedAt: null, revokedBy: null },
           });
           if (count === 0) throw new ConflictException(ALREADY_MEMBER);
         } else {
-          await tx.projectUser.create({ data: { projectId, userId: input.userId, role: input.role, createdBy: actorId } });
+          await tx.projectUser.create({ data: { projectId, userId: input.userId, roleId: role.id, createdBy: actor.id } });
         }
         await writeAudit(tx, {
-          actorId,
+          actorId: actor.id,
           action: 'ADD_PROJECT_MEMBER',
           entityType: 'PROJECT_MEMBER',
           entityId: input.userId,
           projectId,
-          newValue: { userId: input.userId, role: input.role, reactivated: Boolean(existing) },
+          newValue: { userId: input.userId, roleId: role.id, roleCode: role.code, reactivated: Boolean(existing) },
         });
       });
     } catch (err) {
@@ -80,39 +96,42 @@ export class AdminProjectsService {
     }
   }
 
-  async changeRole(actorId: string, projectId: string, userId: string, role: ProjectRole): Promise<void> {
+  async changeRole(actor: AuthUser, projectId: string, userId: string, roleId: string): Promise<void> {
+    assertNotSelf(actor, userId);
     await this.prisma.$transaction(async (tx) => {
       const membership = await this.findActiveMembership(tx, projectId, userId);
-      if (membership.role === role) return;
-      await tx.projectUser.update({ where: { id: membership.id }, data: { role } });
+      if (membership.role.id === roleId) return;
+      const role = await findAssignableProjectRole(tx, roleId);
+      await tx.projectUser.update({ where: { id: membership.id }, data: { roleId: role.id } });
       await writeAudit(tx, {
-        actorId,
+        actorId: actor.id,
         action: 'CHANGE_PROJECT_MEMBER_ROLE',
         entityType: 'PROJECT_MEMBER',
         entityId: userId,
         projectId,
-        oldValue: { role: membership.role },
-        newValue: { role },
+        oldValue: { roleId: membership.role.id, roleCode: membership.role.code },
+        newValue: { roleId: role.id, roleCode: role.code },
       });
     });
   }
 
   /** Soft revoke: the user and history stay; access is lost on the next request. */
-  async revokeMember(actorId: string, projectId: string, userId: string, reason?: string): Promise<void> {
+  async revokeMember(actor: AuthUser, projectId: string, userId: string, reason?: string): Promise<void> {
+    assertNotSelf(actor, userId);
     await this.prisma.$transaction(async (tx) => {
       const membership = await this.findActiveMembership(tx, projectId, userId);
       const { count } = await tx.projectUser.updateMany({
         where: { id: membership.id, revokedAt: null },
-        data: { revokedAt: new Date(), revokedBy: actorId },
+        data: { revokedAt: new Date(), revokedBy: actor.id },
       });
       if (count === 0) throw new NotFoundException('Anggota proyek tidak ditemukan.');
       await writeAudit(tx, {
-        actorId,
+        actorId: actor.id,
         action: 'REVOKE_PROJECT_MEMBER',
         entityType: 'PROJECT_MEMBER',
         entityId: userId,
         projectId,
-        oldValue: { userId, role: membership.role },
+        oldValue: { userId, roleId: membership.role.id, roleCode: membership.role.code },
         reason,
       });
     });
@@ -127,7 +146,7 @@ export class AdminProjectsService {
   private async findActiveMembership(tx: Prisma.TransactionClient, projectId: string, userId: string) {
     const membership = await tx.projectUser.findUnique({
       where: { projectId_userId: { projectId, userId } },
-      select: { id: true, role: true, revokedAt: true },
+      select: { id: true, revokedAt: true, role: { select: ROLE_SUMMARY_SELECT } },
     });
     if (!membership || membership.revokedAt) throw new NotFoundException('Anggota proyek tidak ditemukan.');
     return membership;
