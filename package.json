@@ -34,6 +34,7 @@
     "@types/node": "^24.19.2",
     "concurrently": "^10.0.6",
     "eslint": "^9.39.5",
+    "prettier": "3.9.10",
     "prisma": "^7.10.1",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
