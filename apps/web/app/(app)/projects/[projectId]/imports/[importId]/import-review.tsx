@@ -392,7 +392,7 @@ function RowReview({
                     )
                   }
                 >
-                  Pakai {c.code} {c.origin === 'AI' ? '(AI)' : ''}
+                  {c.analysisVersionId ? 'Salin' : 'Pakai'} {c.code} {c.origin === 'AI' ? '(AI)' : ''}
                 </Button>
               ))}
               {row.sourceUnitPrice && (

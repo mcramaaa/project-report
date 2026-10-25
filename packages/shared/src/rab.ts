@@ -131,7 +131,8 @@ export interface RabRowDto {
   weight: string | null;
   /** MANUAL | ANALYSIS | SOURCE_OVERRIDE | DIRECT (D-051). */
   priceSource: 'MANUAL' | 'ANALYSIS' | 'SOURCE_OVERRIDE' | 'DIRECT';
-  analysis: { analysisId: string; versionId: string; code: string | null; name: string } | null;
+  /** `rabVersionId` owns the analysis; it differs from the row's version only on legacy links (D-057). */
+  analysis: { analysisId: string; versionId: string; rabVersionId: string; code: string | null; name: string } | null;
   priceNote: string | null;
 }
 

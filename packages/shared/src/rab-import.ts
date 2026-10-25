@@ -254,6 +254,21 @@ export interface DocumentDto {
   rabSheetCandidates: string[];
 }
 
+/** RAB version owning an analysis/price package (D-056, D-057). */
+export interface PackageOwnerDto {
+  id: string;
+  versionType: string;
+  revisionNumber: number;
+  status: string;
+  label: string;
+}
+
+/** Provenance of a copy from another version's package (D-057). */
+export interface CopiedFromDto {
+  analysisVersionId: string;
+  rabVersion: PackageOwnerDto;
+}
+
 export interface AhspAnalysisSummaryDto {
   id: string;
   code: string | null;
@@ -271,7 +286,9 @@ export interface AhspAnalysisSummaryDto {
     components: number;
     rabItems: number;
     usedAsSub: number;
-    source: { importId: string; versionType: string; documents: string[] };
+    /** Import that created it (a copy made by "Buat versi" has none). */
+    source: { importId: string; versionType: string; documents: string[] } | null;
+    copiedFrom: CopiedFromDto | null;
   };
 }
 
@@ -280,6 +297,7 @@ export interface AhspAnalysisDetailDto {
   code: string | null;
   name: string;
   unit: string | null;
+  rabVersion: PackageOwnerDto;
   versions: {
     id: string;
     versionNumber: number;
@@ -296,6 +314,7 @@ export interface AhspAnalysisDetailDto {
     priceList: { id: string; versionNumber: number; location: string | null; period: string | null };
     sourceLocator: unknown;
     createdAt: string;
+    copiedFrom: CopiedFromDto | null;
     components: {
       id: string;
       category: AhspCategory;
@@ -314,10 +333,11 @@ export interface AhspAnalysisDetailDto {
 
 export interface PriceListDto {
   id: string;
+  rabVersion: PackageOwnerDto;
   versionNumber: number;
   location: string | null;
   period: string | null;
   createdAt: string;
   sourceImportId: string | null;
-  items: { id: string; name: string; unit: string | null; price: string; sourceLocator: unknown }[];
+  items: { id: string; name: string; unit: string | null; price: string; sourceLocator: unknown; copiedFrom: { priceItemId: string; rabVersion: PackageOwnerDto } | null }[];
 }

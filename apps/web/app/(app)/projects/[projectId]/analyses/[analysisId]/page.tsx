@@ -7,10 +7,15 @@ import { CATEGORY_LABEL, VERSION_LABEL } from '@/lib/import-ui';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
-export default async function AnalysisPage({ params }: { params: Promise<{ projectId: string; analysisId: string }> }) {
-  const { projectId, analysisId } = await params;
+/** An analysis is read in the context of the RAB version owning its package (D-056); `version` is required. */
+export default async function AnalysisPage({ params, searchParams }: { params: Promise<{ projectId: string; analysisId: string }>; searchParams: Promise<{ version?: string }> }) {
+  const [{ projectId, analysisId }, { version }] = await Promise.all([params, searchParams]);
+  if (!version) notFound();
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, detail] = await Promise.all([serverGet<ProjectDto>(base), serverGet<AhspAnalysisDetailDto>(`${base}/analyses/${encodeURIComponent(analysisId)}`)]);
+  const [{ status, data: project }, detail] = await Promise.all([
+    serverGet<ProjectDto>(base),
+    serverGet<AhspAnalysisDetailDto>(`${base}/rab-versions/${encodeURIComponent(version)}/analyses/${encodeURIComponent(analysisId)}`),
+  ]);
   if (status === 404 || detail.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const a = detail.data;
@@ -19,7 +24,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ proje
     <>
       <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
       <ProjectTabs projectId={project.id} active="analyses" permissions={project.permissions} />
-      <Link href={`${base}/analyses`} className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
+      <Link href={`${base}/analyses?version=${encodeURIComponent(version)}`} className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
         ← Daftar analisa
       </Link>
       {!a ? (
@@ -29,15 +34,26 @@ export default async function AnalysisPage({ params }: { params: Promise<{ proje
           <h2 className="text-lg font-semibold">
             <span className="font-mono">{a.code}</span> {a.name}
           </h2>
+          <p className="text-sm text-slate-600">Paket {a.rabVersion.label} — analisa, harga, dan subanalisa di bawah milik versi RAB ini saja.</p>
           {a.versions.map((v) => (
             <section key={v.id} className="space-y-3" aria-label={`Versi ${v.versionNumber}`}>
               <div className="panel rab-header">
                 <div>
                   <h3 className="font-semibold">
-                    Versi {v.versionNumber} <Badge tone="green">Resmi</Badge>
+                    Versi {v.versionNumber} <Badge tone="green">Resmi</Badge>{' '}
+                    {v.copiedFrom ? <Badge tone="blue">Warisan {v.copiedFrom.rabVersion.label}</Badge> : <Badge>Sumber baru</Badge>}
                   </h3>
+                  {v.copiedFrom && (
+                    <p className="text-sm text-slate-600">
+                      Disalin dari{' '}
+                      <Link className="link-button" href={`${base}/rab/${v.copiedFrom.rabVersion.id}`}>
+                        paket {v.copiedFrom.rabVersion.label}
+                      </Link>
+                      ; perubahan di sini tidak mengubah asalnya.
+                    </p>
+                  )}
                   <p className="text-sm text-slate-600">
-                    Daftar harga v{v.priceList.versionNumber}
+                    Daftar harga paket {a.rabVersion.label}
                     {v.priceList.location && ` · ${v.priceList.location}`}
                     {v.priceList.period && ` · ${v.priceList.period}`}
                   </p>
@@ -81,7 +97,7 @@ export default async function AnalysisPage({ params }: { params: Promise<{ proje
                         <td className="num">{formatRounded(c.amount, 2)}</td>
                         <td className="text-xs">
                           {c.subAnalysis ? (
-                            <Link className="link-button" href={`${base}/analyses/${c.subAnalysis.analysisId}`}>
+                            <Link className="link-button" href={`${base}/analyses/${c.subAnalysis.analysisId}?version=${encodeURIComponent(version)}`}>
                               Subanalisa {c.subAnalysis.code} ({c.subAnalysis.basis === 'EXACT' ? 'eksak' : 'dibulatkan'})
                             </Link>
                           ) : c.priceItem ? (

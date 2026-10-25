@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildDraft, DraftInputError, type DraftContext } from './build-draft';
-import { GUIDE_VERSION } from './guide/rab-import-guide';
+import { GUIDE_DOC_VERSION, GUIDE_VERSION } from './guide/rab-import-guide';
 import { analysisBlock, rabSheet, recap, recapLookup, workbookOf, type SheetSpec } from './test-workbook';
 import { parseFormula } from './workbook/formula';
 
@@ -396,3 +398,10 @@ describe('acceptance gaps (ACCEPTANCE_TESTS K)', () => {
 });
 
 const analysisCode = (draft: ReturnType<typeof buildDraft>, key: string | null | undefined) => draft.analyses.find((a) => a.key === key)?.code;
+
+describe('import guide', () => {
+  it('runtime instruction version matches docs/RAB_IMPORT_GUIDE.md', () => {
+    const doc = readFileSync(resolve(__dirname, '../../../../docs/RAB_IMPORT_GUIDE.md'), 'utf8');
+    expect(doc.match(/^Versi panduan: (\d+)/m)?.[1]).toBe(String(GUIDE_DOC_VERSION));
+  });
+});

@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs';
-import type { RabImportDetailDto, RabVersionType } from '@laporan-proyek/shared';
+import { rabVersionLabel, type RabImportDetailDto, type RabVersionType } from '@laporan-proyek/shared';
+import { checkPackageIsolation, isIsolated, type PackageIsolation } from '../ahsp/package';
 import type { AuthUser } from '../auth/auth-context';
 import { DocumentsService } from '../documents/documents.service';
 import type { RabImportsService } from '../imports/rab-imports.service';
@@ -12,12 +13,14 @@ import type { RabService } from '../rab/rab.service';
 import { parseSampleProject, parseSampleWorkbook } from './sample-rab';
 
 /**
- * Development sample (D-053): project SDN2-SERANGAN-2026-AHSP built through the regular import flow —
+ * Development sample (D-053, D-056–D-058): project SDN2-SERANGAN-2026-PAKET built through the regular flows —
  * upload → draft → reviewer decisions (recorded explicitly as the seed admin) → import approval → RAB
- * approval — for Kontrak (workbook 00, full formula chain) and MC-0 (workbook 04, values-only recap).
+ * approval — for Penawaran/Kontrak (workbook 00, full package) and MC-0 (workbook 04, values-only recap, so its
+ * package is inherited from Kontrak by copy), then an Addendum through "Buat versi" (copy of MC-0 and its
+ * package, left DRAFT: there is no office Addendum document). Verifies every package is isolated.
  * Resumable: every step checks what already exists. Stops before approving when reconciliation fails.
  */
-export const AHSP_SAMPLE_CODE = 'SDN2-SERANGAN-2026-AHSP';
+export const AHSP_SAMPLE_CODE = 'SDN2-SERANGAN-2026-PAKET';
 
 export interface AhspSampleServices {
   prisma: PrismaService;
@@ -32,13 +35,25 @@ export interface AhspSampleReport {
   steps: string[];
   contract: VersionReport;
   mc0: VersionReport;
+  addendum: PackageReport;
 }
 
-interface VersionReport {
-  importId: string;
+/** What a version's own package holds and where its copies came from. */
+export interface PackageReport {
   rabVersionId: string;
+  status: string;
   realCost: string;
   rounded: string;
+  packageAnalyses: number;
+  packageComponents: number;
+  packagePrices: number;
+  /** Copies by the version they were copied from, e.g. { Kontrak: 110 }. */
+  copiedFrom: Record<string, number>;
+  isolation: PackageIsolation;
+}
+
+interface VersionReport extends PackageReport {
+  importId: string;
   workbookRealCost: string | null;
   workbookRounded: string | null;
   items: number;
@@ -79,7 +94,46 @@ export async function seedAhspSample(s: AhspSampleServices, actor: AuthUser, fil
   const contract = await ensureVersion(s, actor, projectId, 'CONTRACT', docPenawaran, steps, (detail) => contractDecisions(detail));
   // 4. MC-0.
   const mc0 = await ensureVersion(s, actor, projectId, 'MC0', docMingguan, steps, (detail) => mc0Decisions(detail));
-  return { projectId, steps, contract, mc0 };
+  // 5. Addendum: "Buat versi" copies MC-0's items and package (D-057); kept DRAFT.
+  let addendum = await s.prisma.rabVersion.findFirst({ where: { projectId, versionType: 'ADDENDUM', status: { not: 'DISCARDED' } }, select: { id: true } });
+  if (!addendum) {
+    addendum = (await s.rab.create(actor, projectId, { versionType: 'ADDENDUM', documentNumber: 'CONTOH-SEED (bukan dokumen kantor)' })).version;
+    steps.push('Addendum 1 dibuat dari MC-0 (DRAFT, salinan paket)');
+  }
+  const report = { projectId, steps, contract, mc0, addendum: await packageReport(s, projectId, addendum.id) };
+  // Isolation proof (D-056): every package keeps its relations inside, and copies point one version back.
+  for (const [label, r] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['Addendum', report.addendum]] as const) {
+    if (!isIsolated(r.isolation)) throw new Error(`Paket ${label} tidak terisolasi: ${JSON.stringify(r.isolation)}`);
+  }
+  if (Object.keys(report.contract.copiedFrom).length) throw new Error('Paket Kontrak tidak boleh berisi salinan.');
+  if (Object.keys(report.mc0.copiedFrom).join() !== 'Kontrak') throw new Error(`Salinan MC-0 harus dari Kontrak: ${JSON.stringify(report.mc0.copiedFrom)}`);
+  if (Object.keys(report.addendum.copiedFrom).join() !== 'MC-0') throw new Error(`Salinan Addendum harus dari MC-0: ${JSON.stringify(report.addendum.copiedFrom)}`);
+  return report;
+}
+
+async function packageReport(s: AhspSampleServices, projectId: string, rabVersionId: string): Promise<PackageReport> {
+  const rab = await s.rab.get(projectId, rabVersionId);
+  const own = { analysisVersion: { analysis: { rabVersionId } } };
+  const copies = await s.prisma.ahspAnalysisVersion.findMany({
+    where: { analysis: { rabVersionId }, copiedFromId: { not: null } },
+    select: { copiedFrom: { select: { analysis: { select: { rabVersion: { select: { versionType: true, revisionNumber: true } } } } } } },
+  });
+  const copiedFrom: Record<string, number> = {};
+  for (const c of copies) {
+    const label = rabVersionLabel(c.copiedFrom!.analysis.rabVersion);
+    copiedFrom[label] = (copiedFrom[label] ?? 0) + 1;
+  }
+  return {
+    rabVersionId,
+    status: rab.version.status,
+    realCost: rab.totals.realCost,
+    rounded: rab.totals.rounded,
+    packageAnalyses: await s.prisma.ahspAnalysis.count({ where: { rabVersionId } }),
+    packageComponents: await s.prisma.ahspComponent.count({ where: own }),
+    packagePrices: await s.prisma.priceItem.count({ where: { priceList: { rabVersionId } } }),
+    copiedFrom,
+    isolation: await checkPackageIsolation(s.prisma, rabVersionId),
+  };
 }
 
 async function ensureDocument(s: AhspSampleServices, actor: AuthUser, projectId: string, path: string, steps: string[]): Promise<string> {
@@ -145,16 +199,13 @@ async function ensureVersion(
     await s.rab.approve(actor, projectId, rabVersionId, true);
     steps.push(`RAB ${label} di-approve (M4)`);
   }
-  const rabDetail = await s.rab.get(projectId, rabVersionId);
   const draft = detail.draft!;
   const decisions = await s.prisma.rabImportDecision.groupBy({ by: ['kind'], where: { importId: run.id }, _count: true });
   const subKeys = new Set(draft.analyses.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'ANALYSIS' ? [c.source.analysisKey] : []))));
   const imported = draft.analyses.filter((a) => !a.candidateOnly);
   return {
+    ...(await packageReport(s, projectId, rabVersionId)),
     importId: run.id,
-    rabVersionId,
-    realCost: rabDetail.totals.realCost,
-    rounded: rabDetail.totals.rounded,
     workbookRealCost: detail.reconciliation?.workbookRealCost ?? null,
     workbookRounded: detail.reconciliation?.workbookRounded ?? null,
     items: draft.stats.items,
@@ -179,9 +230,10 @@ function contractDecisions(detail: RabImportDetailDto): Decision[] {
 }
 
 /**
- * MC-0: chains stop at the values-only recap. Link rows to the single official analysis candidate (same code,
- * unit, price as the Kontrak analysis), accept SMKK direct prices, and match work items with a single
- * candidate (same group path and name) — each as an explicit decision; anything ambiguous stops the seed.
+ * MC-0: workbook 04 has no analyses, chains stop at the values-only recap (D-058). Link rows to the single
+ * candidate from the Kontrak package (same code, unit, price) — approval copies it into the MC-0 package —
+ * accept SMKK direct prices, and match work items with a single candidate (same group path and name), each
+ * as an explicit decision; anything ambiguous stops the seed.
  */
 function mc0Decisions(detail: RabImportDetailDto): Decision[] {
   const out: Decision[] = [];

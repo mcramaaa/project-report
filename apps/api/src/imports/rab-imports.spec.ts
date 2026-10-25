@@ -5,6 +5,8 @@ import type { AiClient } from '../ai/ai.client';
 import { LoginRateLimiter } from '../auth/login-rate-limiter';
 import { createProject, createUser, resetDatabase, roleId, TEST_PASSWORD } from '../test/db';
 import { Client, startApp, type TestApp } from '../test/http';
+import { checkPackageIsolation, copyAnalysesIntoPackage, isIsolated } from '../ahsp/package';
+import { GUIDE_VERSION } from './guide/rab-import-guide';
 import { RabImportsService } from './rab-imports.service';
 import { analysisBlock, rabSheet, recap, recapLookup, xlsxOf } from './test-workbook';
 
@@ -161,7 +163,7 @@ describe('contract import → approval', () => {
   it('imports only used analyses/prices with sub-analyses, links RAB items, and keeps the recap name (D-046, D-047)', async () => {
     const doc = await upload(admin, 'rab.xlsx', await contractBook());
     const detail = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id }] });
-    expect(detail.import).toMatchObject({ status: 'NEEDS_REVIEW', guideVersion: 'rab-import-guide@1', blockingIssues: 0 });
+    expect(detail.import).toMatchObject({ status: 'NEEDS_REVIEW', guideVersion: GUIDE_VERSION, blockingIssues: 0 });
     expect(detail.draft.stats).toMatchObject({ items: 2, analysesInWorkbook: 3, analysesImported: 2, subAnalyses: 1, components: 4, pricesImported: 3 });
     expect(detail.issues.map((i: { code: string }) => i.code)).toContain('DIRECT_PRICE');
     expect(detail.reconciliation).toMatchObject({ realCost: '1214340.00', matches: null });
@@ -216,8 +218,9 @@ describe('contract import → approval', () => {
     const grid = (await admin.get(rabBase)).body;
     expect(grid.rows.find((r: { description: string }) => r.description === 'Pek. Pasangan Dinding Bata (revisi)').analysis).toMatchObject({ code: 'P.1', versionId: p1.id });
 
-    // Combined analysis list.
-    const list = (await admin.get(`/projects/${project.id}/analyses`)).body;
+    // Combined analysis list of this version's package.
+    expect((await admin.get(`/projects/${project.id}/analyses`)).status).toBe(404); // project-wide list is gone (D-057)
+    const list = (await admin.get(`/projects/${project.id}/rab-versions/${rab.id}/analyses`)).body;
     expect(list.map((a: { code: string; latestVersion: { rabItems: number; usedAsSub: number } }) => [a.code, a.latestVersion.rabItems, a.latestVersion.usedAsSub])).toEqual([
       ['M.1', 0, 1],
       ['P.1', 1, 0],
@@ -293,16 +296,107 @@ describe('MC-0 import with reviewer decisions (D-053)', () => {
     const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC0' } });
     const mc0Item = await t.prisma.rabVersionItem.findFirstOrThrow({ where: { rabVersionId: mc0Rab.id, description: 'Pek. Pasangan Dinding Bata' } });
     const contractItem = await t.prisma.rabVersionItem.findFirstOrThrow({ where: { rabVersionId: contractRab.id, description: 'Pek. Pasangan Dinding Bata' } });
-    expect(mc0Item).toMatchObject({ analysisVersionId: p1.id, workItemId: contractItem.workItemId, priceSource: 'ANALYSIS' });
+    // D-056/D-058: the MC-0 links its own copy of P.1 (with sub-analysis M.1 and prices), not the Kontrak's.
+    const copy = await t.prisma.ahspAnalysisVersion.findUniqueOrThrow({ where: { id: mc0Item.analysisVersionId! }, include: { analysis: true, components: { include: { priceItem: true, subAnalysisVersion: { include: { analysis: true } } } } } });
+    expect(copy).toMatchObject({ copiedFromId: p1.id, sourceImportId: mc0.import.id, price: p1.price, analysis: { rabVersionId: mc0Rab.id } });
+    expect(copy.components.map((c) => [c.description, c.priceItem?.priceListId ?? null, c.subAnalysisVersion?.analysis.rabVersionId ?? null])).toEqual([
+      ['Tukang Batu', (await t.prisma.priceList.findUniqueOrThrow({ where: { rabVersionId: mc0Rab.id } })).id, null],
+      ['Mortar', null, mc0Rab.id],
+      ['Sewa Molen', (await t.prisma.priceList.findUniqueOrThrow({ where: { rabVersionId: mc0Rab.id } })).id, null],
+    ]);
+    expect(mc0Item).toMatchObject({ workItemId: contractItem.workItemId, priceSource: 'ANALYSIS' });
     expect((await admin.get(`/projects/${project.id}/rab-versions/${contractRab.id}/compare/${mc0Rab.id}`)).body.rows.map((r: { change: string }) => r.change)).toEqual(['MODIFIED', 'UNCHANGED']);
-    // No new analyses or price list for a version that only links official ones.
-    expect(await t.prisma.priceList.count()).toBe(1);
-    expect((await t.prisma.rabImport.findUniqueOrThrow({ where: { id: mc0.import.id } })).priceListId).toBeNull();
-    // The approved contract still points at the same analysis version.
+    for (const v of [contractRab.id, mc0Rab.id]) expect(isIsolated(await checkPackageIsolation(t.prisma, v))).toBe(true);
+    // Each version's package lists only its own analyses; the copy shows where it came from.
+    const mc0List = (await admin.get(`/projects/${project.id}/rab-versions/${mc0Rab.id}/analyses`)).body;
+    expect(mc0List.map((a: { code: string; latestVersion: { copiedFrom: { rabVersion: { label: string } } | null } }) => [a.code, a.latestVersion.copiedFrom?.rabVersion.label])).toEqual([
+      ['M.1', 'Kontrak'],
+      ['P.1', 'Kontrak'],
+    ]);
+    expect((await admin.get(`/projects/${project.id}/rab-versions/${contractRab.id}/analyses/${copy.analysisId}`)).status).toBe(404);
+    expect((await admin.get(`/projects/${project.id}/rab-versions/${mc0Rab.id}/price-list`)).body.items.map((i: { name: string }) => i.name)).toEqual(['Semen', 'Sewa Molen', 'Tukang Batu']);
+    // The approved contract and its package are unchanged.
     expect((await t.prisma.rabVersionItem.findUniqueOrThrow({ where: { id: contractItem.id } })).analysisVersionId).toBe(p1.id);
+    expect(await t.prisma.ahspAnalysis.count({ where: { rabVersionId: contractRab.id } })).toBe(2);
+    expect((await t.prisma.rabImport.findUniqueOrThrow({ where: { id: mc0.import.id } })).priceListId).toBe((await t.prisma.priceList.findUniqueOrThrow({ where: { rabVersionId: mc0Rab.id } })).id);
     expect(await t.prisma.rabImportDecision.count({ where: { importId: mc0.import.id } })).toBe(3);
+
+    // Addendum through "Buat versi" (M4): items and their package are copied from MC-0, never shared (D-057).
+    expect((await admin.post(`/projects/${project.id}/rab-versions/${mc0Rab.id}/approve`, { acknowledgeWarnings: true })).status).toBe(200);
+    const before = await packageSnapshot([contractRab.id, mc0Rab.id]);
+    const add = await admin.post(`/projects/${project.id}/rab-versions`, { versionType: 'ADDENDUM' });
+    expect(add.status, JSON.stringify(add.body)).toBe(201);
+    const addId = add.body.version.id as string;
+    const addItem = await t.prisma.rabVersionItem.findFirstOrThrow({ where: { rabVersionId: addId, description: 'Pek. Pasangan Dinding Bata' }, include: { analysisVersion: true } });
+    expect(addItem.analysisVersion).toMatchObject({ copiedFromId: mc0Item.analysisVersionId, sourceImportId: null, price: p1.price });
+    expect(await t.prisma.ahspAnalysis.count({ where: { rabVersionId: addId } })).toBe(2);
+    expect(isIsolated(await checkPackageIsolation(t.prisma, addId))).toBe(true);
+    expect(await packageSnapshot([contractRab.id, mc0Rab.id])).toEqual(before);
+    // A change inside the Addendum package leaves MC-0 and Kontrak untouched.
+    const addPrice = await t.prisma.priceItem.findFirstOrThrow({ where: { priceList: { rabVersionId: addId }, name: 'Tukang Batu' } });
+    await t.prisma.priceItem.update({ where: { id: addPrice.id }, data: { price: '170000' } });
+    expect(await packageSnapshot([contractRab.id, mc0Rab.id])).toEqual(before);
+
+    // Copying again into the same package reuses the earlier copies.
+    const again = await t.prisma.$transaction((tx) =>
+      copyAnalysesIntoPackage(tx, { projectId: project.id, rabVersionId: addId, priceListId: addPrice.priceListId, sourceImportId: null }, [mc0Item.analysisVersionId!]),
+    );
+    expect(again.get(mc0Item.analysisVersionId!)).toBe(addItem.analysisVersionId);
+    expect(await t.prisma.ahspAnalysis.count({ where: { rabVersionId: addId } })).toBe(2);
+
+    // The backend refuses to approve a version whose item links another version's analysis.
+    await t.prisma.rabVersionItem.update({ where: { id: addItem.id }, data: { analysisVersionId: mc0Item.analysisVersionId } });
+    expect(isIsolated(await checkPackageIsolation(t.prisma, addId))).toBe(false);
+    const refused = await admin.post(`/projects/${project.id}/rab-versions/${addId}/approve`, { acknowledgeWarnings: true });
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body.errors)).toContain('milik paket versi RAB lain');
   });
 });
+
+describe('MC-0 with its own analyses (D-058)', () => {
+  it('uses the new source instead of inheriting; the Kontrak package is untouched', async () => {
+    const doc = await upload(admin, 'rab.xlsx', await contractBook());
+    const contract = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id }] });
+    await admin.post(`${base}/${contract.import.id}/approve`);
+    const contractRab = await t.prisma.rabVersion.findFirstOrThrow({ where: { projectId: project.id } });
+    await admin.post(`/projects/${project.id}/rab-versions/${contractRab.id}/approve`, { acknowledgeWarnings: true });
+    const before = await packageSnapshot([contractRab.id]);
+
+    // The MC-0 workbook carries full analysis sheets: rows are proven by formula, nothing is offered from Kontrak.
+    const mc0Doc = await upload(admin, 'mc0-lengkap.xlsx', await contractBook());
+    const mc0 = await runImport(admin, { targetVersionType: 'MC0', sources: [{ documentId: mc0Doc.id }] });
+    const rows = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(rows.map((r: { price: { kind: string }; analysisCandidates: unknown[] }) => [r.price.kind, r.analysisCandidates.length])).toEqual([
+      ['ANALYSIS', 0],
+      ['DIRECT', 0],
+    ]);
+    const decided = await admin.post(`${base}/${mc0.import.id}/decisions`, {
+      decisions: rows.map((r: { key: string; workItemCandidates: { workItemId: string }[] }) => ({ rowKey: r.key, kind: 'WORK_ITEM_MATCH', value: { workItemId: r.workItemCandidates[0]!.workItemId } })),
+    });
+    expect(decided.body.import.blockingIssues).toBe(0);
+    expect((await admin.post(`${base}/${mc0.import.id}/approve`)).status).toBe(200);
+
+    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC0' } });
+    const own = await t.prisma.ahspAnalysisVersion.findMany({ where: { analysis: { rabVersionId: mc0Rab.id } } });
+    expect(own.map((v) => [v.code, v.copiedFromId, v.sourceImportId]).sort()).toEqual([
+      ['M.1', null, mc0.import.id],
+      ['P.1', null, mc0.import.id],
+    ]);
+    expect(isIsolated(await checkPackageIsolation(t.prisma, mc0Rab.id))).toBe(true);
+    expect(await packageSnapshot([contractRab.id])).toEqual(before);
+  });
+});
+
+/** Every analysis, component, and price of the given versions' packages, for before/after comparison. */
+async function packageSnapshot(versionIds: string[]) {
+  return Promise.all(
+    versionIds.map(async (id) => ({
+      analyses: await t.prisma.ahspAnalysisVersion.findMany({ where: { analysis: { rabVersionId: id } }, include: { components: true }, orderBy: { id: 'asc' } }),
+      prices: await t.prisma.priceItem.findMany({ where: { priceList: { rabVersionId: id } }, orderBy: { id: 'asc' } }),
+      items: await t.prisma.rabVersionItem.findMany({ where: { rabVersionId: id }, select: { id: true, analysisVersionId: true, unitPrice: true }, orderBy: { id: 'asc' } }),
+    })),
+  );
+}
 
 describe('failures, retry, rejection, AI', () => {
   it('ambiguous sheet → FAILED; retry is a new run linked to the old one; rejection needs a reason', async () => {
@@ -344,8 +438,8 @@ describe('failures, retry, rejection, AI', () => {
     const withAi = await runImport(admin, { targetVersionType: 'MC0', sources: [{ documentId: mc0Doc.id }] });
     const row = withAi.draft.rows.find((r: { key: string }) => r.key === '0:14');
     expect(row.analysisCandidates).toEqual([expect.objectContaining({ analysisVersionId: p1.id, origin: 'AI' })]);
-    expect(withAi.aiRuns).toEqual([expect.objectContaining({ model: 'mock-primary', status: 'SUCCEEDED', instructionVersion: 'rab-import-guide@1' })]);
-    expect(JSON.stringify(aiCalls)).toContain('rab-import-guide@1');
+    expect(withAi.aiRuns).toEqual([expect.objectContaining({ model: 'mock-primary', status: 'SUCCEEDED', instructionVersion: GUIDE_VERSION })]);
+    expect(JSON.stringify(aiCalls)).toContain(GUIDE_VERSION);
 
     // The reviewer can change what the AI suggested: accept it, then replace it with a direct price.
     const decide = async (d: object) => (await admin.post(`${base}/${withAi.import.id}/decisions`, { decisions: [d] })).body;

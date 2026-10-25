@@ -12,6 +12,7 @@ import {
 import { Decimal } from '@laporan-proyek/calc';
 import ExcelJS from 'exceljs';
 import { AiClient } from '../ai/ai.client';
+import { copyAnalysesIntoPackage, ensurePackage } from '../ahsp/package';
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import { documentPath } from '../documents/documents.service';
@@ -349,16 +350,17 @@ export class RabImportsService implements OnModuleInit {
         { copyPrevious: false },
       );
 
-      // Price list + analyses only for what the effective rows use (D-046).
+      // The new version's package (D-056): analyses/prices the effective rows use (D-046), plus copies of the
+      // previous package's analyses the reviewer linked, with their sub-analyses and prices (D-057).
       const analyses = draft.analyses.filter((a) => evaluation.usedAnalysisKeys.has(a.key));
+      const linkedOfficial = new Set(evaluation.rows.flatMap((r) => (r.analysis?.kind === 'OFFICIAL' ? [r.analysis.versionId] : [])));
       const versionIds = new Map(analyses.map((a) => [a.key, randomUUID()]));
       let priceListId: string | null = null;
+      let copied = new Map<string, string>();
+      if (analyses.length || linkedOfficial.size) {
+        priceListId = await ensurePackage(tx, projectId, version.id, actor.id, draft.priceMetadata);
+      }
       if (analyses.length) {
-        const last = await tx.priceList.aggregate({ where: { projectId }, _max: { versionNumber: true } });
-        priceListId = randomUUID();
-        await tx.priceList.create({
-          data: { id: priceListId, projectId, versionNumber: (last._max.versionNumber ?? 0) + 1, location: draft.priceMetadata.location, period: draft.priceMetadata.period, createdBy: actor.id },
-        });
         const usedPrices = new Set(analyses.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'PRICE_ITEM' ? [c.source.priceKey] : []))));
         const priceIds = new Map([...usedPrices].map((k) => [k, randomUUID()]));
         await tx.priceItem.createMany({
@@ -367,7 +369,7 @@ export class RabImportsService implements OnModuleInit {
             .map((p) => ({ id: priceIds.get(p.key)!, priceListId: priceListId!, name: p.name, unit: p.unit, price: p.price, sourceLocator: { ...p.locator, evidence: p.evidence } as Prisma.InputJsonValue })),
         });
         const analysisIds = new Map(analyses.map((a) => [a.key, randomUUID()]));
-        await tx.ahspAnalysis.createMany({ data: analyses.map((a) => ({ id: analysisIds.get(a.key)!, projectId, code: a.code, name: a.name, unit: a.unit })) });
+        await tx.ahspAnalysis.createMany({ data: analyses.map((a) => ({ id: analysisIds.get(a.key)!, projectId, rabVersionId: version.id, code: a.code, name: a.name, unit: a.unit })) });
         await tx.ahspAnalysisVersion.createMany({
           data: analyses.map((a) => ({
             id: versionIds.get(a.key)!,
@@ -407,6 +409,7 @@ export class RabImportsService implements OnModuleInit {
           ),
         });
       }
+      if (linkedOfficial.size) copied = await copyAnalysesIntoPackage(tx, { projectId, rabVersionId: version.id, priceListId: priceListId!, sourceImportId: importId }, linkedOfficial);
 
       // RAB rows in tree order; parents exist before children for the self-referencing FK.
       const itemIds = new Map(evaluation.rows.map((r) => [r.row.key, randomUUID()]));
@@ -434,7 +437,7 @@ export class RabImportsService implements OnModuleInit {
           }
         }
         const decision = r.priceDecision ?? decisions.filter((d) => d.rowKey === r.row.key && d.kind === 'DIRECT_PRICE').at(-1) ?? null;
-        const analysisVersionId = !r.analysis ? null : r.analysis.kind === 'DRAFT' ? versionIds.get(r.analysis.key)! : r.analysis.versionId;
+        const analysisVersionId = !r.analysis ? null : r.analysis.kind === 'DRAFT' ? versionIds.get(r.analysis.key)! : copied.get(r.analysis.versionId)!;
         return {
           id: itemIds.get(r.row.key)!,
           rabVersionId: version.id,
@@ -480,6 +483,7 @@ export class RabImportsService implements OnModuleInit {
           status: 'APPROVED',
           rabVersionId: version.id,
           priceListId,
+          copiedAnalyses: copied.size,
           items: evaluation.rows.filter((r) => r.row.rowType === 'ITEM').length,
           analyses: analyses.length,
           subAnalyses: analyses.filter((a) => subKeys.has(a.key)).length,
@@ -502,21 +506,19 @@ export class RabImportsService implements OnModuleInit {
     return (await this.prisma.rabImportDecision.findMany({ where: { importId } })).map(toRecord);
   }
 
-  /** Latest official version of every analysis in the project. */
+  /**
+   * Candidates for broken chains (D-057): analyses of the latest approved RAB version's package — the version
+   * a new MC-0/Addendum continues from. Linking one copies it into the new package at approval.
+   */
   private async officialVersions(projectId: string, db: Db = this.prisma): Promise<Map<string, OfficialVersion>> {
+    const latest = await db.rabVersion.findFirst({ where: { projectId, status: 'APPROVED' }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
+    if (!latest) return new Map();
     const versions = await db.ahspAnalysisVersion.findMany({
-      where: { analysis: { projectId } },
-      select: { id: true, analysisId: true, versionNumber: true, code: true, name: true, unit: true, price: true },
-      orderBy: [{ analysisId: 'asc' }, { versionNumber: 'desc' }],
+      where: { analysis: { rabVersionId: latest.id } },
+      select: { id: true, code: true, name: true, unit: true, price: true },
+      orderBy: [{ code: 'asc' }, { id: 'asc' }],
     });
-    const latest = new Map<string, OfficialVersion>();
-    const seen = new Set<string>();
-    for (const v of versions) {
-      if (seen.has(v.analysisId)) continue;
-      seen.add(v.analysisId);
-      latest.set(v.id, { analysisVersionId: v.id, code: v.code, name: v.name, unit: v.unit, price: new Decimal(v.price.toString()).toFixed() });
-    }
-    return latest;
+    return new Map(versions.map((v) => [v.id, { analysisVersionId: v.id, code: v.code, name: v.name, unit: v.unit, price: new Decimal(v.price.toString()).toFixed() }]));
   }
 
   /** ITEM rows of the latest approved RAB version with their group path, for work item candidates. */

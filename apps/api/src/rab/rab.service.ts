@@ -18,6 +18,7 @@ import {
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
+import { copyAnalysesIntoPackage, ensurePackage } from '../ahsp/package';
 import { PrismaService } from '../prisma/prisma.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
 
@@ -69,7 +70,7 @@ const ITEM_SELECT = {
   priceDecidedBy: true,
   priceDecidedAt: true,
   sourceLocator: true,
-  analysisVersion: { select: { analysisId: true, code: true, name: true } },
+  analysisVersion: { select: { analysisId: true, code: true, name: true, analysis: { select: { rabVersionId: true } } } },
 } as const satisfies Prisma.RabVersionItemSelect;
 type ItemRow = Prisma.RabVersionItemGetPayload<{ select: typeof ITEM_SELECT }>;
 
@@ -147,7 +148,10 @@ function toRows(items: ItemRow[], values: Map<string, RabRowValues>): RabRowDto[
       subtotal: v?.subtotal ?? null,
       weight: v?.weight ?? null,
       priceSource: i.priceSource,
-      analysis: i.analysisVersionId && i.analysisVersion ? { analysisId: i.analysisVersion.analysisId, versionId: i.analysisVersionId, code: i.analysisVersion.code, name: i.analysisVersion.name } : null,
+      analysis:
+        i.analysisVersionId && i.analysisVersion
+          ? { analysisId: i.analysisVersion.analysisId, versionId: i.analysisVersionId, rabVersionId: i.analysisVersion.analysis.rabVersionId, code: i.analysisVersion.code, name: i.analysisVersion.name }
+          : null,
       priceNote: i.priceNote,
     };
   });
@@ -175,7 +179,7 @@ function toSummary(v: VersionRow, totals: RabTotalsDto, itemCount: number): RabV
 }
 
 /** Blocking errors and warnings that must be acknowledged before approval (D-040). */
-function validate(rows: RabRowDto[], totals: RabTotalsDto, contractValue: string | null, versionType: string): { errors: RabIssue[]; warnings: RabIssue[] } {
+function validate(rows: RabRowDto[], totals: RabTotalsDto, contractValue: string | null, versionType: string, versionId: string): { errors: RabIssue[]; warnings: RabIssue[] } {
   const errors: RabIssue[] = [];
   const warnings: RabIssue[] = [];
   const items = rows.filter((r) => r.rowType === 'ITEM');
@@ -190,6 +194,10 @@ function validate(rows: RabRowDto[], totals: RabTotalsDto, contractValue: string
     const label = `${r.displayNumber ?? ''} ${r.description}`.trim();
     if (exceeds(r.unitPriceWithTax, LIMITS.unitPriceWithTax)) errors.push({ itemId: r.id, message: `${label}: harga + PPN melebihi batas nilai yang dapat disimpan (maks. 20 digit rupiah).` });
     else if (exceeds(r.subtotal, LIMITS.subtotal)) errors.push({ itemId: r.id, message: `${label}: jumlah (volume × harga + PPN) melebihi batas nilai yang dapat disimpan.` });
+  }
+  // D-056/D-057: a version only links analyses of its own package.
+  for (const r of items) {
+    if (r.analysis && r.analysis.rabVersionId !== versionId) errors.push({ itemId: r.id, message: `${r.displayNumber ?? ''} ${r.description}: analisa ${r.analysis.code ?? r.analysis.name} milik paket versi RAB lain.`.trim() });
   }
   if (exceeds(totals.value, LIMITS.total) || exceeds(totals.beforeTax, LIMITS.total)) errors.push({ message: 'Total RAB melebihi batas nilai yang dapat disimpan (maks. 32 digit rupiah).' });
   const hasChild = new Set(rows.map((r) => r.parentId));
@@ -271,7 +279,7 @@ export class RabService {
         createdBy: actor.id,
       },
     });
-    if (input.versionType !== 'CONTRACT' && options.copyPrevious) await this.copyItems(tx, latest!.id, version.id);
+    if (input.versionType !== 'CONTRACT' && options.copyPrevious) await this.copyItems(tx, actor, projectId, latest!.id, version.id);
     await writeAudit(tx, {
       actorId: actor.id,
       action: 'CREATE_RAB_VERSION',
@@ -509,15 +517,25 @@ export class RabService {
     let issues: RabVersionDetailDto['issues'] = { errors: [], warnings: [] };
     if (version.status === 'DRAFT') {
       const project = await db.project.findUniqueOrThrow({ where: { id: projectId }, select: { contractValue: true } });
-      issues = validate(rows, summary.totals, project.contractValue?.toFixed(2) ?? null, version.versionType);
+      issues = validate(rows, summary.totals, project.contractValue?.toFixed(2) ?? null, version.versionType, versionId);
     }
     return { version: summary, rows, totals: summary.totals, issues };
   }
 
-  /** Copies rows in tree order so parents exist before children; ids are generated here for createMany. */
-  private async copyItems(tx: Db, fromVersionId: string, toVersionId: string): Promise<void> {
+  /**
+   * Copies rows in tree order so parents exist before children; ids are generated here for createMany.
+   * Linked analyses are copied into the new version's package with their sub-analyses and prices (D-057).
+   */
+  private async copyItems(tx: Db, actor: AuthUser, projectId: string, fromVersionId: string, toVersionId: string): Promise<void> {
     const source = treeOrder(await tx.rabVersionItem.findMany({ where: { rabVersionId: fromVersionId }, select: ITEM_SELECT }));
     const newIds = new Map(source.map((i) => [i.id, randomUUID()]));
+    const linked = new Set(source.flatMap((i) => (i.analysisVersionId ? [i.analysisVersionId] : [])));
+    let copied = new Map<string, string>();
+    if (linked.size) {
+      const from = await tx.priceList.findUnique({ where: { rabVersionId: fromVersionId }, select: { location: true, period: true } });
+      const priceListId = await ensurePackage(tx, projectId, toVersionId, actor.id, from ?? { location: null, period: null });
+      copied = await copyAnalysesIntoPackage(tx, { projectId, rabVersionId: toVersionId, priceListId, sourceImportId: null }, linked);
+    }
     await tx.rabVersionItem.createMany({
       data: source.map((i) => ({
         id: newIds.get(i.id)!,
@@ -534,8 +552,8 @@ export class RabService {
         unitPrice: i.unitPrice,
         taxPercent: i.taxPercent,
         previousVersionItemId: i.id,
-        // The copy keeps the analysis link and how its price was decided (D-050: history points at versions).
-        analysisVersionId: i.analysisVersionId,
+        // The copy links the same analysis inside its own package and keeps how its price was decided.
+        analysisVersionId: i.analysisVersionId ? copied.get(i.analysisVersionId)! : null,
         priceSource: i.priceSource,
         sourceUnitPrice: i.sourceUnitPrice,
         analysisUnitPrice: i.analysisUnitPrice,

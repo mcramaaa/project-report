@@ -287,7 +287,7 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
                     {shown.map((c) => (
                       <td key={c.key} className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}>
                         {c.key === 'analysisCode' && row.analysis ? (
-                          <Link className="link-button" href={`/projects/${projectId}/analyses/${row.analysis.analysisId}`} title={row.analysis.name}>
+                          <Link className="link-button" href={`/projects/${projectId}/analyses/${row.analysis.analysisId}?version=${row.analysis.rabVersionId}`} title={row.analysis.name}>
                             {row.analysisCode ?? row.analysis.code}
                           </Link>
                         ) : (

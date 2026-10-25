@@ -42,6 +42,12 @@ async function main() {
           `${v.components} komponen; ${v.prices} harga; ${v.reconciliationEntries} rekonsiliasi; keputusan ${JSON.stringify(v.decisions)}`,
       );
     }
+    for (const [label, p] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['Addendum 1', report.addendum]] as const) {
+      console.log(
+        `Paket ${label} (${p.status}): ${p.packageAnalyses} analisa, ${p.packageComponents} komponen, ${p.packagePrices} harga; ` +
+          `salinan ${JSON.stringify(p.copiedFrom)}; relasi keluar paket ${JSON.stringify(p.isolation)}; real cost ${p.realCost}`,
+      );
+    }
   } finally {
     await app.close();
   }

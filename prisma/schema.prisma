@@ -297,6 +297,9 @@ model RabVersion {
   discardedByUser User?            @relation("RabVersionDiscardedBy", fields: [discardedBy], references: [id], onDelete: Restrict)
   items           RabVersionItem[]
   sourceImports   RabImport[]
+  /// Analysis/price package owned by this version (D-056, D-057).
+  priceList       PriceList?
+  analyses        AhspAnalysis[]
 
   @@index([projectId, status])
   @@map("rab_versions")
@@ -523,6 +526,8 @@ model AiRun {
 model PriceList {
   id            String   @id @default(uuid(7)) @db.Char(36)
   projectId     String   @map("project_id") @db.Char(36)
+  /// Owner of the package (D-057): one price list per RAB version.
+  rabVersionId  String   @unique @map("rab_version_id") @db.Char(36)
   versionNumber Int      @map("version_number") @db.UnsignedSmallInt
   location      String?  @db.VarChar(255)
   period        String?  @db.VarChar(100)
@@ -530,6 +535,7 @@ model PriceList {
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   project          Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  rabVersion       RabVersion            @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
   creator          User                  @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   sourceImport     RabImport?            @relation("ImportPriceList")
   items            PriceItem[]
@@ -546,8 +552,12 @@ model PriceItem {
   unit          String? @db.VarChar(30)
   price         Decimal @db.Decimal(40, 12)
   sourceLocator Json    @map("source_locator")
+  /// Provenance when copied from another version's package (D-057).
+  copiedFromId  String? @map("copied_from_id") @db.Char(36)
 
   priceList  PriceList       @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  copiedFrom PriceItem?      @relation("PriceItemCopy", fields: [copiedFromId], references: [id], onDelete: Restrict)
+  copies     PriceItem[]     @relation("PriceItemCopy")
   components AhspComponent[]
 
   @@index([priceListId])
@@ -556,17 +566,21 @@ model PriceItem {
 
 /// Identity in the single combined analysis list per project (D-045); the code is not an identity.
 model AhspAnalysis {
-  id        String   @id @default(uuid(7)) @db.Char(36)
-  projectId String   @map("project_id") @db.Char(36)
-  code      String?  @db.VarChar(50)
-  name      String   @db.VarChar(1000)
-  unit      String?  @db.VarChar(30)
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id           String   @id @default(uuid(7)) @db.Char(36)
+  projectId    String   @map("project_id") @db.Char(36)
+  /// Owner of the package (D-057).
+  rabVersionId String   @map("rab_version_id") @db.Char(36)
+  code         String?  @db.VarChar(50)
+  name         String   @db.VarChar(1000)
+  unit         String?  @db.VarChar(30)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  project  Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  versions AhspAnalysisVersion[]
+  project    Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  rabVersion RabVersion            @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  versions   AhspAnalysisVersion[]
 
   @@index([projectId, code])
+  @@index([rabVersionId, code])
   @@map("ahsp_analyses")
 }
 
@@ -587,7 +601,10 @@ model AhspAnalysisVersion {
   analysisId      String   @map("analysis_id") @db.Char(36)
   versionNumber   Int      @map("version_number") @db.UnsignedSmallInt
   priceListId     String   @map("price_list_id") @db.Char(36)
-  sourceImportId  String   @map("source_import_id") @db.Char(36)
+  /// Null for copies made by "Buat versi" (M4).
+  sourceImportId  String?  @map("source_import_id") @db.Char(36)
+  /// Provenance when copied from another version's package (D-057).
+  copiedFromId    String?  @map("copied_from_id") @db.Char(36)
   /// Source snapshot: the original analysis name is never replaced by the recap name.
   code            String?  @db.VarChar(50)
   name            String   @db.VarChar(1000)
@@ -602,11 +619,13 @@ model AhspAnalysisVersion {
   sourceLocator   Json     @map("source_locator")
   createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  analysis     AhspAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
-  priceList    PriceList        @relation(fields: [priceListId], references: [id], onDelete: Restrict)
-  sourceImport RabImport        @relation(fields: [sourceImportId], references: [id], onDelete: Restrict)
-  components   AhspComponent[]  @relation("ComponentOf")
-  usedAsSub    AhspComponent[]  @relation("SubAnalysis")
+  analysis     AhspAnalysis          @relation(fields: [analysisId], references: [id], onDelete: Restrict)
+  priceList    PriceList             @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  sourceImport RabImport?            @relation(fields: [sourceImportId], references: [id], onDelete: Restrict)
+  copiedFrom   AhspAnalysisVersion?  @relation("AnalysisVersionCopy", fields: [copiedFromId], references: [id], onDelete: Restrict)
+  copies       AhspAnalysisVersion[] @relation("AnalysisVersionCopy")
+  components   AhspComponent[]       @relation("ComponentOf")
+  usedAsSub    AhspComponent[]       @relation("SubAnalysis")
   rabItems     RabVersionItem[]
 
   @@unique([analysisId, versionNumber])

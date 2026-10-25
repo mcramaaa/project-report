@@ -17,6 +17,7 @@
 - `apps/api/src/admin/admin-users.spec.ts`
 - `apps/api/src/ahsp/ahsp.controller.ts`
 - `apps/api/src/ahsp/ahsp.service.ts`
+- `apps/api/src/ahsp/package.ts`
 - `apps/api/src/ai/ai.client.spec.ts`
 - `apps/api/src/ai/ai.client.ts`
 - `apps/api/src/ai/ping.ts`
@@ -201,6 +202,7 @@
 - `prisma/migrations/20261025130000_rab_exact_amounts/migration.sql`
 - `prisma/migrations/20261025150000_rab_import_ahsp/migration.sql`
 - `prisma/migrations/20261025170000_import_document_roles/migration.sql`
+- `prisma/migrations/20261026090000_rab_version_packages/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

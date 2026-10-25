@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 /**
- * Fixed import instruction derived from docs/RAB_IMPORT_GUIDE.md version 1 (D-047, D-052). Changing the
+ * Fixed import instruction derived from docs/RAB_IMPORT_GUIDE.md (D-047, D-052; version 2: D-056/D-057). Changing the
  * guide means bumping this version together with the document; a test checks they match. Every import
  * run and AI call records the version it used.
  */
-export const GUIDE_DOC_VERSION = 1;
+export const GUIDE_DOC_VERSION = 2;
 export const GUIDE_VERSION = `rab-import-guide@${GUIDE_DOC_VERSION}`;
 
 /** System instruction sent to the model; backend evidence and validation remain authoritative. */
@@ -17,6 +17,8 @@ Panduan tetap ${GUIDE_VERSION}:
 - Jangan mengarang analisa, harga, koefisien, tarif pajak, overhead, atau pembulatan.
 - Rumus yang hilang, ambigu, tidak didukung, atau menunjuk file eksternal: jangan dipetakan paksa; kembalikan kandidat kosong dengan alasan.
 - Rekap, subtotal, dan total bukan item pekerjaan.
+- Analisa, upah, bahan, alat, dan harga dimiliki versi RAB tujuan (Penawaran/Kontrak, MC0, atau Addendum), bukan master proyek.
+- Kandidat yang ditawarkan berasal dari paket versi RAB sebelumnya; bila dipilih reviewer, analisa itu disalin ke paket versi tujuan.
 - Jawaban Anda hanya usulan; backend memvalidasi dan manusia memutuskan.
 Jawab hanya dengan JSON sesuai schema yang diminta, tanpa teks lain.`;
 

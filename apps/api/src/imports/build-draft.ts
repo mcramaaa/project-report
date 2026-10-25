@@ -46,7 +46,7 @@ export interface PreviousItem {
 
 export interface DraftContext {
   targetVersionType: RabVersionType;
-  /** Latest official analysis versions of the project, for rule candidates on broken chains. */
+  /** Analyses of the previous approved RAB version's package, for rule candidates on broken chains (D-057). */
   officialAnalyses: OfficialAnalysis[];
   /** Items of the latest approved RAB version, for work item candidates of non-contract imports. */
   previousItems: PreviousItem[];
@@ -330,7 +330,7 @@ function ruleCandidates(official: OfficialAnalysis[], row: DraftRow, lookupKey: 
       name: a.name,
       unit: a.unit,
       price: a.price,
-      reason: 'Kode, satuan, dan harga sama dengan analisa resmi proyek (usulan; perlu keputusan reviewer).',
+      reason: 'Kode, satuan, dan harga sama dengan analisa di paket versi RAB sebelumnya (usulan; bila dipilih, analisa disalin ke paket versi ini).',
       origin: 'RULE' as const,
     }));
 }

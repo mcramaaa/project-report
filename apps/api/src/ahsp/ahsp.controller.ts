@@ -3,26 +3,28 @@ import { RequireProjectPermission } from '../auth/guards';
 import { AhspService } from './ahsp.service';
 
 const uuid = new ParseUUIDPipe({ errorHttpStatusCode: 404 });
+const searchTerm = (search?: string) => (typeof search === 'string' ? search.trim().slice(0, 100) || undefined : undefined);
 
-@Controller('projects/:projectId')
+/** Packages are owned by a RAB version (D-056, D-057): every read names the version. */
+@Controller('projects/:projectId/rab-versions/:versionId')
 export class AhspController {
   constructor(private readonly ahsp: AhspService) {}
 
   @Get('analyses')
   @RequireProjectPermission('ahsp.read')
-  list(@Param('projectId') projectId: string, @Query('search') search?: string) {
-    return this.ahsp.list(projectId, typeof search === 'string' ? search.trim().slice(0, 100) || undefined : undefined);
+  list(@Param('projectId') projectId: string, @Param('versionId', uuid) versionId: string, @Query('search') search?: string) {
+    return this.ahsp.list(projectId, versionId, searchTerm(search));
   }
 
   @Get('analyses/:analysisId')
   @RequireProjectPermission('ahsp.read')
-  get(@Param('projectId') projectId: string, @Param('analysisId', uuid) analysisId: string) {
-    return this.ahsp.get(projectId, analysisId);
+  get(@Param('projectId') projectId: string, @Param('versionId', uuid) versionId: string, @Param('analysisId', uuid) analysisId: string) {
+    return this.ahsp.get(projectId, versionId, analysisId);
   }
 
-  @Get('price-lists')
+  @Get('price-list')
   @RequireProjectPermission('ahsp.read')
-  priceLists(@Param('projectId') projectId: string) {
-    return this.ahsp.priceLists(projectId);
+  priceList(@Param('projectId') projectId: string, @Param('versionId', uuid) versionId: string, @Query('search') search?: string) {
+    return this.ahsp.priceList(projectId, versionId, searchTerm(search));
   }
 }

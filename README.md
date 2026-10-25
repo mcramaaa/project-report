@@ -123,18 +123,24 @@ Model lengkap: `docs/PERMISSIONS.md`.
 
 ### Mencoba Impor RAB + AHSP (M5/M7)
 
-**Seed contoh lewat alur impor** (development saja, D-053; tidak menyentuh proyek lain):
+**Seed contoh lewat alur impor** (development saja, D-053, D-056–D-058; tidak menyentuh proyek lain):
 
 ```bash
 npm run db:seed                  # super admin dulu
-npm run db:seed:sample-ahsp      # storage/temp/00. RAB PENAWARAN… (Kontrak) dan 04. LAPORAN MINGGUAN… (MC-0)
+npm run db:seed:sample-ahsp      # storage/temp/00. RAB PENAWARAN… (Kontrak) dan 04. LAPORAN MINGGUAN… (MC-0), lalu Addendum
 ```
 
-Membuat proyek `SDN2-SERANGAN-2026-AHSP`: upload file asli → draft → keputusan reviewer dicatat eksplisit atas nama super admin (harga langsung SMKK; untuk MC-0 tautan ke analisa resmi Kontrak dan pencocokan pekerjaan) → approve impor → approve RAB (M4). Seed berhenti sebelum approve bila ada issue terbuka, rekonsiliasi analisa gagal, atau total berbeda dari workbook. Aman diulang dan melanjutkan dari langkah yang gagal.
+Membuat proyek `SDN2-SERANGAN-2026-PAKET` dengan **paket analisa/harga per versi RAB**:
+
+- **Kontrak** dari `00`: upload asli → draft → keputusan reviewer (harga langsung SMKK) → approve impor → approve RAB. Paket: 110 analisa (5 subanalisa), 704 komponen, 162 harga.
+- **MC-0** dari `04` (workbook tanpa analisa): rantai berhenti di REKAP ANALISA, sehingga baris ditautkan ke kandidat dari paket Kontrak lewat keputusan eksplisit; saat approve, analisa itu **disalin** ke paket MC-0 beserta subanalisa dan harga (D-058).
+- **Addendum 1** lewat "Buat versi": item dan paket disalin dari MC-0. Versi ini dibiarkan DRAFT karena belum ada dokumen Addendum kantor.
+
+Seed berhenti bila ada issue terbuka, rekonsiliasi gagal, total berbeda dari workbook, atau ada relasi yang keluar dari paket versinya. Aman diulang dan melanjutkan dari langkah yang gagal. Proyek contoh lama `SDN2-SERANGAN-2026-AHSP` (seed sebelum D-056) tidak diubah; item MC-0 approved di sana masih menautkan analisa Kontrak (legacy, D-057).
 
 1. Proyek → tab **Impor RAB**: upload .xlsx, centang dokumen, pilih peran (RAB utama/pendukung) dan sheet, **Buat run impor**.
 2. Halaman review: rekonsiliasi total, issue, rantai rumus tiap item, kandidat, keputusan; **Approve impor** aktif setelah semua issue BLOCKING diputuskan.
-3. Tab **Analisa**: satu daftar analisa gabungan proyek; detail menampilkan komponen, sumber harga, subanalisa, dan item RAB yang merujuk. Kode analisa di grid RAB menautkan ke detailnya.
+3. Tab **Analisa**: pilih versi RAB; daftar analisa dan harga upah/bahan/alat milik paket versi itu saja, dengan penanda **Sumber baru** atau **Warisan &lt;versi&gt;**. Detail menampilkan komponen, sumber harga, subanalisa, asal salinan, dan item RAB yang merujuk. Kode analisa di grid RAB menautkan ke analisa milik paket versinya.
 
 ### Mencoba RAB Manual (Milestone 4)
 

@@ -14,7 +14,7 @@ const dir = resolve(__dirname, '../../../../storage/temp');
 const files = { penawaran: resolve(dir, '00. RAB PENAWARAN SDN 2 SERANGAN.xlsx'), mingguan: resolve(dir, '04. LAPORAN MINGGUAN SDN 2 SERANGAN (MC 0).xlsx') };
 const available = existsSync(files.penawaran) && existsSync(files.mingguan);
 
-describe.skipIf(!available)('seed SDN2-SERANGAN-2026-AHSP through the import flow (D-053)', () => {
+describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages per RAB version (D-053, D-056–D-058)', () => {
   let t: TestApp;
   let services: AhspSampleServices;
   let actor: { id: string; name: string; email: string; isSystemAdmin: boolean };
@@ -32,11 +32,21 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-AHSP through the import flo
     actor = { id: u.id, name: u.name, email: u.email, isSystemAdmin: true };
   });
 
-  it('creates linked Kontrak and MC-0 that reconcile with the workbooks; a rerun changes nothing', async () => {
+  it('Kontrak, MC-0 and Addendum each own a complete package; totals reconcile; a rerun changes nothing', async () => {
     const report = await seedAhspSample(services, actor, files);
     expect(report.contract).toMatchObject({ realCost: '5121250896.48', rounded: '5121250896', workbookRealCost: '5121250896.48', items: 416, analysesImported: 110, subAnalyses: 5, components: 704, prices: 162 });
     expect(report.mc0).toMatchObject({ realCost: '5121250896.53', rounded: '5121250896', workbookRealCost: '5121250896.53', workbookRounded: '5121250896', items: 416, analysesImported: 0 });
     expect(report.mc0.decisions).toEqual({ ANALYSIS_LINK: 408, WORK_ITEM_MATCH: 416, DIRECT_PRICE: 8 });
+    const isolated = { items: 0, analysisPriceLists: 0, componentPrices: 0, subAnalyses: 0 };
+    const full = { packageAnalyses: 110, packageComponents: 704, packagePrices: 162, isolation: isolated };
+    expect(report.contract).toMatchObject({ ...full, status: 'APPROVED', copiedFrom: {} });
+    // Workbook 04 has no analyses: MC-0 inherits the Kontrak package by copy (D-058).
+    expect(report.mc0).toMatchObject({ ...full, status: 'APPROVED', copiedFrom: { Kontrak: 110 } });
+    expect(report.addendum).toMatchObject({ ...full, status: 'DRAFT', copiedFrom: { 'MC-0': 110 }, realCost: '5121250896.53' });
+    // No id is shared between packages.
+    const ids = await Promise.all([report.contract, report.mc0, report.addendum].map(async (p) => (await t.prisma.ahspAnalysisVersion.findMany({ where: { analysis: { rabVersionId: p.rabVersionId } }, select: { id: true } })).map((v) => v.id)));
+    expect(new Set(ids.flat()).size).toBe(330);
+    expect(await t.prisma.priceList.count()).toBe(3);
     const counts = async () => ({
       projects: await t.prisma.project.count(),
       imports: await t.prisma.rabImport.count(),
@@ -50,6 +60,7 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-AHSP through the import flo
     const before = await counts();
     const again = await seedAhspSample(services, actor, files);
     expect(again.steps).toEqual(['proyek sudah ada']);
+    expect(again.addendum.rabVersionId).toBe(report.addendum.rabVersionId);
     expect(await counts()).toEqual(before);
     expect(await t.prisma.project.findUnique({ where: { code: AHSP_SAMPLE_CODE } })).not.toBeNull();
   }, 240_000);
@@ -81,7 +92,7 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-AHSP through the import flo
     expect(await t.prisma.rabVersion.count({ where: { versionType: 'MC0' } })).toBe(0);
 
     const report = await seedAhspSample(services, actor, files);
-    expect(report.steps).toEqual(['proyek sudah ada', 'impor MC-0 di-approve', 'RAB MC-0 di-approve (M4)']);
+    expect(report.steps).toEqual(['proyek sudah ada', 'impor MC-0 di-approve', 'RAB MC-0 di-approve (M4)', 'Addendum 1 dibuat dari MC-0 (DRAFT, salinan paket)']);
     expect(await t.prisma.rabImport.count({ where: { targetVersionType: 'MC0' } })).toBe(1);
     expect(await t.prisma.rabImportDecision.count({ where: { importId: mc0.id } })).toBe(832);
     expect(report.mc0.realCost).toBe('5121250896.53');
