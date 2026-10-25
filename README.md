@@ -72,6 +72,7 @@ docker compose up -d --wait   # MySQL 8.4 + database _test dan _shadow
 npm run db:migrate            # terapkan migration
 npm run db:seed               # buat system admin pertama dari SEED_ADMIN_* (.env)
 npm run db:seed:dev           # opsional, development saja: proyek contoh DEV-001
+npm run ai:ping               # uji koneksi 9router (data dummy; model utama + fallback; key tidak dicetak)
 npm run db:seed:sample        # opsional, development saja: proyek SDN 2 Serangan + RAB Kontrak & MC-0 dari workbook di storage/temp
 npm run dev                   # api :3001 dan web :3000 bersamaan
 ```

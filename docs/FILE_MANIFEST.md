@@ -15,6 +15,9 @@
 - `apps/api/src/admin/admin-users.controller.ts`
 - `apps/api/src/admin/admin-users.service.ts`
 - `apps/api/src/admin/admin-users.spec.ts`
+- `apps/api/src/ai/ai.client.spec.ts`
+- `apps/api/src/ai/ai.client.ts`
+- `apps/api/src/ai/ping.ts`
 - `apps/api/src/app.module.ts`
 - `apps/api/src/app.setup.ts`
 - `apps/api/src/audit/audit.ts`

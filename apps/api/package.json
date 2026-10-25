@@ -12,7 +12,8 @@
     "db:seed": "node dist/db/seed.js",
     "db:seed:dev": "node dist/db/seed-dev.js",
     "db:seed:sample": "node dist/db/seed-sample.js",
-    "schema:drop": "node dist/db/drop-schema.js"
+    "schema:drop": "node dist/db/drop-schema.js",
+    "ai:ping": "node dist/ai/ping.js"
   },
   "dependencies": {
     "@laporan-proyek/calc": "0.0.0",
