@@ -28,9 +28,11 @@ function delta(base: string | null, target: string | null, scale: number): strin
 }
 
 /** Rising/falling volume or price between two versions of the same work item; null when either side is missing or equal. */
-function trend(base: string | null | undefined, target: string | null | undefined): 'up' | 'down' | null {
+function trend(base: string | null | undefined, target: string | null | undefined, scale?: number): 'up' | 'down' | null {
   if (base == null || target == null) return null;
-  const cmp = new Decimal(target).comparedTo(base);
+  // Amounts compare at the displayed scale, so an invisible exact difference is not shown as "+0,00".
+  const shown = (v: string) => (scale === undefined ? new Decimal(v) : new Decimal(v).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP));
+  const cmp = shown(target).comparedTo(shown(base));
   return cmp > 0 ? 'up' : cmp < 0 ? 'down' : null;
 }
 
@@ -140,8 +142,12 @@ export default async function RabComparePage({
                           <Trend dir={trend(r.base?.unitPrice, r.target?.unitPrice)}>{value(r.target, 'unitPrice')}</Trend>
                         </td>
                         <td className="num">{value(r.base, 'subtotal')}</td>
-                        <td className="num">{value(r.target, 'subtotal')}</td>
-                        <td className="num">{delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}</td>
+                        <td className="num">
+                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>{value(r.target, 'subtotal')}</Trend>
+                        </td>
+                        <td className="num">
+                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>{delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}</Trend>
+                        </td>
                       </tr>
                     ))}
                 </tbody>
