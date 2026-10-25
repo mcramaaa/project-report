@@ -166,6 +166,7 @@
 - `docs/ARCHITECTURE.md`
 - `docs/DATABASE.md`
 - `docs/DECISIONS.md`
+- `docs/HANDOFF.md`
 - `docs/EXCEL_MAPPING.md`
 - `docs/FILE_MANIFEST.md`
 - `docs/PERMISSIONS.md`
