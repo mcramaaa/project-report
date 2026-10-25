@@ -174,10 +174,12 @@ Expected:
 
 ## K. AI Extraction
 
-- [ ] D-056: Penawaran/Kontrak, MC0, dan tiap Addendum memiliki paket rekap/analisa/bahan/upah/alat/harga sendiri
-- [ ] daftar/detail/pencarian analisa dan harga dibatasi versi RAB; backend menolak relasi lintas paket
-- [ ] kandidat analisa RAB lama yang dikonfirmasi disalin bersama dependency terpakai ke paket tujuan; perubahan paket tujuan tidak mengubah asal
-- [ ] backfill/seed mempertahankan histori approved dan membuktikan isolasi paket, bukan hanya total yang sama
+- [x] D-058: MC0/Addendum tanpa analisa mewarisi analisa versi approved sebelumnya melalui salinan dependency terpakai dan keputusan pemetaan yang terlacak
+- [x] analisa baru dipakai bila tersedia; item baru tanpa pasangan/selisih harga masuk review, dan harga paket sumber tidak berubah
+- [x] D-056: Penawaran/Kontrak, MC0, dan tiap Addendum memiliki paket rekap/analisa/bahan/upah/alat/harga sendiri
+- [x] daftar/detail/pencarian analisa dan harga dibatasi versi RAB; backend menolak relasi lintas paket
+- [x] kandidat analisa RAB lama yang dikonfirmasi disalin bersama dependency terpakai ke paket tujuan; perubahan paket tujuan tidak mengubah asal
+- [x] backfill/seed mempertahankan histori approved dan membuktikan isolasi paket, bukan hanya total yang sama
 - [x] nama rekap berbeda dari analisa: formula menghubungkan keduanya, nama item RAB mengikuti rekap dan nama analisa asli tetap tersimpan
 - [x] referensi formula berantai dan bukti sumber dapat ditinjau; formula ambigu/hilang atau file eksternal tidak tersedia masuk review tanpa tebakan nama
 - [x] pipeline memakai instruksi impor tetap dari RAB_IMPORT_GUIDE, versi instruksi tercatat, serta hasil AI tetap divalidasi backend
@@ -189,12 +191,12 @@ Expected:
 - [ ] satu file multi-sheet atau beberapa file Struktur/Arsitektur/MEP menghasilkan satu draft versi RAB dengan hierarki disiplin tetap ada
 - [x] paket lengkap menyimpan file RAB, rekap, analisa, upah, bahan, dan alat beserta locator sumber setiap baris
 - [x] analisa gabungan lintas disiplin dan blok RAB/analisa pada file/sheet yang sama dapat dipetakan tanpa mewajibkan pemisahan file
-- [ ] analisa dari sumber gabungan maupun terpisah Struktur/Arsitektur/MEP muncul di satu daftar untuk RAB yang sama, tidak bercampur versi lain (scope dikoreksi D-056; test lama berscope proyek belum cukup)
+- [x] analisa dari sumber gabungan maupun terpisah Struktur/Arsitektur/MEP muncul di satu daftar untuk RAB yang sama, tidak bercampur versi lain (scope dikoreksi D-056; test lama berscope proyek belum cukup)
 - [x] beberapa item RAB dapat merujuk satu analisa tervalidasi tanpa menggandakan komponennya; konflik referensi tetap direview
 - [ ] rekap/subtotal/total sumber tidak dihitung dua kali sebagai ITEM
 - [x] kode item/analisa yang sama lintas sumber tidak auto-merge; konflik ditampilkan untuk review
 - [x] nilai konsolidasi direkonsiliasi dengan rincian/rekap sumber memakai decimal
-- [ ] Kontrak, MC0, dan Addendum dari paket berbeda tidak saling menimpa
+- [x] Kontrak, MC0, dan Addendum dari paket berbeda tidak saling menimpa
 - [ ] status draft analisa/harga dibedakan dari data resmi; upload tidak mengubah RAB approved
 - [x] file asli disimpan
 - [x] extraction memiliki source locator
@@ -214,7 +216,7 @@ Expected:
 - [x] AI hanya untuk baris putus/ambigu; fallback model dipakai saat model utama gagal teknis; model, attempt, versi instruksi tercatat; kedua model gagal → review manual
 - [x] impor MC-0/Addendum: work item dicocokkan lewat keputusan reviewer, kandidat tidak diterapkan otomatis (D-053)
 - [x] RAB approved tetap menunjuk versi analisa/harga lama setelah impor berikutnya
-- [x] seed `db:seed:sample-ahsp` membuat relasi komponen → analisa → item RAB, rekonsiliasi Kontrak & MC-0 sama dengan workbook, aman diulang
+- [x] seed `db:seed:sample-ahsp` (`SDN2-SERANGAN-2026-PAKET`) membuat paket Kontrak, MC-0 (warisan Kontrak), dan Addendum (warisan MC-0) yang terisolasi; rekonsiliasi Kontrak & MC-0 sama dengan workbook; aman diulang
 
 ## L. Security
 

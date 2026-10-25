@@ -161,18 +161,20 @@ POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 
 ## 7. AHSP (D-049–D-051)
 
-Perubahan target D-056: endpoint di bawah masih menggambarkan scope proyek
-yang telah diimplementasikan. Revisi kontrak API agar daftar/detail analisa
-dan harga selalu memiliki konteks versi RAB; backend memeriksa kepemilikan
-paket dan menolak relasi lintas RAB. Bentuk route/parameter final ditentukan
-bersama migration, sebelum implementasi. Filter UI saja tidak cukup.
+Paket analisa/harga dimiliki versi RAB (D-056, D-057). Semua pembacaan
+berkonteks versi RAB; backend memeriksa versi milik proyek dan analisa milik
+paket versi itu (selain itu 404).
 
 ```text
-GET /projects/:projectId/analyses?search=&discipline=     ahsp.read -> daftar gabungan (versi terbaru per analisa, jumlah item RAB yang merujuk)
-GET /projects/:projectId/analyses/:analysisId             ahsp.read -> versi, komponen, sumber, item RAB yang merujuk
-GET /projects/:projectId/price-lists                      ahsp.read
-GET /projects/:projectId/price-lists/:priceListId         ahsp.read -> harga terpakai
+GET /projects/:projectId/rab-versions/:versionId/analyses?search=         ahsp.read -> daftar gabungan paket versi RAB
+GET /projects/:projectId/rab-versions/:versionId/analyses/:analysisId     ahsp.read -> komponen, sumber/provenance, item RAB versi itu
+GET /projects/:projectId/rab-versions/:versionId/price-list?search=       ahsp.read -> harga upah/bahan/alat paket (null bila belum ada)
 ```
+
+`AhspAnalysisSummaryDto.latestVersion.copiedFrom` dan
+`AhspAnalysisDetailDto.versions[].copiedFrom` berisi asal salinan
+(`{ analysisVersionId, rabVersion }`) atau `null`. `RabRowDto.analysis.rabVersionId`
+adalah pemilik analisa yang ditautkan item.
 
 ## 8. Schedule
 

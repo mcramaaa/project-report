@@ -518,7 +518,7 @@ Disetujui 2026-10-25.
 - Impor MC-0/Addendum menghasilkan RAB DRAFT baru dari sumber (bukan salinan). Identitas pekerjaan (`work_item_id`) ditentukan keputusan reviewer per item: cocokkan ke work item versi approved terakhir atau buat baru. Backend menyusun kandidat (jalur kelompok + uraian sama); kandidat tidak pernah diterapkan otomatis.
 - Saat approve, baris versi hasil impor ditautkan ke versi sebelumnya seperti salinan: item melalui keputusan work item, baris kelompok melalui jalur struktur yang sama (nomor + nama), agar perbandingan tidak menganggap seluruh item pindah kelompok. Kelompok hanya struktur, bukan identitas pekerjaan.
 - Relasi analisa yang rantainya berhenti di nilai (mis. REKAP ANALISA tanpa formula pada workbook MC-0) memerlukan keputusan reviewer; kandidat dari analisa resmi proyek (kode, harga, satuan sama) hanya usulan.
-- Seed `npm run db:seed:sample-ahsp` (development) membuat proyek `SDN2-SERANGAN-2026-AHSP` melalui alur impor yang sama: Kontrak dari workbook Penawaran (`00`), MC-0 dari workbook mingguan (`04`). Keputusan pemetaan MC-0 dicatat eksplisit sebagai keputusan reviewer oleh admin seed. Seed berhenti bila rekonsiliasi gagal, aman diulang (melanjutkan langkah yang belum selesai), dan tidak menyentuh proyek, user, role, atau histori lain.
+- (Diganti D-057: seed kini membuat `SDN2-SERANGAN-2026-PAKET`.) Seed `npm run db:seed:sample-ahsp` (development) membuat proyek `SDN2-SERANGAN-2026-AHSP` melalui alur impor yang sama: Kontrak dari workbook Penawaran (`00`), MC-0 dari workbook mingguan (`04`). Keputusan pemetaan MC-0 dicatat eksplisit sebagai keputusan reviewer oleh admin seed. Seed berhenti bila rekonsiliasi gagal, aman diulang (melanjutkan langkah yang belum selesai), dan tidak menyentuh proyek, user, role, atau histori lain.
 
 ## D-054 Toleransi Rekonsiliasi Nilai Cached Excel
 
@@ -564,6 +564,69 @@ pada D-045/D-050 serta penautan analisa lintas RAB pada D-053.
   test isolasi, serta pembaruan panduan/prompt impor ke versi berikutnya.
   Seed lama tidak boleh dipakai sebagai bukti isolasi sebelum relasinya
   diperiksa; seed contoh baru/penyesuaian non-destruktif harus direkonsiliasi.
+
+## D-057 Implementasi Paket per Versi RAB (D-056)
+
+Rancangan schema/API final untuk D-056, 2026-10-26.
+
+- **Paket = versi RAB.** `price_lists.rab_version_id` (unik: satu daftar harga
+  per versi RAB) dan `ahsp_analyses.rab_version_id` menyatakan pemilik. Versi
+  analisa mengikuti analisanya; daftar harga versi analisa, harga komponen, dan
+  subanalisa wajib berada di paket yang sama. Item RAB hanya boleh menautkan
+  analisa milik versinya.
+- **Provenance salinan:** `ahsp_analysis_versions.copied_from_id` dan
+  `price_items.copied_from_id`. `ahsp_analysis_versions.source_import_id`
+  boleh kosong untuk salinan dari "Buat versi" (M4).
+- **Penyalinan:** satu fungsi backend menyalin analisa terpilih beserta
+  subanalisa (rekursif) dan harga terpakai ke paket tujuan dalam transaksi
+  yang sama; idempoten per sumber dalam satu paket; paket sumber tidak pernah
+  diubah. Dipakai oleh:
+  - approve impor MC0/Addendum: kandidat analisa hanya dari paket versi RAB
+    approved terakhir (calon `previous_version_id`); keputusan `ANALYSIS_LINK`
+    ke kandidat itu menyalin dependency ke paket baru;
+  - "Buat versi" MC0/Addendum (M4): item tertaut analisa disalin bersama
+    paket yang dipakainya.
+- **Validasi:** approve RAB (M4) menolak item yang menautkan analisa di luar
+  paket versinya. Pemeriksaan isolasi (item → analisa, analisa → daftar harga,
+  komponen → harga, komponen → subanalisa) dipakai test dan seed.
+- **API baca berkonteks versi RAB:** `GET /projects/:projectId/rab-versions/
+  :versionId/analyses`, `.../analyses/:analysisId`, `.../price-list`.
+  Endpoint daftar analisa/harga berscope proyek dihapus.
+- **Backfill non-destruktif:** pemilik paket lama diisi dari impor asalnya
+  (setiap daftar harga dan versi analisa berasal dari tepat satu impor
+  approved). Relasi lintas paket yang sudah approved tidak diubah karena
+  histori approved; pada data dev hanya proyek contoh `SDN2-SERANGAN-2026-AHSP`
+  (408 item MC-0 menunjuk analisa Kontrak). Pemeriksaan isolasi melaporkannya
+  sebagai legacy; proyek itu bukan bukti isolasi. Bukti memakai proyek contoh
+  baru `SDN2-SERANGAN-2026-PAKET`.
+- **Panduan/prompt:** `rab-import-guide@2`; run lama tetap tercatat `@1`.
+- **Addendum pada seed:** belum ada dokumen Addendum kantor. Seed membuat
+  Addendum lewat "Buat versi" (salinan MC-0 beserta paketnya) dan
+  membiarkannya DRAFT; tidak ada isi Addendum yang dikarang.
+
+## D-058 Pewarisan Analisa Bila MC0/Addendum Tidak Menyertakannya
+
+Klarifikasi pengguna 2026-10-26; melengkapi D-056/D-057.
+
+- Jika sumber MC0/Addendum tidak menyertakan analisa, gunakan analisa dari
+  paket versi RAB approved sebelumnya pada rantai revisi proyek. Contoh:
+  MC0 dari Kontrak; Addendum 1 dari MC0 bila itulah versi approved sebelumnya;
+  Addendum berikutnya dari versi approved terakhir sebelumnya.
+- Pewarisan berarti menyalin dependency terpakai ke paket RAB tujuan dalam
+  transaksi yang sama: analisa, subanalisa, komponen, koefisien, serta harga.
+  ID/ownership tujuan mandiri; provenance menunjuk asal salinan. Tidak
+  membuat ketergantungan master mutable bersama antarversi RAB.
+- Pemetaan item/analisa tetap mengikuti bukti dan keputusan review D-053;
+  pewarisan tidak berarti memakai analisa sembarang hanya karena kode/nama
+  mirip. Item baru yang tidak punya pasangan ditandai untuk penyelesaian.
+- Jika sumber baru menyertakan analisa, sumber baru menjadi dasar review.
+  Formula rusak/ambigu pada sumber baru bukan alasan untuk diam-diam
+  menggantinya dengan versi lama. Selisih harga mengikuti D-051; tidak
+  otomatis mengubah koefisien/harga lama agar cocok dengan RAB baru.
+- UI membedakan analisa dari sumber baru dan analisa warisan, serta
+  menampilkan versi asal. Snapshot/histori RAB sumber tetap tidak berubah.
+- Prioritas tetap pemuatan paket RAB lengkap di aplikasi; skenario seed dan
+  test wajib membuktikan fallback ini beserta isolasi paketnya.
 
 ## Keputusan Terbuka
 

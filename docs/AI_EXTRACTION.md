@@ -1,5 +1,11 @@
 # AI Extraction Design
 
+Fallback D-058: bila MC0/Addendum tidak membawa analisa, gunakan analisa
+versi RAB approved sebelumnya sebagai sumber pewarisan. Pemetaan tetap
+direview; approval menyalin seluruh dependency terpakai ke paket tujuan
+sesuai D-057. Analisa baru dari dokumen tujuan, bila tersedia, menjadi dasar
+review. Jangan menyembunyikan sumber rusak/ambigu dengan fallback diam-diam.
+
 Scope target terbaru: D-056. Paket analisa/harga dimiliki masing-masing
 versi RAB (Penawaran/Kontrak, MC0, Addendum), bukan master bersama proyek.
 Normalisasi disiplin menjadi satu daftar hanya dalam paket RAB tujuan.

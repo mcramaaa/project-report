@@ -1,26 +1,31 @@
 # Panduan Tetap Impor RAB dan Analisa
 
-**Koreksi kebutuhan 2026-10-26 (D-056):** daftar analisa dan harga harus
-mandiri per versi RAB, bukan gabungan proyek. Penggabungan disiplin hanya
-di dalam RAB yang sama. Kandidat dari RAB lain disalin ke paket tujuan
-setelah review, bukan ditautkan sebagai master bersama. Dokumen dan runtime
-versi 1 di bawah merekam implementasi sebelumnya; sebelum alur baru diklaim
-selesai, terbitkan versi panduan/prompt berikutnya dan sinkronkan schema,
-validator, test, serta catatan versi run. Jangan menerapkan perubahan scope
-secara diam-diam pada extraction run lama.
+**Pewarisan D-058:** MC0/Addendum tanpa analisa menggunakan analisa dari
+versi RAB approved sebelumnya, dengan pemetaan yang direview. Salin analisa,
+subanalisa, dan harga/komponen terpakai ke paket tujuan sesuai D-057; tampilkan
+asal salinan dan jaga isolasi paket. Jika sumber baru memiliki analisa,
+gunakan analisa baru. Item baru tanpa pasangan atau selisih harga tetap
+masuk review; jangan mengarang atau mengubah nilai lama otomatis.
 
-Versi panduan: 1. Acuan: PRD §11/§29 dan D-045–D-053. Ini spesifikasi
-untuk implementasi, prompt AI, validator, dan review. Runtime: instruksi
-`rab-import-guide@1` di `apps/api/src/imports/guide/` (prompt + schema zod),
-tercatat pada setiap run impor; perubahan panduan wajib menaikkan versinya dan
-test sinkronisasi memeriksa nomor versi dokumen ini. Rumus analisa D-051,
-harga referensi D-050, status D-048.
+Versi panduan: 2 (D-056, D-057). Acuan: PRD §11/§29 dan D-045–D-057. Ini
+spesifikasi untuk implementasi, prompt AI, validator, dan review. Runtime:
+instruksi `rab-import-guide@2` di `apps/api/src/imports/guide/` (prompt + schema
+zod), tercatat pada setiap run impor; perubahan panduan wajib menaikkan versinya
+dan test sinkronisasi memeriksa nomor versi dokumen ini. Run lama tetap
+mencatat `rab-import-guide@1`. Rumus analisa D-051, status D-048.
+
+Perubahan versi 2 (D-056): daftar analisa dan harga mandiri per versi RAB,
+bukan gabungan proyek. Penggabungan Struktur/Arsitektur/MEP hanya di dalam RAB
+yang sama. Kandidat untuk rantai yang putus hanya berasal dari paket versi RAB
+approved sebelumnya; analisa yang dipilih reviewer disalin ke paket versi
+tujuan bersama subanalisa dan harga terpakai, dengan provenance (D-057).
 
 ## Hasil di Sistem
 
 - Satu RAB per proyek dan versi baseline; Kontrak, MC0, Addendum tetap terpisah.
-- Satu daftar analisa gabungan proyek, walau sumber memisahkan Struktur,
-  Arsitektur, MEP di file/sheet berbeda atau mencampurnya dengan RAB.
+- Satu daftar analisa gabungan per versi RAB, walau sumber memisahkan Struktur,
+  Arsitektur, MEP di file/sheet berbeda atau mencampurnya dengan RAB. Paket
+  Penawaran/Kontrak, MC0, dan Addendum tidak saling berbagi data.
 - Harga upah/bahan/alat × koefisien → harga satuan analisa → dikalikan volume
   pekerjaan → nilai item → rekap dan bobot. Semua kalkulasi kritis decimal-safe.
 - Hanya analisa dan komponen/harga yang dipakai item RAB menjadi data domain.

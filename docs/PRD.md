@@ -232,6 +232,14 @@ dikonfirmasi; hasilnya milik RAB tujuan, termasuk subanalisa dan harga yang
 dibutuhkan, tanpa ketergantungan ke master RAB asal. Versi dan histori tetap
 dipertahankan. Harga pada MC0/Addendum tidak mengubah Penawaran/Kontrak.
 
+Jika dokumen MC0/Addendum tidak menyertakan analisa, gunakan analisa dari
+versi RAB approved sebelumnya (D-058). Analisa dan dependency terpakainya
+(subanalisa, bahan, upah, alat, koefisien, harga) disalin ke paket RAB tujuan,
+bukan ditautkan ke master bersama. Asal salinan tetap terlacak. Jika dokumen
+baru menyertakan analisa, gunakan sumber barunya; konflik atau selisih harga
+dengan RAB tetap ditampilkan untuk review. Item baru tanpa analisa yang
+dapat dipetakan tidak diberi analisa karangan.
+
 Pada alur RAB berbasis analisa (D-046), harga satuan pekerjaan berasal dari
 perhitungan komponen analisa: harga upah/bahan/alat dikalikan koefisiennya,
 lalu dijumlahkan. Nilai pekerjaan berasal dari harga satuan analisa dikalikan

@@ -271,21 +271,21 @@ activation_mode:
 
 ## 5. AHSP (D-050, D-051)
 
-**Rancangan perubahan wajib D-056 (belum migration):** tabel di bawah
-menggambarkan implementasi lama berscope proyek. Tambahkan kepemilikan versi
-RAB yang tegas pada paket harga/analisa, serta constraint/validasi agar relasi
-item RAB, analisa, subanalisa, dan harga berada dalam paket yang sama.
-Salinan dari RAB lain menyimpan provenance, tanpa master mutable bersama.
-Rancang backfill non-destruktif untuk data yang sudah ada, lalu migration
-baru; jangan mengubah migration lama atau menghapus data approved.
+Paket analisa dan harga dimiliki **versi RAB** (D-056, D-057; migration
+`20261026090000_rab_version_packages`). Relasi item RAB, analisa, subanalisa,
+dan harga berada dalam paket yang sama; backend menolak relasi lintas paket.
+Salinan dari paket lain menyimpan `copied_from_id`. Paket lama di-backfill
+dari impor asalnya; relasi lintas paket yang sudah approved tidak diubah.
 
 ### price_lists
 
-Versi daftar harga per proyek; dibuat saat approve impor, tidak diubah.
+Daftar harga paket satu versi RAB; dibuat saat approve impor atau saat
+paket disalin, tidak diubah setelah RAB approved.
 
 - id
 - project_id → projects
-- version_number — unique per proyek
+- rab_version_id → rab_versions — unique (satu paket per versi RAB)
+- version_number — unique per proyek (urutan pembuatan)
 - source_import_id → rab_imports
 - location, period nullable — metadata dari sumber
 - created_by, created_at
@@ -300,13 +300,15 @@ Hanya harga yang dipakai komponen analisa terpakai (D-046).
 - unit nullable
 - price DECIMAL(40,12)
 - source_locator JSON — dokumen, sheet, sel
+- copied_from_id nullable → price_items (provenance salinan)
 
 ### ahsp_analyses
 
-Identitas analisa dalam **satu daftar gabungan per proyek** (D-045). Kode tidak unik dan bukan identitas.
+Identitas analisa dalam **satu daftar gabungan per versi RAB** (D-056). Kode tidak unik dan bukan identitas.
 
 - id
 - project_id → projects
+- rab_version_id → rab_versions — pemilik paket
 - code, name, unit — dari sumber saat pertama dibuat
 - created_at
 
@@ -317,8 +319,9 @@ Tidak diubah setelah dibuat; item RAB menunjuk versi.
 - id
 - analysis_id → ahsp_analyses
 - version_number — unique per analisa
-- price_list_id → price_lists
-- source_import_id → rab_imports
+- price_list_id → price_lists — daftar harga paket yang sama
+- source_import_id nullable → rab_imports — kosong untuk salinan "Buat versi"
+- copied_from_id nullable → ahsp_analysis_versions (provenance salinan)
 - code, name, unit — snapshot sumber (nama analisa asli, tidak ditimpa nama rekap)
 - discipline nullable — metadata/filter (Struktur/Arsitektur/MEP bila diketahui)
 - overhead_percent DECIMAL(9,4) nullable
