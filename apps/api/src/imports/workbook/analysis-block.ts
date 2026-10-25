@@ -46,6 +46,11 @@ export interface AnalysisBlock {
   sourcePriceExact: string | null;
   sourceDirectCostRaw: number | null;
   sourcePriceExactRaw: number | null;
+  /**
+   * Overhead row E = D × pct written in the block while the header price points at D itself: the source
+   * prices without it. Evidence for a review warning; the app keeps the source price (no overhead).
+   */
+  unusedOverhead: { percent: string; overheadCell: string; percentCell: string; directCell: string } | null;
   components: BlockComponent[];
 }
 
@@ -160,6 +165,24 @@ export function readAnalysisBlock(model: WorkbookModel, sheet: string, headerRow
     break;
   }
 
+  // Without overhead in F's chain, an E row of the block may still compute D × pct from the cell used.
+  let unusedOverhead: AnalysisBlock['unusedOverhead'] = null;
+  if (overheadPercent === null) {
+    for (let r = fCell.address.row + 1; r <= Math.min(model.rowCount(sheet), fCell.address.row + 10) && !blockColumns(model, sheet, r); r++) {
+      const node = model.formulaOf(model.cell(sheet, r, cols.amount));
+      const pct = node ? overheadCell(node, fCell.address.row, fCell.address.col) : null;
+      const percent = pct ? excelDecimal(model.cell(sheet, pct.row, pct.col).value) : null;
+      if (!pct || percent === null) continue;
+      unusedOverhead = {
+        percent,
+        overheadCell: formatAddress(model.cell(sheet, r, cols.amount).address),
+        percentCell: formatAddress(model.cell(sheet, pct.row, pct.col).address),
+        directCell: formatAddress(fCell.address),
+      };
+      break;
+    }
+  }
+
   // D = Σ subtotals; subtotal = SUM(amount cells), a single reference, or a sum of references.
   const dCell = directCell ? model.cell(sheet, directCell.row, directCell.col) : fCell;
   const dParts = directCell ? (() => {
@@ -211,6 +234,7 @@ export function readAnalysisBlock(model: WorkbookModel, sheet: string, headerRow
     sourcePriceExact: excelDecimal(fCell.value),
     sourceDirectCostRaw: typeof dCell.value === 'number' ? dCell.value : null,
     sourcePriceExactRaw: typeof fCell.value === 'number' ? fCell.value : null,
+    unusedOverhead,
     components,
   };
 }

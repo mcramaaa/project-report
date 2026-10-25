@@ -174,9 +174,12 @@ Expected:
 
 ## K. AI Extraction
 
+- [x] D-059: Analisa & Harga tersedia di Lihat RAB, bukan tab detail proyek; pencarian/detail/subanalisa/tautan kembali tetap pada paket RAB yang dipilih, dan URL lama diarahkan dengan konteks yang sama
 - [x] D-058: MC0/Addendum tanpa analisa mewarisi analisa versi approved sebelumnya melalui salinan dependency terpakai dan keputusan pemetaan yang terlacak
 - [x] analisa baru dipakai bila tersedia; item baru tanpa pasangan/selisih harga masuk review, dan harga paket sumber tidak berubah
 - [x] D-056: Penawaran/Kontrak, MC0, dan tiap Addendum memiliki paket rekap/analisa/bahan/upah/alat/harga sendiri
+- [x] D-063: overhead tercantum tetapi harga merujuk biaya langsung D → WARNING `OVERHEAD_UNUSED` (persentase, harga dipakai, sel sumber); harga sumber tetap; analisa normal tanpa warning
+- [x] D-063: setiap item (harga + PPN, jumlah) dan total direkonsiliasi dengan nilai cached workbook (D-054); selisih nominal → WARNING tanpa mengganti angka; sisa float sel total dibedakan (`FLOAT_RESIDUE`)
 - [x] daftar/detail/pencarian analisa dan harga dibatasi versi RAB; backend menolak relasi lintas paket
 - [x] kandidat analisa RAB lama yang dikonfirmasi disalin bersama dependency terpakai ke paket tujuan; perubahan paket tujuan tidak mengubah asal
 - [x] backfill/seed mempertahankan histori approved dan membuktikan isolasi paket, bukan hanya total yang sama
@@ -225,3 +228,39 @@ Expected:
 - [ ] secrets tidak di-client
 - [ ] 9router tidak dipanggil dari browser
 - [ ] upload MIME/size validation
+
+### D-060 Rincian paket RAB
+
+- [x] Lihat RAB memiliki Rekap RAB / Analisa / Bahan / Alat / Upah sesuai izin.
+- [x] Harga difilter berdasarkan kategori pemakaian, bukan nama sheet; pencarian tetap pada versi terpilih.
+- [x] Detail analisa menampilkan koefisien, kelompok kosong, subtotal A/B/C, D/E/F dan pembulatan sumber.
+- [x] Desktop dan mobile tidak mengalami overflow halaman (tabel rincian dapat digeser).
+
+Verifikasi D-060: lint, typecheck, build; 43 test calc dan 129 test API lulus.
+Browser memakai API fixture terisolasi pada desktop 1440 dan mobile 390:
+lima tab, rincian, navigasi versi, redirect lama, izin dan overflow lulus.
+
+### D-061 UI dan asal nilai
+
+- [x] Nilai RAB membuka nilai lengkap, rumus, operand dan baris/analisa sumber.
+- [x] Komponen analisa dapat ditelusuri ke harga dasar atau subanalisa dan dokumen.
+- [x] Nilai manual/override serta sumber yang tidak tercatat dijelaskan tanpa tebakan.
+- [x] Pratinjau Excel dibatasi, menampilkan nilai cached dan referensi tanpa eksekusi.
+- [x] Permission dokumen dan isolasi proyek diperiksa backend (403/404).
+- [x] Dialog dapat ditutup dengan Escape dan fokus kembali; tujuan tautan disorot.
+- [x] Halaman utama/admin/proyek/RAB dan pratinjau nyaman pada desktop/mobile.
+
+Verifikasi D-061: lint/typecheck/build lulus; 43 test calc dan 131 test API
+lulus (termasuk preview batas sel, permission dan isolasi dokumen). Browser
+dengan API fixture terisolasi pada 1440/390 memeriksa halaman utama, profil,
+admin user/role/akses, wizard proyek, informasi/kalender/tim, dokumen/impor,
+review impor dan lima tab RAB; perjalanan RAB → analisa → sumber Excel,
+referensi sel, dialog Escape/fokus kembali, serta tautan yang membuka kelompok
+RAB diciutkan lulus tanpa error browser atau overflow halaman. Hasil lokal:
+`/tmp/report-rab-modern-preview/results.json`.
+
+### D-062 Satu tingkat tab RAB
+
+- [x] Rekap, daftar/detail analisa, bahan, alat dan upah hanya menampilkan tab paket; tab proyek tidak diulang.
+- [x] Tautan ke proyek, daftar versi dan daftar analisa mempertahankan tujuan dan izin.
+- [x] Tampilan desktop/mobile serta perjalanan sumber nilai tetap berfungsi.

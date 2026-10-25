@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react';
+import { SourceValue } from '@/components/source-value';
+import { rabRowHref } from '@/lib/value-source';
 import type { ProjectDto, RabChangeType, RabCompareDto, RabRowDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -28,16 +31,23 @@ function delta(base: string | null, target: string | null, scale: number): strin
 }
 
 /** Rising/falling volume or price between two versions of the same work item; null when either side is missing or equal. */
-function trend(base: string | null | undefined, target: string | null | undefined, scale?: number): 'up' | 'down' | null {
+function trend(
+  base: string | null | undefined,
+  target: string | null | undefined,
+  scale?: number,
+): 'up' | 'down' | null {
   if (base == null || target == null) return null;
   // Amounts compare at the displayed scale, so an invisible exact difference is not shown as "+0,00".
-  const shown = (v: string) => (scale === undefined ? new Decimal(v) : new Decimal(v).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP));
+  const shown = (v: string) =>
+    scale === undefined
+      ? new Decimal(v)
+      : new Decimal(v).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP);
   const cmp = shown(target).comparedTo(shown(base));
   return cmp > 0 ? 'up' : cmp < 0 ? 'down' : null;
 }
 
 /** Colour plus an arrow and screen-reader text, so the change is not shown by colour alone. */
-function Trend({ dir, children }: { dir: 'up' | 'down' | null; children: string }) {
+function Trend({ dir, children }: { dir: 'up' | 'down' | null; children: ReactNode }) {
   if (!dir) return <>{children}</>;
   return (
     <span className={`rab-trend-${dir}`}>
@@ -48,7 +58,12 @@ function Trend({ dir, children }: { dir: 'up' | 'down' | null; children: string 
   );
 }
 
-const value = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') => (row ? (key === 'volume' ? formatNumber(row[key], { trim: true }) : formatRounded(row[key], 2)) : '–');
+const value = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') =>
+  row
+    ? key === 'volume'
+      ? formatNumber(row[key], { trim: true })
+      : formatRounded(row[key], 2)
+    : '–';
 
 export default async function RabComparePage({
   params,
@@ -68,14 +83,42 @@ export default async function RabComparePage({
   );
   if (cmpStatus === 404) notFound();
   const filter = FILTERS.find((f) => f.key === query.filter) ?? FILTERS[0]!;
-  const href = (key: string) => `${projectPath}/rab/compare?base=${query.base}&target=${query.target}${key === 'all' ? '' : `&filter=${key}`}`;
-  const counts = data ? Object.fromEntries(Object.keys(CHANGE).map((c) => [c, data.rows.filter((r) => r.change === c).length])) : {};
+  const href = (key: string) =>
+    `${projectPath}/rab/compare?base=${query.base}&target=${query.target}${key === 'all' ? '' : `&filter=${key}`}`;
+  const counts = data
+    ? Object.fromEntries(
+        Object.keys(CHANGE).map((c) => [c, data.rows.filter((r) => r.change === c).length]),
+      )
+    : {};
 
+  const owners = new Map(
+    data?.rows.flatMap((r) => [
+      ...(r.base ? [[r.base.id, data.base.id] as const] : []),
+      ...(r.target ? [[r.target.id, data.target.id] as const] : []),
+    ]),
+  );
+  const linkedValue = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') =>
+    row ? (
+      <Link
+        className="source-value"
+        href={rabRowHref(projectId, owners.get(row.id)!, row.id)}
+        title="Buka item pada versi sumber"
+      >
+        {value(row, key)}
+      </Link>
+    ) : (
+      '–'
+    );
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
+      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
+        {project.projectName}
+      </PageTitle>
       <ProjectTabs projectId={project.id} active="rab" permissions={project.permissions} />
-      <Link href={`${projectPath}/rab`} className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
+      <Link
+        href={`${projectPath}/rab`}
+        className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900"
+      >
         ← Versi RAB
       </Link>
       {cmpStatus === 403 ? (
@@ -88,11 +131,16 @@ export default async function RabComparePage({
             {data.base.label} → {data.target.label}
           </h2>
           <p className="text-sm text-slate-600">
-            {counts.MODIFIED} berubah · {counts.NEW} baru · {counts.REMOVED} dihapus · {counts.UNCHANGED} tetap. Pekerjaan dicocokkan dengan kode pekerjaan permanen.
+            {counts.MODIFIED} berubah · {counts.NEW} baru · {counts.REMOVED} dihapus ·{' '}
+            {counts.UNCHANGED} tetap. Pekerjaan dicocokkan dengan kode pekerjaan permanen.
           </p>
           <nav className="access-tabs" aria-label="Filter perubahan">
             {FILTERS.map((f) => (
-              <Link key={f.key} href={href(f.key)} aria-current={f.key === filter.key ? 'page' : undefined}>
+              <Link
+                key={f.key}
+                href={href(f.key)}
+                aria-current={f.key === filter.key ? 'page' : undefined}
+              >
                 {f.label}
               </Link>
             ))}
@@ -104,17 +152,37 @@ export default async function RabComparePage({
               <table className="rab-grid">
                 <thead>
                   <tr>
-                    <th scope="col" className="rab-sticky-no">Kode</th>
-                    <th scope="col" className="rab-sticky-desc">Uraian</th>
+                    <th scope="col" className="rab-sticky-no">
+                      Kode
+                    </th>
+                    <th scope="col" className="rab-sticky-desc">
+                      Uraian
+                    </th>
                     <th scope="col">Perubahan</th>
-                    <th scope="col" className="num">Volume {data.base.label}</th>
-                    <th scope="col" className="num">Volume {data.target.label}</th>
-                    <th scope="col" className="num">Δ volume</th>
-                    <th scope="col" className="num">Harga {data.base.label}</th>
-                    <th scope="col" className="num">Harga {data.target.label}</th>
-                    <th scope="col" className="num">Jumlah {data.base.label}</th>
-                    <th scope="col" className="num">Jumlah {data.target.label}</th>
-                    <th scope="col" className="num">Δ jumlah</th>
+                    <th scope="col" className="num">
+                      Volume {data.base.label}
+                    </th>
+                    <th scope="col" className="num">
+                      Volume {data.target.label}
+                    </th>
+                    <th scope="col" className="num">
+                      Δ volume
+                    </th>
+                    <th scope="col" className="num">
+                      Harga {data.base.label}
+                    </th>
+                    <th scope="col" className="num">
+                      Harga {data.target.label}
+                    </th>
+                    <th scope="col" className="num">
+                      Jumlah {data.base.label}
+                    </th>
+                    <th scope="col" className="num">
+                      Jumlah {data.target.label}
+                    </th>
+                    <th scope="col" className="num">
+                      Δ jumlah
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,33 +193,90 @@ export default async function RabComparePage({
                         <td className="rab-sticky-no font-mono text-xs">{r.workItemCode}</td>
                         <td className="rab-sticky-desc">
                           {(r.target ?? r.base)!.description}
-                          {r.base && r.target && r.base.description !== r.target.description && <span className="block text-xs text-slate-500">sebelumnya: {r.base.description}</span>}
+                          {r.base && r.target && r.base.description !== r.target.description && (
+                            <span className="block text-xs text-slate-500">
+                              sebelumnya: {r.base.description}
+                            </span>
+                          )}
                           {r.changes.includes('group') && (
                             <span className="block text-xs text-slate-500">
-                              pindah kelompok: {r.baseGroup || '(tingkat teratas)'} → {r.targetGroup || '(tingkat teratas)'}
+                              pindah kelompok: {r.baseGroup || '(tingkat teratas)'} →{' '}
+                              {r.targetGroup || '(tingkat teratas)'}
                             </span>
                           )}
                         </td>
                         <td>
                           <Badge tone={CHANGE[r.change].tone}>{CHANGE[r.change].label}</Badge>
                         </td>
-                        <td className="num">{value(r.base, 'volume')}</td>
+                        <td className="num">{linkedValue(r.base, 'volume')}</td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>{value(r.target, 'volume')}</Trend>
+                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>
+                            {linkedValue(r.target, 'volume')}
+                          </Trend>
                         </td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>{delta(r.base?.volume ?? null, r.target?.volume ?? null, 4)}</Trend>
+                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>
+                            <SourceValue
+                              title="Selisih volume"
+                              formula="Nilai versi tujuan − nilai versi awal"
+                              sources={[
+                                {
+                                  label: data.base.label,
+                                  value: r.base?.volume ?? '0 (tidak ada pada versi ini)',
+                                  href: r.base
+                                    ? rabRowHref(projectId, data.base.id, r.base.id)
+                                    : undefined,
+                                },
+                                {
+                                  label: data.target.label,
+                                  value: r.target?.volume ?? '0 (tidak ada pada versi ini)',
+                                  href: r.target
+                                    ? rabRowHref(projectId, data.target.id, r.target.id)
+                                    : undefined,
+                                },
+                              ]}
+                            >
+                              {delta(r.base?.volume ?? null, r.target?.volume ?? null, 4)}
+                            </SourceValue>
+                          </Trend>
                         </td>
-                        <td className="num">{value(r.base, 'unitPrice')}</td>
+                        <td className="num">{linkedValue(r.base, 'unitPrice')}</td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.unitPrice, r.target?.unitPrice)}>{value(r.target, 'unitPrice')}</Trend>
+                          <Trend dir={trend(r.base?.unitPrice, r.target?.unitPrice)}>
+                            {linkedValue(r.target, 'unitPrice')}
+                          </Trend>
                         </td>
-                        <td className="num">{value(r.base, 'subtotal')}</td>
+                        <td className="num">{linkedValue(r.base, 'subtotal')}</td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>{value(r.target, 'subtotal')}</Trend>
+                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>
+                            {linkedValue(r.target, 'subtotal')}
+                          </Trend>
                         </td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>{delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}</Trend>
+                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>
+                            <SourceValue
+                              title="Selisih jumlah"
+                              formula="Nilai versi tujuan − nilai versi awal"
+                              sources={[
+                                {
+                                  label: data.base.label,
+                                  value: r.base?.subtotal ?? '0 (tidak ada pada versi ini)',
+                                  href: r.base
+                                    ? rabRowHref(projectId, data.base.id, r.base.id)
+                                    : undefined,
+                                },
+                                {
+                                  label: data.target.label,
+                                  value: r.target?.subtotal ?? '0 (tidak ada pada versi ini)',
+                                  href: r.target
+                                    ? rabRowHref(projectId, data.target.id, r.target.id)
+                                    : undefined,
+                                },
+                              ]}
+                            >
+                              {delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}
+                            </SourceValue>
+                          </Trend>
                         </td>
                       </tr>
                     ))}

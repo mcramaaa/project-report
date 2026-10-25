@@ -65,6 +65,12 @@ interface VersionReport extends PackageReport {
   prices: number;
   decisions: Record<string, number>;
   reconciliationEntries: number;
+  /** Item rows compared with their cached workbook values (D-054) and the total's classification. */
+  rowsChecked: number;
+  rowsMismatched: number;
+  totalStatus: string | null;
+  /** Analyses whose block lists an overhead the source price does not use (warning, D-063). */
+  overheadUnused: string[];
 }
 
 const SEED_NOTE = 'Seed contoh (D-053): keputusan reviewer dicatat eksplisit oleh admin seed.';
@@ -186,6 +192,9 @@ async function ensureVersion(
     // Reconciliation gate: totals and every cached-Excel comparison must match before approving.
     const failed = detail.draft!.analyses.flatMap((a) => a.reconciliation.filter((r) => !r.matches).map((r) => `${a.code} ${r.what}`));
     if (failed.length) throw new Error(`Rekonsiliasi analisa ${label} gagal: ${failed.slice(0, 5).join('; ')}`);
+    if (detail.reconciliation?.rowsMismatched || detail.reconciliation?.totalStatus === 'MISMATCH') {
+      throw new Error(`Rekonsiliasi item ${label}: ${detail.reconciliation.rowsMismatched} baris berbeda, total ${detail.reconciliation.totalStatus}.`);
+    }
     if (detail.reconciliation?.matches === false) {
       throw new Error(`Total ${label} ${detail.reconciliation.realCost} ≠ workbook ${detail.reconciliation.workbookRealCost} (dibulatkan ${detail.reconciliation.rounded} vs ${detail.reconciliation.workbookRounded}).`);
     }
@@ -217,6 +226,10 @@ async function ensureVersion(
     prices: draft.stats.pricesImported,
     decisions: Object.fromEntries(decisions.map((d) => [d.kind, d._count])),
     reconciliationEntries: imported.reduce((n, a) => n + a.reconciliation.length, 0),
+    rowsChecked: detail.reconciliation?.rowsChecked ?? 0,
+    rowsMismatched: detail.reconciliation?.rowsMismatched ?? 0,
+    totalStatus: detail.reconciliation?.totalStatus ?? null,
+    overheadUnused: imported.filter((a) => a.unusedOverhead).map((a) => a.code ?? a.key).sort(),
   };
 }
 

@@ -1,12 +1,15 @@
 import type { ProjectDto, RabVersionDetailDto } from '@laporan-proyek/shared';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
+import { RabBackLinks, RabTabs } from '@/components/rab-tabs';
 import { Alert, PageTitle } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { RabEditor } from './rab-editor';
 
-export default async function RabVersionPage({ params }: { params: Promise<{ projectId: string; versionId: string }> }) {
+export default async function RabVersionPage({
+  params,
+}: {
+  params: Promise<{ projectId: string; versionId: string }>;
+}) {
   const { projectId, versionId } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const [{ status, data: project }, detail] = await Promise.all([
@@ -18,22 +21,29 @@ export default async function RabVersionPage({ params }: { params: Promise<{ pro
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="rab" permissions={project.permissions} />
-      <Link href={`${base}/rab`} className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
-        ← Versi RAB
-      </Link>
+      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
+        {project.projectName}
+      </PageTitle>
+      <RabBackLinks projectId={project.id} permissions={project.permissions} />
       {detail.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat RAB.</Alert>
       ) : !detail.data ? (
         <Alert>Versi RAB tidak dapat dimuat.</Alert>
       ) : (
-        <RabEditor
-          projectId={project.id}
-          initial={detail.data}
-          canEdit={project.permissions.includes('rab.edit') && project.status === 'ACTIVE'}
-          canApprove={project.permissions.includes('rab.approve') && project.status === 'ACTIVE'}
-        />
+        <>
+          <RabTabs
+            projectId={project.id}
+            versionId={versionId}
+            active="recap"
+            permissions={project.permissions}
+          />
+          <RabEditor
+            projectId={project.id}
+            initial={detail.data}
+            canEdit={project.permissions.includes('rab.edit') && project.status === 'ACTIVE'}
+            canApprove={project.permissions.includes('rab.approve') && project.status === 'ACTIVE'}
+          />
+        </>
       )}
     </>
   );

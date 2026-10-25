@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import ExcelJS from 'exceljs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { buildDraft } from './build-draft';
+import { evaluateImport } from './evaluate';
 import { WorkbookModel } from './workbook/workbook-model';
 
 // Office workbooks stay out of Git (storage/temp); these checks run where they are present.
@@ -29,7 +30,7 @@ describe.skipIf(!available)('real workbooks SDN 2 Serangan (storage/temp)', () =
 
   it('Kontrak: items trace to analyses, sub-analyses and prices come along, everything reconciles', () => {
     expect(contract.stats).toEqual({ items: 416, analysesInWorkbook: 168, analysesImported: 110, subAnalyses: 5, components: 704, pricesImported: 162 });
-    expect(contract.workbookTotals).toEqual({ value: '5121250896.4818', rounded: null });
+    expect(contract.workbookTotals).toEqual({ value: '5121250896.4818', rounded: null, valueRaw: '5121250896.4818010' });
     const blocking = contract.issues.filter((i) => i.severity === 'BLOCKING');
     // Only the SMKK items stop at a literal price without breakdown; they need a reviewer decision.
     expect(blocking.map((i) => i.code)).toEqual(Array(8).fill('ANALYSIS_UNRESOLVED'));
@@ -46,6 +47,36 @@ describe.skipIf(!available)('real workbooks SDN 2 Serangan (storage/temp)', () =
     ]);
   });
 
+  it('Kontrak: every item and the total reconcile with the workbook (D-043, D-054)', () => {
+    // The SMKK rows are accepted as direct prices, as the reviewer does; nothing else is decided.
+    const decisions = contract.rows
+      .filter((r) => r.price.kind === 'UNRESOLVED')
+      .map((r) => ({ rowKey: r.key, kind: 'DIRECT_PRICE' as const, value: { accept: true }, reason: 'test', decidedBy: 'u', decidedAt: new Date() }));
+    const e = evaluateImport(contract, decisions, new Map());
+    expect(e.reconciliation).toMatchObject({ realCost: '5121250896.48', rounded: '5121250896', value: '5121250896.4818', rowsChecked: 416, rowsMismatched: 0, totalStatus: 'MATCH' });
+    // Σ cached item amounts (exact) and the total cell (17 digits) both lie within Rp 0.000001.
+    expect(e.reconciliation.entries.map((x) => [x.what, x.diff, x.matches])).toEqual([
+      ['total nilai vs Σ jumlah item workbook', '0.000000086215', true],
+      ['total nilai vs sel total workbook', '0.000001', true],
+    ]);
+    expect(e.issues.filter((i) => i.code === 'RAB_ROW_MISMATCH' || i.code === 'RAB_TOTAL_MISMATCH')).toEqual([]);
+  });
+
+  it('Kontrak: overhead listed but not used by the source price is a warning; the source price stays (D-063)', () => {
+    const flagged = contract.analyses.filter((a) => a.unusedOverhead).sort((x, y) => x.locator.row! - y.locator.row!);
+    expect(flagged.map((a) => [a.code, a.unusedOverhead, a.overheadPercent, a.computed.price])).toEqual([
+      ['VI.6', { percent: '10', overheadCell: 'ANALISA!H660', percentCell: 'ANALISA!E660', directCell: 'ANALISA!H659' }, null, '187390'],
+      ['VIII.4', { percent: '10', overheadCell: 'ANALISA!H1268', percentCell: 'ANALISA!E1268', directCell: 'ANALISA!H1267' }, null, '248398'],
+      ['XXI.3', { percent: '10', overheadCell: 'ANALISA!H2717', percentCell: 'ANALISA!E2717', directCell: 'ANALISA!H2716' }, null, '2513589'],
+    ]);
+    const warnings = contract.issues.filter((i) => i.code === 'OVERHEAD_UNUSED');
+    expect(warnings.map((i) => i.severity)).toEqual(['WARNING', 'WARNING', 'WARNING']);
+    expect(warnings[0]!.message).toContain('overhead 10% tercantum di ANALISA!H660');
+    expect(warnings[0]!.message).toContain('187390');
+    // Normal analyses (F = D + E) carry their overhead and no warning.
+    expect(contract.analyses.filter((a) => a.overheadPercent === '10' && a.unusedOverhead)).toEqual([]);
+  });
+
   it('MC-0 from the weekly workbook: chains stop at the values-only recap; candidates come from official analyses', async () => {
     const official = contract.analyses.map((a, i) => ({ analysisVersionId: `v-${i}`, code: a.code, name: a.name, unit: a.unit, price: a.computed.price }));
     const mc0 = buildDraft([{ model: await model(mingguanPath, 'doc-04'), documentId: 'doc-04', filename: '04', sha256: 'y' }], {
@@ -55,7 +86,7 @@ describe.skipIf(!available)('real workbooks SDN 2 Serangan (storage/temp)', () =
     });
     expect(mc0.sources[0]).toMatchObject({ sheet: 'RAB + PPN', block: 'MC - 0' });
     expect(mc0.stats.items).toBe(416);
-    expect(mc0.workbookTotals).toEqual({ value: '5121250896.52531', rounded: '5121250896' });
+    expect(mc0.workbookTotals).toEqual({ value: '5121250896.52531', rounded: '5121250896', valueRaw: '5121250896.5253057' });
     const unresolved = mc0.rows.filter((r) => r.price.kind === 'UNRESOLVED');
     expect(unresolved).toHaveLength(416);
     const withCandidate = unresolved.filter((r) => r.analysisCandidates.length === 1);

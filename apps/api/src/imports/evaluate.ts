@@ -1,5 +1,5 @@
-import { calculateRab, Decimal, type RabTotals } from '@laporan-proyek/calc';
-import type { DraftRow, ImportIssue, RabImportDecisionKind, RabImportDraft } from '@laporan-proyek/shared';
+import { calculateRab, compareWithWorkbook, Decimal, type RabTotals } from '@laporan-proyek/calc';
+import type { DraftRow, ImportIssue, RabImportDecisionKind, RabImportDraft, RabReconciliation, ReconciliationEntry } from '@laporan-proyek/shared';
 
 /**
  * Applies reviewer decisions to a draft (D-051, D-053). Pure: the review page and approval use the same
@@ -43,7 +43,9 @@ export interface Evaluation {
   /** Draft analyses that will be imported: used by rows (directly or as sub-analyses). */
   usedAnalysisKeys: Set<string>;
   totals: RabTotals;
-  reconciliation: { realCost: string; rounded: string; workbookRealCost: string | null; workbookRounded: string | null; matches: boolean | null };
+  reconciliation: RabReconciliation;
+  /** Cached-Excel comparisons per item row (D-054), keyed by row key; stored with the approved item. */
+  rowReconciliation: Map<string, ReconciliationEntry[]>;
 }
 
 /** Row issues this module recomputes; the draft's versions of these are replaced. */
@@ -164,7 +166,7 @@ export function evaluateImport(draft: RabImportDraft, decisions: DecisionRecord[
     issues.push(i);
   }
 
-  const totals = calculateRab(
+  const calc = calculateRab(
     rows.map((r) => ({
       id: r.row.key,
       parentId: r.row.parentKey,
@@ -173,8 +175,42 @@ export function evaluateImport(draft: RabImportDraft, decisions: DecisionRecord[
       unitPrice: r.unitPrice,
       taxPercent: r.row.taxPercent,
     })),
-  ).totals;
+  );
+  const totals = calc.totals;
+
+  // Each item against its cached workbook values (D-054); app values are never replaced.
+  const rowReconciliation = new Map<string, ReconciliationEntry[]>();
+  let rowsMismatched = 0;
+  for (const r of rows) {
+    const cached = r.row.workbook;
+    const v = calc.rows.get(r.row.key);
+    if (r.row.rowType !== 'ITEM' || !cached || !v) continue;
+    const entries: ReconciliationEntry[] = [];
+    if (v.unitPriceWithTax !== null && cached.unitPriceWithTax !== null) entries.push({ what: 'harga + PPN', ...compareWithWorkbook(v.unitPriceWithTax, new Decimal(cached.unitPriceWithTax)) });
+    if (v.subtotal !== null && cached.subtotal !== null) entries.push({ what: 'jumlah', ...compareWithWorkbook(v.subtotal, new Decimal(cached.subtotal)) });
+    if (!entries.length) continue;
+    rowReconciliation.set(r.row.key, entries);
+    const failed = entries.filter((e) => !e.matches);
+    if (failed.length) {
+      rowsMismatched++;
+      issues.push({
+        code: 'RAB_ROW_MISMATCH',
+        severity: 'WARNING',
+        message: `${r.row.description} (baris ${r.row.locator.row}): ${failed.map((e) => `${e.what} aplikasi ${e.exact} ≠ workbook ${e.cached} (selisih ${e.diff} > toleransi ${e.tolerance})`).join('; ')}. Nilai aplikasi tidak diganti.`,
+        rowKey: r.row.key,
+      });
+    }
+  }
+  // Nominal check: app total vs the cached item amounts added exactly. The total cell itself is a float sum, so
+  // a gap there while the nominal check holds is Excel float residue, not a real difference.
+  const items = rows.filter((r) => r.row.rowType === 'ITEM');
+  const cachedAmounts = items.map((r) => r.row.workbook?.subtotal ?? null);
+  const allChecked = items.length > 0 && items.every((r) => rowReconciliation.get(r.row.key)?.some((e) => e.what === 'jumlah'));
+  const nominal = allChecked
+    ? { what: 'total nilai vs Σ jumlah item workbook', ...compareWithWorkbook(totals.value, cachedAmounts.reduce((sum: Decimal, a) => sum.plus(a!), new Decimal(0))) }
+    : null;
   const wb = draft.workbookTotals;
+  const cell = wb?.valueRaw != null ? { what: 'total nilai vs sel total workbook', ...compareWithWorkbook(totals.value, new Decimal(wb.valueRaw)) } : null;
   const workbookRealCost = wb ? new Decimal(wb.value).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2) : null;
   const matches = wb ? totals.realCost === workbookRealCost && (wb.rounded === null || totals.rounded === wb.rounded) : null;
   if (matches === false) {
@@ -184,7 +220,33 @@ export function evaluateImport(draft: RabImportDraft, decisions: DecisionRecord[
       message: `Total aplikasi ${totals.realCost} (dibulatkan ${totals.rounded}) berbeda dengan workbook ${workbookRealCost} (dibulatkan ${wb?.rounded ?? '–'}).`,
     });
   }
-  return { rows, issues, usedAnalysisKeys, totals, reconciliation: { realCost: totals.realCost, rounded: totals.rounded, workbookRealCost, workbookRounded: wb?.rounded ?? null, matches } };
+  if (nominal && !nominal.matches) {
+    issues.push({
+      code: 'RAB_TOTAL_MISMATCH',
+      severity: 'WARNING',
+      message: `Total aplikasi ${nominal.exact} ≠ Σ jumlah item workbook ${nominal.cached} (selisih ${nominal.diff} > toleransi ${nominal.tolerance}).`,
+    });
+  }
+  const totalStatus = !nominal ? null : !nominal.matches ? 'MISMATCH' : cell && !cell.matches ? 'FLOAT_RESIDUE' : 'MATCH';
+  return {
+    rows,
+    issues,
+    usedAnalysisKeys,
+    totals,
+    rowReconciliation,
+    reconciliation: {
+      realCost: totals.realCost,
+      rounded: totals.rounded,
+      workbookRealCost,
+      workbookRounded: wb?.rounded ?? null,
+      matches,
+      value: totals.value,
+      rowsChecked: rowReconciliation.size,
+      rowsMismatched,
+      totalStatus,
+      entries: [nominal, cell].filter((e): e is ReconciliationEntry => e !== null),
+    },
+  };
 }
 
 export const blockingIssues = (issues: ImportIssue[]) => issues.filter((i) => i.severity === 'BLOCKING');

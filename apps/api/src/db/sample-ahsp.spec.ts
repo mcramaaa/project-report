@@ -37,6 +37,12 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages pe
     expect(report.contract).toMatchObject({ realCost: '5121250896.48', rounded: '5121250896', workbookRealCost: '5121250896.48', items: 416, analysesImported: 110, subAnalyses: 5, components: 704, prices: 162 });
     expect(report.mc0).toMatchObject({ realCost: '5121250896.53', rounded: '5121250896', workbookRealCost: '5121250896.53', workbookRounded: '5121250896', items: 416, analysesImported: 0 });
     expect(report.mc0.decisions).toEqual({ ANALYSIS_LINK: 408, WORK_ITEM_MATCH: 416, DIRECT_PRICE: 8 });
+    // Every item and the total reconcile with the source RAB (D-063); MC-0's total cell only carries float residue.
+    expect(report.contract).toMatchObject({ rowsChecked: 416, rowsMismatched: 0, totalStatus: 'MATCH', overheadUnused: ['VI.6', 'VIII.4', 'XXI.3'] });
+    expect(report.mc0).toMatchObject({ rowsChecked: 416, rowsMismatched: 0, totalStatus: 'FLOAT_RESIDUE', overheadUnused: [] });
+    // Cached floats survive the stored draft (MySQL JSON) with all 17 digits: same evidence as straight from the file.
+    const stored = await services.imports.get(report.projectId, report.contract.importId);
+    expect(stored.reconciliation!.entries.map((e) => e.diff)).toEqual(['0.000000086215', '0.000001']);
     const isolated = { items: 0, analysisPriceLists: 0, componentPrices: 0, subAnalyses: 0 };
     const full = { packageAnalyses: 110, packageComponents: 704, packagePrices: 162, isolation: isolated };
     expect(report.contract).toMatchObject({ ...full, status: 'APPROVED', copiedFrom: {} });

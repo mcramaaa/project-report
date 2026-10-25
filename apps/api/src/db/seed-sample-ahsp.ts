@@ -39,7 +39,8 @@ async function main() {
       console.log(
         `${label}: real cost ${v.realCost}, dibulatkan ${v.rounded} (workbook ${v.workbookRealCost ?? '–'} / ${v.workbookRounded ?? '–'}); ${v.items} item; ` +
           `analisa ${v.analysesImported} diimpor dari ${v.analysesInWorkbook} di workbook (${v.analysesDirect} langsung dipakai item, ${v.subAnalyses} subanalisa); ` +
-          `${v.components} komponen; ${v.prices} harga; ${v.reconciliationEntries} rekonsiliasi; keputusan ${JSON.stringify(v.decisions)}`,
+          `${v.components} komponen; ${v.prices} harga; ${v.reconciliationEntries} rekonsiliasi; keputusan ${JSON.stringify(v.decisions)}; ` +
+          `item dicocokkan ${v.rowsChecked} (berbeda ${v.rowsMismatched}), total ${v.totalStatus ?? '–'}; overhead tidak dipakai: ${v.overheadUnused.join(', ') || '–'}`,
       );
     }
     for (const [label, p] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['Addendum 1', report.addendum]] as const) {

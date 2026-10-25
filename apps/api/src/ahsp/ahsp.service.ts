@@ -1,23 +1,49 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Decimal } from '@laporan-proyek/calc';
-import { rabVersionLabel, type AhspAnalysisDetailDto, type AhspAnalysisSummaryDto, type PackageOwnerDto, type PriceListDto } from '@laporan-proyek/shared';
+import { analysisCategoryTotals, Decimal } from '@laporan-proyek/calc';
+import {
+  rabVersionLabel,
+  type AhspCategory,
+  type AhspAnalysisDetailDto,
+  type AhspAnalysisSummaryDto,
+  type PackageOwnerDto,
+  type PriceListDto,
+} from '@laporan-proyek/shared';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-const num = (v: { toString(): string } | null) => (v === null ? null : new Decimal(v.toString()).toFixed());
+const num = (v: { toString(): string } | null) =>
+  v === null ? null : new Decimal(v.toString()).toFixed();
 
-const OWNER_SELECT = { id: true, versionType: true, revisionNumber: true, status: true } as const satisfies Prisma.RabVersionSelect;
-const owner = (v: Prisma.RabVersionGetPayload<{ select: typeof OWNER_SELECT }>): PackageOwnerDto => ({ ...v, label: rabVersionLabel(v) });
-const COPIED_FROM = { select: { id: true, analysis: { select: { rabVersion: { select: OWNER_SELECT } } } } } as const;
-const copiedFrom = (c: { id: string; analysis: { rabVersion: Prisma.RabVersionGetPayload<{ select: typeof OWNER_SELECT }> } } | null) =>
-  c ? { analysisVersionId: c.id, rabVersion: owner(c.analysis.rabVersion) } : null;
+const OWNER_SELECT = {
+  id: true,
+  versionType: true,
+  revisionNumber: true,
+  status: true,
+} as const satisfies Prisma.RabVersionSelect;
+const owner = (
+  v: Prisma.RabVersionGetPayload<{ select: typeof OWNER_SELECT }>,
+): PackageOwnerDto => ({ ...v, label: rabVersionLabel(v) });
+const COPIED_FROM = {
+  select: { id: true, analysisId: true, analysis: { select: { rabVersion: { select: OWNER_SELECT } } } },
+} as const;
+const copiedFrom = (
+  c: {
+    id: string;
+    analysisId: string;
+    analysis: { rabVersion: Prisma.RabVersionGetPayload<{ select: typeof OWNER_SELECT }> };
+  } | null,
+) => (c ? { analysisId: c.analysisId, analysisVersionId: c.id, rabVersion: owner(c.analysis.rabVersion) } : null);
 
 /** One combined analysis list per RAB version's package (D-056); sources and copies stay traceable. */
 @Injectable()
 export class AhspService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async list(projectId: string, versionId: string, search?: string): Promise<AhspAnalysisSummaryDto[]> {
+  async list(
+    projectId: string,
+    versionId: string,
+    search?: string,
+  ): Promise<AhspAnalysisSummaryDto[]> {
     await this.version(projectId, versionId);
     const analyses = await this.prisma.ahspAnalysis.findMany({
       where: {
@@ -29,7 +55,13 @@ export class AhspService {
           orderBy: { versionNumber: 'desc' },
           take: 1,
           include: {
-            sourceImport: { select: { id: true, targetVersionType: true, documents: { select: { document: { select: { originalFilename: true } } } } } },
+            sourceImport: {
+              select: {
+                id: true,
+                targetVersionType: true,
+                documents: { select: { document: { select: { originalFilename: true } } } },
+              },
+            },
             copiedFrom: COPIED_FROM,
             _count: { select: { components: true, rabItems: true, usedAsSub: true } },
           },
@@ -59,7 +91,13 @@ export class AhspService {
             components: v._count.components,
             rabItems: v._count.rabItems,
             usedAsSub: v._count.usedAsSub,
-            source: v.sourceImport ? { importId: v.sourceImport.id, versionType: v.sourceImport.targetVersionType, documents: v.sourceImport.documents.map((d) => d.document.originalFilename) } : null,
+            source: v.sourceImport
+              ? {
+                  importId: v.sourceImport.id,
+                  versionType: v.sourceImport.targetVersionType,
+                  documents: v.sourceImport.documents.map((d) => d.document.originalFilename),
+                }
+              : null,
             copiedFrom: copiedFrom(v.copiedFrom),
           },
         },
@@ -67,7 +105,11 @@ export class AhspService {
     });
   }
 
-  async get(projectId: string, versionId: string, analysisId: string): Promise<AhspAnalysisDetailDto> {
+  async get(
+    projectId: string,
+    versionId: string,
+    analysisId: string,
+  ): Promise<AhspAnalysisDetailDto> {
     const a = await this.prisma.ahspAnalysis.findFirst({
       where: { id: analysisId, projectId, rabVersionId: versionId },
       include: {
@@ -81,11 +123,20 @@ export class AhspService {
               orderBy: { sortOrder: 'asc' },
               include: {
                 priceItem: { select: { id: true, name: true, price: true } },
-                subAnalysisVersion: { select: { id: true, analysisId: true, code: true, name: true } },
+                subAnalysisVersion: {
+                  select: { id: true, analysisId: true, code: true, name: true },
+                },
               },
             },
             rabItems: {
-              select: { id: true, description: true, displayNumber: true, rabVersion: { select: { id: true, versionType: true, revisionNumber: true, status: true } } },
+              select: {
+                id: true,
+                description: true,
+                displayNumber: true,
+                rabVersion: {
+                  select: { id: true, versionType: true, revisionNumber: true, status: true },
+                },
+              },
               orderBy: { sortOrder: 'asc' },
             },
           },
@@ -108,6 +159,9 @@ export class AhspService {
         discipline: v.discipline,
         overheadPercent: num(v.overheadPercent),
         roundingScale: v.roundingScale,
+        categoryTotals: analysisCategoryTotals(
+          v.components.map((c) => ({ category: c.category, amount: num(c.amount)! })),
+        ),
         directCost: num(v.directCost)!,
         overheadAmount: num(v.overheadAmount)!,
         priceExact: num(v.priceExact)!,
@@ -124,9 +178,17 @@ export class AhspService {
           coefficient: num(c.coefficient)!,
           unitPrice: num(c.unitPrice)!,
           amount: num(c.amount)!,
-          priceItem: c.priceItem ? { id: c.priceItem.id, name: c.priceItem.name, price: num(c.priceItem.price)! } : null,
+          priceItem: c.priceItem
+            ? { id: c.priceItem.id, name: c.priceItem.name, price: num(c.priceItem.price)! }
+            : null,
           subAnalysis: c.subAnalysisVersion
-            ? { analysisId: c.subAnalysisVersion.analysisId, versionId: c.subAnalysisVersion.id, code: c.subAnalysisVersion.code, name: c.subAnalysisVersion.name, basis: c.subPriceBasis }
+            ? {
+                analysisId: c.subAnalysisVersion.analysisId,
+                versionId: c.subAnalysisVersion.id,
+                code: c.subAnalysisVersion.code,
+                name: c.subAnalysisVersion.name,
+                basis: c.subPriceBasis,
+              }
             : null,
           sourceLocator: c.sourceLocator,
         })),
@@ -141,7 +203,12 @@ export class AhspService {
   }
 
   /** Wages, materials and equipment priced in the version's package; null when it has none yet. */
-  async priceList(projectId: string, versionId: string, search?: string): Promise<PriceListDto | null> {
+  async priceList(
+    projectId: string,
+    versionId: string,
+    search?: string,
+    category?: AhspCategory,
+  ): Promise<PriceListDto | null> {
     await this.version(projectId, versionId);
     const l = await this.prisma.priceList.findUnique({
       where: { rabVersionId: versionId },
@@ -149,9 +216,26 @@ export class AhspService {
         rabVersion: { select: OWNER_SELECT },
         sourceImport: { select: { id: true } },
         items: {
-          where: search ? { name: { contains: search } } : {},
+          where: {
+            ...(search ? { name: { contains: search } } : {}),
+            ...(category
+              ? {
+                  components: {
+                    some: { category, analysisVersion: { analysis: { rabVersionId: versionId } } },
+                  },
+                }
+              : {}),
+          },
           orderBy: { name: 'asc' },
-          include: { copiedFrom: { select: { id: true, priceList: { select: { rabVersion: { select: OWNER_SELECT } } } } } },
+          include: {
+            components: {
+              where: { analysisVersion: { analysis: { rabVersionId: versionId } } },
+              select: { category: true },
+            },
+            copiedFrom: {
+              select: { id: true, priceList: { select: { rabVersion: { select: OWNER_SELECT } } } },
+            },
+          },
         },
       },
     });
@@ -169,13 +253,22 @@ export class AhspService {
         name: i.name,
         unit: i.unit,
         price: num(i.price)!,
+        categories: [...new Set(i.components.map((c) => c.category))],
         sourceLocator: i.sourceLocator,
-        copiedFrom: i.copiedFrom ? { priceItemId: i.copiedFrom.id, rabVersion: owner(i.copiedFrom.priceList.rabVersion) } : null,
+        copiedFrom: i.copiedFrom
+          ? { priceItemId: i.copiedFrom.id, rabVersion: owner(i.copiedFrom.priceList.rabVersion) }
+          : null,
       })),
     };
   }
 
   private async version(projectId: string, versionId: string): Promise<void> {
-    if (!(await this.prisma.rabVersion.findFirst({ where: { id: versionId, projectId }, select: { id: true } }))) throw new NotFoundException('Versi RAB tidak ditemukan.');
+    if (
+      !(await this.prisma.rabVersion.findFirst({
+        where: { id: versionId, projectId },
+        select: { id: true },
+      }))
+    )
+      throw new NotFoundException('Versi RAB tidak ditemukan.');
   }
 }

@@ -1,7 +1,15 @@
 'use client';
 
-import { RAB_ROW_TYPES, type RabIssue, type RabRowDto, type RabRowType, type RabVersionDetailDto } from '@laporan-proyek/shared';
+import {
+  RAB_ROW_TYPES,
+  type RabIssue,
+  type RabRowDto,
+  type RabRowType,
+  type RabVersionDetailDto,
+} from '@laporan-proyek/shared';
 import Link from 'next/link';
+import { SourceValue, type ValueSource } from '@/components/source-value';
+import { workbookSource, rabRowHref } from '@/lib/value-source';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, Field, Select } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
@@ -14,7 +22,12 @@ const ITEM_FIELDS = [
   { name: 'volume', label: 'Volume', hint: 'maks. 12 desimal', inputMode: 'decimal' },
   { name: 'unit', label: 'Satuan' },
   { name: 'analysisCode', label: 'No analisa' },
-  { name: 'unitPrice', label: 'Harga satuan (Rp)', hint: 'tanpa pemisah ribuan', inputMode: 'decimal' },
+  {
+    name: 'unitPrice',
+    label: 'Harga satuan (Rp)',
+    hint: 'tanpa pemisah ribuan',
+    inputMode: 'decimal',
+  },
   { name: 'taxPercent', label: 'PPN (%)', inputMode: 'decimal' },
 ] as const;
 
@@ -35,7 +48,8 @@ function loadColumns(): RabColumn[] {
 function loadCollapsed(versionId: string): Set<string> {
   try {
     const saved = JSON.parse(localStorage.getItem(collapsedKey(versionId)) ?? '[]') as unknown;
-    if (Array.isArray(saved)) return new Set(saved.filter((id): id is string => typeof id === 'string'));
+    if (Array.isArray(saved))
+      return new Set(saved.filter((id): id is string => typeof id === 'string'));
   } catch {
     // Storage unavailable or corrupt: everything expanded.
   }
@@ -60,12 +74,23 @@ function cell(row: RabRowDto, column: RabColumn): string {
   }
 }
 
-export function RabEditor({ projectId, initial, canEdit, canApprove }: { projectId: string; initial: RabVersionDetailDto; canEdit: boolean; canApprove: boolean }) {
+export function RabEditor({
+  projectId,
+  initial,
+  canEdit,
+  canApprove,
+}: {
+  projectId: string;
+  initial: RabVersionDetailDto;
+  canEdit: boolean;
+  canApprove: boolean;
+}) {
   const [detail, setDetail] = useState(initial);
   const [notice, setNotice] = useState<Notice>();
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const [adding, setAdding] = useState<{ parentId: string | null }>();
+  const [search, setSearch] = useState('');
   const [columns, setColumns] = useState<RabColumn[]>(RAB_COLUMNS.map((c) => c.key));
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { version, rows, totals, issues } = detail;
@@ -78,9 +103,17 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
   useEffect(() => {
     const saved = loadColumns();
     const savedCollapsed = loadCollapsed(version.id);
+    const selected = decodeURIComponent(window.location.hash.slice(1)).replace(/^rab-row-/, '');
+    for (
+      let row = initial.rows.find((r) => r.id === selected);
+      row?.parentId;
+      row = initial.rows.find((r) => r.id === row!.parentId)
+    )
+      savedCollapsed.delete(row.parentId);
+
     const id = requestAnimationFrame(() => (setColumns(saved), setCollapsed(savedCollapsed)));
     return () => cancelAnimationFrame(id);
-  }, [version.id]);
+  }, [version.id, initial.rows]);
 
   const parentOf = new Map(rows.map((r) => [r.id, r.parentId]));
   const groupIds = rows.filter((r) => r.rowType !== 'ITEM').map((r) => r.id);
@@ -90,6 +123,128 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
     for (let p = row.parentId; p; p = parentOf.get(p) ?? null) if (collapsed.has(p)) return true;
     return false;
   };
+
+  useEffect(() => {
+    function focusRow() {
+      const hash = decodeURIComponent(window.location.hash.slice(1));
+      if (!hash.startsWith('rab-row-')) return;
+      const id = hash.slice(8);
+      setSearch('');
+      setCollapsed((current) => {
+        const next = new Set(current);
+        for (
+          let row = rows.find((r) => r.id === id);
+          row?.parentId;
+          row = rows.find((r) => r.id === row!.parentId)
+        )
+          next.delete(row.parentId);
+        return next;
+      });
+      setTimeout(() => document.getElementById(hash)?.scrollIntoView({ block: 'center' }), 50);
+    }
+    focusRow();
+    window.addEventListener('hashchange', focusRow);
+    return () => window.removeEventListener('hashchange', focusRow);
+  }, [rows]);
+
+  const matches = new Set<string>();
+  if (search.trim())
+    for (const row of rows) {
+      if (
+        `${row.description} ${row.displayNumber ?? ''} ${row.analysisCode ?? ''}`
+          .toLocaleLowerCase('id')
+          .includes(search.trim().toLocaleLowerCase('id'))
+      ) {
+        matches.add(row.id);
+        for (let p = row.parentId; p; p = parentOf.get(p) ?? null) matches.add(p);
+      }
+    }
+  const rowSource = (row: RabRowDto, key: RabColumn) => {
+    const href = (r: RabRowDto) => rabRowHref(projectId, version.id, r.id);
+    const inputSources: ValueSource[] = workbookSource(projectId, row.sourceLocator);
+    const sameRow = (label: string, value: string | null): ValueSource => ({
+      label,
+      value,
+      href: href(row),
+    });
+    const analysisSource: ValueSource[] = row.analysis
+      ? [
+          {
+            label: `Analisa ${row.analysis.code ?? row.analysis.name}`,
+            value: row.analysisUnitPrice ?? row.unitPrice,
+            href: `/projects/${projectId}/rab/${row.analysis.rabVersionId}/analyses/${row.analysis.analysisId}#analysis-version-${row.analysis.versionId}`,
+          },
+        ]
+      : [];
+    let formula: string | undefined;
+    let sources = inputSources;
+    let note = row.rowType === 'ITEM' ? 'Nilai input pada item RAB ini.' : undefined;
+    if (row.rowType !== 'ITEM') {
+      const children = rows.filter((r) => r.parentId === row.id);
+      sources = children.map((r) => ({ label: r.description, value: r.subtotal, href: href(r) }));
+      formula =
+        key === 'weight'
+          ? 'Jumlah kelompok ÷ total RAB eksak × 100'
+          : 'Jumlah nilai anak langsung; rincian setiap kelompok dapat dibuka.';
+      if (key === 'weight')
+        sources.push({ label: 'Total RAB eksak', value: totals.value, href: '#rab-total' });
+    } else if (key === 'unitPrice') {
+      sources =
+        row.priceSource === 'ANALYSIS' ? analysisSource : [...inputSources, ...analysisSource];
+      note =
+        row.priceSource === 'ANALYSIS'
+          ? 'Harga mengikuti versi analisa yang dirujuk item ini.'
+          : row.priceSource === 'SOURCE_OVERRIDE'
+            ? `Harga sumber dipertahankan melalui keputusan reviewer. ${row.priceNote ?? ''}`
+            : row.priceSource === 'DIRECT'
+              ? `Harga langsung dari sumber. ${row.priceNote ?? ''}`
+              : 'Harga dimasukkan manual pada item RAB; tidak memiliki rumus analisa.';
+      if (row.priceSource === 'SOURCE_OVERRIDE' && row.priceDecidedAt)
+        sources.push({ label: 'Waktu keputusan reviewer', value: row.priceDecidedAt });
+      if (row.sourceUnitPrice != null)
+        sources.push({ label: 'Harga pada dokumen sumber', value: row.sourceUnitPrice });
+    } else if (key === 'subtotal') {
+      formula = 'Volume × harga satuan × (1 + PPN ÷ 100), tanpa pembulatan per item';
+      sources = [
+        sameRow('Volume', row.volume),
+        ...analysisSource,
+        sameRow('Harga satuan efektif', row.unitPrice),
+        sameRow('PPN (%)', row.taxPercent),
+      ];
+      note = 'Nilai tampilan dibulatkan; nilai perhitungan menggunakan presisi lengkap.';
+    } else if (key === 'unitPriceWithTax') {
+      formula = 'Harga satuan × (1 + PPN ÷ 100)';
+      sources = [
+        ...analysisSource,
+        sameRow('Harga satuan efektif', row.unitPrice),
+        sameRow('PPN (%)', row.taxPercent),
+      ];
+      note = undefined;
+    } else if (key === 'weight') {
+      formula = 'Jumlah item ÷ total RAB eksak × 100';
+      sources = [
+        sameRow('Jumlah item', row.subtotal),
+        { label: 'Total RAB eksak', value: totals.value, href: '#rab-total' },
+      ];
+      note = 'Pembagi memakai total eksak sebelum pembulatan real cost.';
+    }
+    if (!sources.length && !formula)
+      note = `${note ?? ''} Alamat Excel tidak tercatat untuk nilai ini.`;
+    return {
+      title: `${RAB_COLUMNS.find((c) => c.key === key)?.label} · ${row.description}`,
+      value: row[key],
+      formula,
+      sources,
+      note,
+    };
+  };
+  const totalSources: ValueSource[] = rows
+    .filter((r) => r.parentId === null)
+    .map((r) => ({
+      label: r.description,
+      value: r.subtotal,
+      href: rabRowHref(projectId, version.id, r.id),
+    }));
 
   function saveCollapsed(next: Set<string>) {
     setCollapsed(next);
@@ -123,7 +278,12 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
   }
 
   /** Every RAB mutation returns the fresh version detail; failures return the field errors for the form. */
-  async function run(method: string, path: string, body: unknown, success: string): Promise<Result> {
+  async function run(
+    method: string,
+    path: string,
+    body: unknown,
+    success: string,
+  ): Promise<Result> {
     setBusy(true);
     setNotice(undefined);
     try {
@@ -131,8 +291,13 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
       setNotice({ kind: 'success', text: success });
       return { ok: true, fieldErrors: {} };
     } catch (err) {
-      const details = err instanceof ApiError ? (err.details as { errors?: RabIssue[]; warnings?: RabIssue[] } | undefined) : undefined;
-      const issues = [...(details?.errors ?? []), ...(details?.warnings ?? [])].filter((i) => !('path' in i));
+      const details =
+        err instanceof ApiError
+          ? (err.details as { errors?: RabIssue[]; warnings?: RabIssue[] } | undefined)
+          : undefined;
+      const issues = [...(details?.errors ?? []), ...(details?.warnings ?? [])].filter(
+        (i) => !('path' in i),
+      );
       setNotice({ kind: 'error', text: errorMessage(err), issues });
       return { ok: false, fieldErrors: err instanceof ApiError ? err.fieldErrors : {} };
     } finally {
@@ -145,7 +310,10 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
       <section className="panel rab-header" aria-labelledby="rab-title">
         <div className="min-w-0">
           <h2 id="rab-title" className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-            RAB {version.label} <Badge tone={RAB_STATUS_BADGE[version.status].tone}>{RAB_STATUS_BADGE[version.status].label}</Badge>
+            RAB {version.label}{' '}
+            <Badge tone={RAB_STATUS_BADGE[version.status].tone}>
+              {RAB_STATUS_BADGE[version.status].label}
+            </Badge>
           </h2>
           <p className="text-sm text-slate-600">
             Dokumen: {version.documentNumber ?? '–'}
@@ -156,15 +324,48 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
         <dl className="calendar-preview">
           <div>
             <dt>Total sebelum PPN</dt>
-            <dd className="tabular-nums">Rp {formatRounded(totals.beforeTax, 2)}</dd>
+            <dd className="tabular-nums">
+              <SourceValue
+                title="Total sebelum PPN"
+                value={totals.beforeTax}
+                formula="Σ (volume × harga satuan) seluruh item pekerjaan"
+                sources={rows
+                  .filter((r) => r.rowType === 'ITEM')
+                  .map((r) => ({
+                    label: r.description,
+                    value: r.subtotalBeforeTax,
+                    href: rabRowHref(projectId, version.id, r.id),
+                  }))}
+              >
+                Rp {formatRounded(totals.beforeTax, 2)}
+              </SourceValue>
+            </dd>
           </div>
           <div>
             <dt>Total (real cost)</dt>
-            <dd className="tabular-nums">Rp {formatNumber(totals.realCost)}</dd>
+            <dd className="tabular-nums">
+              <SourceValue
+                title="Total (real cost)"
+                value={totals.realCost}
+                formula="ROUND(total eksak termasuk PPN, 2), HALF_UP"
+                sources={[{ label: 'Total eksak', value: totals.value }, ...totalSources]}
+              >
+                Rp {formatNumber(totals.realCost)}
+              </SourceValue>
+            </dd>
           </div>
           <div>
             <dt>Dibulatkan</dt>
-            <dd className="tabular-nums">Rp {formatNumber(totals.rounded)}</dd>
+            <dd className="tabular-nums">
+              <SourceValue
+                title="Total dibulatkan"
+                value={totals.rounded}
+                formula="TRUNC(real cost, 0)"
+                sources={[{ label: 'Real cost', value: totals.realCost, href: '#rab-total' }]}
+              >
+                Rp {formatNumber(totals.rounded)}
+              </SourceValue>
+            </dd>
           </div>
         </dl>
       </section>
@@ -182,17 +383,44 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
         </Alert>
       )}
 
-      {draft && canEdit && <DocumentForm key={version.id} version={version} busy={busy} onSave={(body) => run('PATCH', '', body, 'Data dokumen disimpan.')} />}
+      {draft && canEdit && (
+        <DocumentForm
+          key={version.id}
+          version={version}
+          busy={busy}
+          onSave={(body) => run('PATCH', '', body, 'Data dokumen disimpan.')}
+        />
+      )}
       {draft && <IssuesPanel errors={issues.errors} warnings={issues.warnings} />}
 
+      <p className="trace-hint">
+        Klik nilai bergaris putus-putus untuk melihat rumus dan membuka sumbernya.
+      </p>
       <div className="toolbar">
+        <div className="rab-search">
+          <label className="field-label" htmlFor="rab-search">
+            Cari pekerjaan
+          </label>
+          <input
+            className="field"
+            id="rab-search"
+            placeholder="Uraian, nomor, atau kode analisa…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
         <details className="column-picker">
           <summary className="btn btn-secondary">Kolom</summary>
           <fieldset>
             <legend className="sr-only">Kolom yang ditampilkan</legend>
             {RAB_COLUMNS.map((c) => (
               <label key={c.key} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={columns.includes(c.key)} onChange={() => toggleColumn(c.key)} /> {c.label}
+                <input
+                  type="checkbox"
+                  checked={columns.includes(c.key)}
+                  onChange={() => toggleColumn(c.key)}
+                />{' '}
+                {c.label}
               </label>
             ))}
           </fieldset>
@@ -202,13 +430,20 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
             <Button variant="secondary" onClick={() => saveCollapsed(new Set(groupIds))}>
               Ciutkan semua
             </Button>
-            <Button variant="secondary" disabled={collapsed.size === 0} onClick={() => saveCollapsed(new Set())}>
+            <Button
+              variant="secondary"
+              disabled={collapsed.size === 0}
+              onClick={() => saveCollapsed(new Set())}
+            >
               Buka semua
             </Button>
           </>
         )}
         {editable && (
-          <Button variant="secondary" onClick={() => (setEditingId(undefined), setAdding({ parentId: null }))}>
+          <Button
+            variant="secondary"
+            onClick={() => (setEditingId(undefined), setAdding({ parentId: null }))}
+          >
             Tambah baris teratas
           </Button>
         )}
@@ -217,11 +452,18 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
       {adding && editable && (
         <RowForm
           title={`Tambah baris${adding.parentId ? ` di bawah "${rows.find((r) => r.id === adding.parentId)?.description}"` : ' di tingkat teratas'}`}
-          allowedTypes={adding.parentId ? RAB_ROW_TYPES.filter((t) => t !== 'SECTION') : RAB_ROW_TYPES}
+          allowedTypes={
+            adding.parentId ? RAB_ROW_TYPES.filter((t) => t !== 'SECTION') : RAB_ROW_TYPES
+          }
           busy={busy}
           onCancel={() => setAdding(undefined)}
           onSubmit={async (body) => {
-            const result = await run('POST', '/items', { ...body, parentId: adding.parentId }, 'Baris ditambahkan.');
+            const result = await run(
+              'POST',
+              '/items',
+              { ...body, parentId: adding.parentId },
+              'Baris ditambahkan.',
+            );
             if (result.ok) setAdding(undefined);
             return result;
           }}
@@ -229,16 +471,27 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
       )}
 
       {rows.length === 0 ? (
-        <p className="empty-state">Belum ada baris. {editable ? 'Mulai dengan menambah bagian (SECTION) atau item pekerjaan.' : ''}</p>
+        <p className="empty-state">
+          Belum ada baris.{' '}
+          {editable ? 'Mulai dengan menambah bagian (SECTION) atau item pekerjaan.' : ''}
+        </p>
       ) : (
         <div className="panel rab-grid-wrap">
           <table className="rab-grid">
             <thead>
               <tr>
-                <th scope="col" className="rab-sticky-no">No</th>
-                <th scope="col" className="rab-sticky-desc">Uraian</th>
+                <th scope="col" className="rab-sticky-no">
+                  No
+                </th>
+                <th scope="col" className="rab-sticky-desc">
+                  Uraian
+                </th>
                 {shown.map((c) => (
-                  <th key={c.key} scope="col" className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}>
+                  <th
+                    key={c.key}
+                    scope="col"
+                    className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}
+                  >
                     {c.label}
                   </th>
                 ))}
@@ -246,99 +499,188 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
               </tr>
             </thead>
             <tbody>
-              {rows.filter((row) => !hidden(row)).map((row) =>
-                editingId === row.id && editable ? (
-                  <tr key={row.id}>
-                    <td colSpan={shown.length + 3} className="rab-form-cell">
-                      <RowForm
-                        title={`Ubah ${RAB_ROW_TYPE_LABEL[row.rowType].toLowerCase()}`}
-                        row={row}
-                        parents={rows.filter((r) => r.rowType !== 'ITEM' && r.id !== row.id && !isDescendant(rows, r.id, row.id))}
-                        busy={busy}
-                        onCancel={() => setEditingId(undefined)}
-                        onSubmit={async (body) => {
-                          const result = await run('PATCH', `/items/${row.id}`, body, 'Baris disimpan.');
-                          if (result.ok) setEditingId(undefined);
-                          return result;
-                        }}
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  <tr key={row.id} className={row.rowType === 'ITEM' ? '' : `rab-group rab-${row.rowType.toLowerCase()}`}>
-                    <td className="rab-sticky-no">{row.displayNumber}</td>
-                    <td className="rab-sticky-desc" style={{ paddingLeft: `${12 + row.depth * 18}px` }}>
-                      {row.rowType !== 'ITEM' && hasChildren.has(row.id) ? (
-                        <button
-                          type="button"
-                          className="rab-toggle"
-                          aria-expanded={!collapsed.has(row.id)}
-                          aria-label={`${collapsed.has(row.id) ? 'Buka' : 'Ciutkan'} ${row.description}`}
-                          onClick={() => toggleGroup(row.id)}
-                        >
-                          <span aria-hidden="true">{collapsed.has(row.id) ? '▸' : '▾'}</span>
-                        </button>
-                      ) : (
-                        row.rowType !== 'ITEM' && <span className="rab-toggle-space" aria-hidden="true" />
-                      )}
-                      {row.description}
-                      {row.workItemCode && <span className="rab-code">{row.workItemCode}</span>}
-                    </td>
-                    {shown.map((c) => (
-                      <td key={c.key} className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}>
-                        {c.key === 'analysisCode' && row.analysis ? (
-                          <Link className="link-button" href={`/projects/${projectId}/analyses/${row.analysis.analysisId}?version=${row.analysis.rabVersionId}`} title={row.analysis.name}>
-                            {row.analysisCode ?? row.analysis.code}
-                          </Link>
-                        ) : (
-                          cell(row, c.key)
-                        )}
-                        {c.key === 'unitPrice' && (row.priceSource === 'SOURCE_OVERRIDE' || row.priceSource === 'DIRECT') && (
-                          <span className="rab-code" title={row.priceNote ?? undefined}>
-                            {row.priceSource === 'SOURCE_OVERRIDE' ? 'override' : 'langsung'}
-                          </span>
-                        )}
-                      </td>
-                    ))}
-                    {editable && (
-                      <td>
-                        <div className="row-actions">
-                          <Button variant="secondary" onClick={() => (setAdding(undefined), setEditingId(row.id))}>
-                            Ubah
-                          </Button>
-                          {row.rowType !== 'ITEM' && (
-                            <Button variant="secondary" onClick={() => (setEditingId(undefined), reveal(row.id), setAdding({ parentId: row.id }))}>
-                              + Sub
-                            </Button>
+              {rows
+                .filter((row) => (search.trim() ? matches.has(row.id) : !hidden(row)))
+                .map((row) =>
+                  editingId === row.id && editable ? (
+                    <tr key={row.id}>
+                      <td colSpan={shown.length + 3} className="rab-form-cell">
+                        <RowForm
+                          title={`Ubah ${RAB_ROW_TYPE_LABEL[row.rowType].toLowerCase()}`}
+                          row={row}
+                          parents={rows.filter(
+                            (r) =>
+                              r.rowType !== 'ITEM' &&
+                              r.id !== row.id &&
+                              !isDescendant(rows, r.id, row.id),
                           )}
-                          <Button variant="secondary" aria-label={`Naikkan ${row.description}`} onClick={() => run('POST', `/items/${row.id}/move`, { direction: 'up' }, 'Urutan diubah.')}>
-                            ↑
-                          </Button>
-                          <Button variant="secondary" aria-label={`Turunkan ${row.description}`} onClick={() => run('POST', `/items/${row.id}/move`, { direction: 'down' }, 'Urutan diubah.')}>
-                            ↓
-                          </Button>
-                          <Button
-                            variant="danger"
-                            onClick={() => window.confirm(`Hapus baris "${row.description}"?`) && run('DELETE', `/items/${row.id}`, undefined, 'Baris dihapus.')}
-                          >
-                            Hapus
-                          </Button>
-                        </div>
+                          busy={busy}
+                          onCancel={() => setEditingId(undefined)}
+                          onSubmit={async (body) => {
+                            const result = await run(
+                              'PATCH',
+                              `/items/${row.id}`,
+                              body,
+                              'Baris disimpan.',
+                            );
+                            if (result.ok) setEditingId(undefined);
+                            return result;
+                          }}
+                        />
                       </td>
-                    )}
-                  </tr>
-                ),
-              )}
+                    </tr>
+                  ) : (
+                    <tr
+                      id={`rab-row-${row.id}`}
+                      key={row.id}
+                      className={
+                        row.rowType === 'ITEM' ? '' : `rab-group rab-${row.rowType.toLowerCase()}`
+                      }
+                    >
+                      <td className="rab-sticky-no">{row.displayNumber}</td>
+                      <td
+                        className="rab-sticky-desc"
+                        style={{ paddingLeft: `${12 + row.depth * 18}px` }}
+                      >
+                        {row.rowType !== 'ITEM' && hasChildren.has(row.id) ? (
+                          <button
+                            type="button"
+                            className="rab-toggle"
+                            aria-expanded={!collapsed.has(row.id)}
+                            aria-label={`${collapsed.has(row.id) ? 'Buka' : 'Ciutkan'} ${row.description}`}
+                            onClick={() => toggleGroup(row.id)}
+                          >
+                            <span aria-hidden="true">{collapsed.has(row.id) ? '▸' : '▾'}</span>
+                          </button>
+                        ) : (
+                          row.rowType !== 'ITEM' && (
+                            <span className="rab-toggle-space" aria-hidden="true" />
+                          )
+                        )}
+                        {row.description}
+                        {row.workItemCode && <span className="rab-code">{row.workItemCode}</span>}
+                      </td>
+                      {shown.map((c) => (
+                        <td
+                          key={c.key}
+                          className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}
+                        >
+                          {c.key === 'analysisCode' && row.analysis ? (
+                            <Link
+                              className="link-button"
+                              href={`/projects/${projectId}/rab/${row.analysis.rabVersionId}/analyses/${row.analysis.analysisId}`}
+                              title={row.analysis.name}
+                            >
+                              {row.analysisCode ?? row.analysis.code}
+                            </Link>
+                          ) : row[c.key] !== null && row[c.key] !== '' ? (
+                            <SourceValue {...rowSource(row, c.key)}>{cell(row, c.key)}</SourceValue>
+                          ) : (
+                            cell(row, c.key)
+                          )}
+                          {c.key === 'unitPrice' &&
+                            (row.priceSource === 'SOURCE_OVERRIDE' ||
+                              row.priceSource === 'DIRECT') && (
+                              <span className="rab-code" title={row.priceNote ?? undefined}>
+                                {row.priceSource === 'SOURCE_OVERRIDE' ? 'override' : 'langsung'}
+                              </span>
+                            )}
+                        </td>
+                      ))}
+                      {editable && (
+                        <td>
+                          <div className="row-actions">
+                            <Button
+                              variant="secondary"
+                              onClick={() => (setAdding(undefined), setEditingId(row.id))}
+                            >
+                              Ubah
+                            </Button>
+                            {row.rowType !== 'ITEM' && (
+                              <Button
+                                variant="secondary"
+                                onClick={() => (
+                                  setEditingId(undefined),
+                                  reveal(row.id),
+                                  setAdding({ parentId: row.id })
+                                )}
+                              >
+                                + Sub
+                              </Button>
+                            )}
+                            <Button
+                              variant="secondary"
+                              aria-label={`Naikkan ${row.description}`}
+                              onClick={() =>
+                                run(
+                                  'POST',
+                                  `/items/${row.id}/move`,
+                                  { direction: 'up' },
+                                  'Urutan diubah.',
+                                )
+                              }
+                            >
+                              ↑
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              aria-label={`Turunkan ${row.description}`}
+                              onClick={() =>
+                                run(
+                                  'POST',
+                                  `/items/${row.id}/move`,
+                                  { direction: 'down' },
+                                  'Urutan diubah.',
+                                )
+                              }
+                            >
+                              ↓
+                            </Button>
+                            <Button
+                              variant="danger"
+                              onClick={() =>
+                                window.confirm(`Hapus baris "${row.description}"?`) &&
+                                run('DELETE', `/items/${row.id}`, undefined, 'Baris dihapus.')
+                              }
+                            >
+                              Hapus
+                            </Button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ),
+                )}
             </tbody>
             <tfoot>
-              <tr className="rab-total">
+              <tr id="rab-total" className="rab-total">
                 <td className="rab-sticky-no" />
                 <th scope="row" className="rab-sticky-desc">
                   Total
                 </th>
                 {shown.map((c) => (
                   <td key={c.key} className="num">
-                    {c.key === 'subtotal' ? formatNumber(totals.realCost) : c.key === 'weight' && totals.realCost !== '0.00' ? '100,0000' : ''}
+                    {c.key === 'subtotal' ? (
+                      <SourceValue
+                        title="Total RAB"
+                        value={totals.realCost}
+                        formula="ROUND(Σ jumlah item termasuk PPN, 2), HALF_UP"
+                        sources={totalSources}
+                      >
+                        {formatNumber(totals.realCost)}
+                      </SourceValue>
+                    ) : c.key === 'weight' && totals.realCost !== '0.00' ? (
+                      <SourceValue
+                        title="Total bobot"
+                        value="100"
+                        formula="Σ bobot seluruh item = 100% pada total RAB bukan nol"
+                        sources={totalSources}
+                      >
+                        100,0000
+                      </SourceValue>
+                    ) : (
+                      ''
+                    )}
                   </td>
                 ))}
                 {editable && <td />}
@@ -354,8 +696,17 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
           canApprove={canApprove}
           canDiscard={canEdit}
           busy={busy}
-          onApprove={(acknowledgeWarnings) => run('POST', '/approve', { acknowledgeWarnings }, `RAB ${version.label} di-approve dan terkunci.`)}
-          onDiscard={(reason) => run('POST', '/discard', { reason }, `Draft ${version.label} dibatalkan.`)}
+          onApprove={(acknowledgeWarnings) =>
+            run(
+              'POST',
+              '/approve',
+              { acknowledgeWarnings },
+              `RAB ${version.label} di-approve dan terkunci.`,
+            )
+          }
+          onDiscard={(reason) =>
+            run('POST', '/discard', { reason }, `Draft ${version.label} dibatalkan.`)
+          }
         />
       )}
     </div>
@@ -365,7 +716,11 @@ export function RabEditor({ projectId, initial, canEdit, canApprove }: { project
 function isDescendant(rows: RabRowDto[], candidateId: string, ancestorId: string): boolean {
   const parentOf = new Map(rows.map((r) => [r.id, r.parentId]));
   const seen = new Set<string>();
-  for (let id = parentOf.get(candidateId) ?? null; id !== null && !seen.has(id); id = parentOf.get(id) ?? null) {
+  for (
+    let id = parentOf.get(candidateId) ?? null;
+    id !== null && !seen.has(id);
+    id = parentOf.get(id) ?? null
+  ) {
     if (id === ancestorId) return true;
     seen.add(id);
   }
@@ -373,7 +728,8 @@ function isDescendant(rows: RabRowDto[], candidateId: string, ancestorId: string
 }
 
 function IssuesPanel({ errors, warnings }: { errors: RabIssue[]; warnings: RabIssue[] }) {
-  if (errors.length === 0 && warnings.length === 0) return <Alert kind="success">Tidak ada error atau peringatan. Draft siap di-approve.</Alert>;
+  if (errors.length === 0 && warnings.length === 0)
+    return <Alert kind="success">Tidak ada error atau peringatan. Draft siap di-approve.</Alert>;
   return (
     <section className="panel form-panel space-y-2" aria-labelledby="rab-issues">
       <h2 id="rab-issues" className="text-base font-semibold">
@@ -403,16 +759,42 @@ function IssuesPanel({ errors, warnings }: { errors: RabIssue[]; warnings: RabIs
   );
 }
 
-function DocumentForm({ version, busy, onSave }: { version: RabVersionDetailDto['version']; busy: boolean; onSave: (body: Record<string, string>) => Promise<Result> }) {
+function DocumentForm({
+  version,
+  busy,
+  onSave,
+}: {
+  version: RabVersionDetailDto['version'];
+  busy: boolean;
+  onSave: (body: Record<string, string>) => Promise<Result>;
+}) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void onSave({ documentNumber: String(form.get('documentNumber') ?? ''), documentDate: String(form.get('documentDate') ?? '') });
+    void onSave({
+      documentNumber: String(form.get('documentNumber') ?? ''),
+      documentDate: String(form.get('documentDate') ?? ''),
+    });
   }
   return (
-    <form onSubmit={submit} className="flex flex-wrap items-end gap-2" aria-label="Data dokumen RAB">
-      <Field id="rab-doc-number" name="documentNumber" label="Nomor dokumen" defaultValue={version.documentNumber ?? ''} />
-      <Field id="rab-doc-date" name="documentDate" type="date" label="Tanggal dokumen" defaultValue={version.documentDate ?? ''} />
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-end gap-2"
+      aria-label="Data dokumen RAB"
+    >
+      <Field
+        id="rab-doc-number"
+        name="documentNumber"
+        label="Nomor dokumen"
+        defaultValue={version.documentNumber ?? ''}
+      />
+      <Field
+        id="rab-doc-date"
+        name="documentDate"
+        type="date"
+        label="Tanggal dokumen"
+        defaultValue={version.documentDate ?? ''}
+      />
       <Button type="submit" variant="secondary" disabled={busy}>
         Simpan dokumen
       </Button>
@@ -437,7 +819,9 @@ function RowForm({
   onCancel: () => void;
   onSubmit: (body: Record<string, string | null>) => Promise<Result>;
 }) {
-  const [rowType, setRowType] = useState<RabRowType>(row?.rowType ?? allowedTypes?.at(-1) ?? 'ITEM');
+  const [rowType, setRowType] = useState<RabRowType>(
+    row?.rowType ?? allowedTypes?.at(-1) ?? 'ITEM',
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const linked = Boolean(row?.analysis);
 
@@ -450,8 +834,11 @@ function RowForm({
     };
     if (!row) body.rowType = rowType;
     // A linked item's price follows its analysis (D-051): never send it, so volume/description edits succeed.
-    if (rowType === 'ITEM') for (const f of ITEM_FIELDS) if (!(linked && f.name === 'unitPrice')) body[f.name] = String(form.get(f.name) ?? '');
-    if (row && parents && row.rowType !== 'SECTION') body.parentId = String(form.get('parentId') ?? '') || null;
+    if (rowType === 'ITEM')
+      for (const f of ITEM_FIELDS)
+        if (!(linked && f.name === 'unitPrice')) body[f.name] = String(form.get(f.name) ?? '');
+    if (row && parents && row.rowType !== 'SECTION')
+      body.parentId = String(form.get('parentId') ?? '') || null;
     setErrors((await onSubmit(body)).fieldErrors);
   }
 
@@ -464,7 +851,11 @@ function RowForm({
             <label htmlFor="rab-row-type" className="field-label">
               Jenis baris
             </label>
-            <Select id="rab-row-type" value={rowType} onChange={(e) => setRowType(e.target.value as RabRowType)}>
+            <Select
+              id="rab-row-type"
+              value={rowType}
+              onChange={(e) => setRowType(e.target.value as RabRowType)}
+            >
               {allowedTypes.map((t) => (
                 <option key={t} value={t}>
                   {RAB_ROW_TYPE_LABEL[t]}
@@ -481,17 +872,30 @@ function RowForm({
             <Select id="rab-parent" name="parentId" defaultValue={row.parentId ?? ''}>
               <option value="">(tingkat teratas)</option>
               {parents.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {'— '.repeat(p.depth)}
-                    {p.displayNumber ? `${p.displayNumber}. ` : ''}
-                    {p.description}
-                  </option>
-                ))}
+                <option key={p.id} value={p.id}>
+                  {'— '.repeat(p.depth)}
+                  {p.displayNumber ? `${p.displayNumber}. ` : ''}
+                  {p.description}
+                </option>
+              ))}
             </Select>
           </div>
         )}
-        <Field id="rab-display-number" name="displayNumber" label="No" defaultValue={row?.displayNumber ?? ''} error={errors.displayNumber} />
-        <Field id="rab-description" name="description" label="Uraian" required defaultValue={row?.description ?? ''} error={errors.description} />
+        <Field
+          id="rab-display-number"
+          name="displayNumber"
+          label="No"
+          defaultValue={row?.displayNumber ?? ''}
+          error={errors.displayNumber}
+        />
+        <Field
+          id="rab-description"
+          name="description"
+          label="Uraian"
+          required
+          defaultValue={row?.description ?? ''}
+          error={errors.description}
+        />
         {rowType === 'ITEM' &&
           ITEM_FIELDS.map((f) =>
             linked && f.name === 'unitPrice' ? (
@@ -500,20 +904,23 @@ function RowForm({
                 <p className="field tabular-nums" aria-readonly="true">
                   {row?.unitPrice}
                 </p>
-                <p className="field-hint">Mengikuti analisa {row?.analysis?.code ?? row?.analysis?.name}; ubah lewat impor/analisa.</p>
+                <p className="field-hint">
+                  Mengikuti analisa {row?.analysis?.code ?? row?.analysis?.name}; ubah lewat
+                  impor/analisa.
+                </p>
               </div>
             ) : (
-            <div key={f.name}>
-              <Field
-                id={`rab-${f.name}`}
-                name={f.name}
-                label={f.label}
-                inputMode={'inputMode' in f ? f.inputMode : undefined}
-                defaultValue={row?.[f.name] ?? ''}
-                error={errors[f.name]}
-              />
-              {'hint' in f && <p className="field-hint">{f.hint}</p>}
-            </div>
+              <div key={f.name}>
+                <Field
+                  id={`rab-${f.name}`}
+                  name={f.name}
+                  label={f.label}
+                  inputMode={'inputMode' in f ? f.inputMode : undefined}
+                  defaultValue={row?.[f.name] ?? ''}
+                  error={errors[f.name]}
+                />
+                {'hint' in f && <p className="field-hint">{f.hint}</p>}
+              </div>
             ),
           )}
       </div>
@@ -550,7 +957,12 @@ function ApprovalPanel({
   function discard(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const reason = String(new FormData(event.currentTarget).get('reason') ?? '');
-    if (window.confirm('Batalkan draft ini? Draft tetap tersimpan sebagai riwayat dan tidak dapat diubah lagi.')) void onDiscard(reason);
+    if (
+      window.confirm(
+        'Batalkan draft ini? Draft tetap tersimpan sebagai riwayat dan tidak dapat diubah lagi.',
+      )
+    )
+      void onDiscard(reason);
   }
 
   return (
@@ -560,20 +972,39 @@ function ApprovalPanel({
       </h2>
       {canApprove && (
         <div className="space-y-2">
-          <p className="text-sm text-slate-600">Setelah di-approve, versi ini terkunci permanen. Nilai per baris dan total disimpan sebagai snapshot.</p>
+          <p className="text-sm text-slate-600">
+            Setelah di-approve, versi ini terkunci permanen. Nilai per baris dan total disimpan
+            sebagai snapshot.
+          </p>
           {issues.warnings.length > 0 && (
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} /> Saya sudah memeriksa {issues.warnings.length} peringatan di atas.
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+              />{' '}
+              Saya sudah memeriksa {issues.warnings.length} peringatan di atas.
             </label>
           )}
-          <Button disabled={busy || blocked} onClick={() => window.confirm('Approve RAB ini? Versi akan terkunci permanen.') && onApprove(acknowledged)}>
+          <Button
+            disabled={busy || blocked}
+            onClick={() =>
+              window.confirm('Approve RAB ini? Versi akan terkunci permanen.') &&
+              onApprove(acknowledged)
+            }
+          >
             Approve RAB
           </Button>
         </div>
       )}
       {canDiscard && (
         <form onSubmit={discard} noValidate className="flex flex-wrap items-end gap-2">
-          <Field id="rab-discard-reason" name="reason" label="Alasan membatalkan draft (wajib)" required />
+          <Field
+            id="rab-discard-reason"
+            name="reason"
+            label="Alasan membatalkan draft (wajib)"
+            required
+          />
           <Button type="submit" variant="danger" disabled={busy}>
             Batalkan draft
           </Button>

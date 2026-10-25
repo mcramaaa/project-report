@@ -1,7 +1,14 @@
+import { columnNumber } from '../imports/workbook/formula';
+import { previewWindow } from './workbook-preview';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { DocumentDto } from '@laporan-proyek/shared';
 import ExcelJS from 'exceljs';
 import { writeAudit } from '../audit/audit';
@@ -22,8 +29,10 @@ export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** <root>/storage, same depth from src/documents and dist/documents; STORAGE_DIR overrides (tests). */
-export const storageRoot = () => process.env.STORAGE_DIR ?? resolve(__dirname, '../../../../storage');
-export const documentPath = (projectId: string, storedFilename: string) => join(storageRoot(), 'projects', projectId, 'documents', storedFilename);
+export const storageRoot = () =>
+  process.env.STORAGE_DIR ?? resolve(__dirname, '../../../../storage');
+export const documentPath = (projectId: string, storedFilename: string) =>
+  join(storageRoot(), 'projects', projectId, 'documents', storedFilename);
 
 const USER_REF = { select: { id: true, name: true } } as const;
 
@@ -37,11 +46,22 @@ export class DocumentsService {
    */
   async upload(actor: AuthUser, projectId: string, files: UploadedPart[]): Promise<DocumentDto[]> {
     if (!files?.length) throw new BadRequestException('Pilih minimal satu file.');
-    const project = await this.prisma.project.findUnique({ where: { id: projectId }, select: { status: true } });
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+      select: { status: true },
+    });
     if (!project) throw new NotFoundException('Proyek tidak ditemukan.');
-    if (project.status === 'CLOSED') throw new ConflictException('Proyek sudah ditutup; dokumen tidak dapat ditambahkan.');
+    if (project.status === 'CLOSED')
+      throw new ConflictException('Proyek sudah ditutup; dokumen tidak dapat ditambahkan.');
 
-    const prepared: { name: string; buffer: Buffer; size: number; sha256: string; storedFilename: string; inventory: { rabSheets: string[] } }[] = [];
+    const prepared: {
+      name: string;
+      buffer: Buffer;
+      size: number;
+      sha256: string;
+      storedFilename: string;
+      inventory: { rabSheets: string[] };
+    }[] = [];
     for (const f of files) {
       const name = Buffer.from(f.originalname, 'latin1').toString('utf8').slice(0, 255);
       if (!/\.xlsx$/i.test(name) || f.buffer.subarray(0, 4).toString('hex') !== '504b0304') {
@@ -106,19 +126,65 @@ export class DocumentsService {
       throw err;
     }
     // Committed: the files now belong to metadata, so a failure from here on must not remove them.
-    const docs = await this.prisma.projectDocument.findMany({ where: { id: { in: ids } }, include: { uploader: USER_REF }, orderBy: { uploadedAt: 'asc' } });
+    const docs = await this.prisma.projectDocument.findMany({
+      where: { id: { in: ids } },
+      include: { uploader: USER_REF },
+      orderBy: { uploadedAt: 'asc' },
+    });
     return docs.map(toDto);
   }
 
   async list(projectId: string): Promise<DocumentDto[]> {
-    const docs = await this.prisma.projectDocument.findMany({ where: { projectId }, include: { uploader: USER_REF }, orderBy: { uploadedAt: 'desc' } });
+    const docs = await this.prisma.projectDocument.findMany({
+      where: { projectId },
+      include: { uploader: USER_REF },
+      orderBy: { uploadedAt: 'desc' },
+    });
     return docs.map(toDto);
   }
 
-  async read(projectId: string, documentId: string): Promise<{ filename: string; mimeType: string; data: Buffer }> {
-    const doc = await this.prisma.projectDocument.findFirst({ where: { id: documentId, projectId } });
+  async preview(projectId: string, documentId: string, sheet?: string, cell = 'A1') {
+    if (
+      typeof cell !== 'string' ||
+      !/^[A-Z]{1,3}[1-9]\d{0,6}$/i.test(cell) ||
+      Number(cell.replace(/^[A-Z]+/i, '')) > 1048576 ||
+      columnNumber(cell.replace(/\d+$/, '')) > 16384
+    )
+      throw new BadRequestException('Alamat sel tidak valid. Gunakan contoh A1.');
+    if (sheet !== undefined && typeof sheet !== 'string')
+      throw new BadRequestException('Sheet tidak valid.');
+    const file = await this.read(projectId, documentId);
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.load(file.data as unknown as ArrayBuffer);
+    } catch {
+      throw new BadRequestException('Dokumen Excel tidak dapat dibaca.');
+    }
+    const model = new WorkbookModel(documentId, file.filename, workbook);
+    const name = sheet === undefined ? model.sheetNames()[0] : model.sheetName(sheet);
+    if (!name) throw new NotFoundException('Sheet tidak ditemukan.');
+    return {
+      documentId,
+      filename: file.filename,
+      sheets: model.sheetNames(),
+      sheet: name,
+      ...previewWindow(model, name, cell.toUpperCase()),
+    };
+  }
+
+  async read(
+    projectId: string,
+    documentId: string,
+  ): Promise<{ filename: string; mimeType: string; data: Buffer }> {
+    const doc = await this.prisma.projectDocument.findFirst({
+      where: { id: documentId, projectId },
+    });
     if (!doc) throw new NotFoundException('Dokumen tidak ditemukan.');
-    return { filename: doc.originalFilename, mimeType: doc.mimeType, data: await readFile(documentPath(projectId, doc.storedFilename)) };
+    return {
+      filename: doc.originalFilename,
+      mimeType: doc.mimeType,
+      data: await readFile(documentPath(projectId, doc.storedFilename)),
+    };
   }
 }
 

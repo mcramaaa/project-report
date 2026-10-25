@@ -2,9 +2,21 @@ import { z } from 'zod';
 import { RAB_ROW_TYPES, RAB_VERSION_TYPES } from './rab.js';
 
 /** Structured draft of a RAB package import (D-045–D-053, RAB_IMPORT_GUIDE v1). Decimals are strings. */
-export const RAB_IMPORT_STATUSES = ['UPLOADED', 'PROCESSING', 'NEEDS_REVIEW', 'APPROVED', 'REJECTED', 'FAILED'] as const;
+export const RAB_IMPORT_STATUSES = [
+  'UPLOADED',
+  'PROCESSING',
+  'NEEDS_REVIEW',
+  'APPROVED',
+  'REJECTED',
+  'FAILED',
+] as const;
 export type RabImportStatus = (typeof RAB_IMPORT_STATUSES)[number];
-export const RAB_IMPORT_DECISION_KINDS = ['ANALYSIS_LINK', 'PRICE_CHOICE', 'DIRECT_PRICE', 'WORK_ITEM_MATCH'] as const;
+export const RAB_IMPORT_DECISION_KINDS = [
+  'ANALYSIS_LINK',
+  'PRICE_CHOICE',
+  'DIRECT_PRICE',
+  'WORK_ITEM_MATCH',
+] as const;
 export type RabImportDecisionKind = (typeof RAB_IMPORT_DECISION_KINDS)[number];
 export const IMPORT_ISSUE_SEVERITIES = ['BLOCKING', 'WARNING', 'INFO'] as const;
 export const AHSP_CATEGORIES = ['LABOR', 'MATERIAL', 'EQUIPMENT'] as const;
@@ -13,10 +25,20 @@ export type AhspCategory = (typeof AHSP_CATEGORIES)[number];
 const decimal = z.string().regex(/^-?\d+(\.\d+)?$/);
 const scalar = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
-export const locatorSchema = z.object({ documentId: z.string(), sheet: z.string(), cell: z.string().optional(), row: z.number().int().optional() });
+export const locatorSchema = z.object({
+  documentId: z.string(),
+  sheet: z.string(),
+  cell: z.string().optional(),
+  row: z.number().int().optional(),
+});
 export type SourceLocator = z.infer<typeof locatorSchema>;
 
-export const evidenceStepSchema = z.object({ cell: z.string(), formula: z.string().nullable(), value: scalar, via: z.enum(['START', 'REF', 'VLOOKUP']) });
+export const evidenceStepSchema = z.object({
+  cell: z.string(),
+  formula: z.string().nullable(),
+  value: scalar,
+  via: z.enum(['START', 'REF', 'VLOOKUP']),
+});
 export type EvidenceStep = z.infer<typeof evidenceStepSchema>;
 
 export const importIssueSchema = z.object({
@@ -30,7 +52,14 @@ export const importIssueSchema = z.object({
 });
 export type ImportIssue = z.infer<typeof importIssueSchema>;
 
-export const draftPriceSchema = z.object({ key: z.string(), name: z.string(), unit: z.string().nullable(), price: decimal, locator: locatorSchema, evidence: z.array(evidenceStepSchema) });
+export const draftPriceSchema = z.object({
+  key: z.string(),
+  name: z.string(),
+  unit: z.string().nullable(),
+  price: decimal,
+  locator: locatorSchema,
+  evidence: z.array(evidenceStepSchema),
+});
 export type DraftPrice = z.infer<typeof draftPriceSchema>;
 
 export const draftComponentSchema = z.object({
@@ -43,8 +72,17 @@ export const draftComponentSchema = z.object({
   sourceAmount: decimal.nullable(),
   amount: decimal,
   source: z.discriminatedUnion('kind', [
-    z.object({ kind: z.literal('PRICE_ITEM'), priceKey: z.string(), factor: z.object({ op: z.enum(['*', '/']), value: z.string() }).optional() }),
-    z.object({ kind: z.literal('ANALYSIS'), analysisKey: z.string(), basis: z.enum(['EXACT', 'ROUNDED']), roundingScale: z.number().int().nullable() }),
+    z.object({
+      kind: z.literal('PRICE_ITEM'),
+      priceKey: z.string(),
+      factor: z.object({ op: z.enum(['*', '/']), value: z.string() }).optional(),
+    }),
+    z.object({
+      kind: z.literal('ANALYSIS'),
+      analysisKey: z.string(),
+      basis: z.enum(['EXACT', 'ROUNDED']),
+      roundingScale: z.number().int().nullable(),
+    }),
     z.object({ kind: z.literal('LITERAL') }),
   ]),
   locator: locatorSchema,
@@ -78,7 +116,12 @@ export const draftAnalysisSchema = z.object({
   overheadPercent: decimal.nullable(),
   /** Rounding the source applies where the analysis price is used (D-051); null = none. */
   roundingScale: z.number().int().nullable(),
-  computed: z.object({ directCost: decimal, overheadAmount: decimal, priceExact: decimal, price: decimal }),
+  computed: z.object({
+    directCost: decimal,
+    overheadAmount: decimal,
+    priceExact: decimal,
+    price: decimal,
+  }),
   source: z.object({ directCost: decimal.nullable(), priceExact: decimal.nullable() }),
   components: z.array(draftComponentSchema),
   usedByRows: z.array(z.string()),
@@ -86,10 +129,20 @@ export const draftAnalysisSchema = z.object({
   /** Only offered as a candidate (e.g. from a supporting document); imported only if a reviewer links it. */
   candidateOnly: z.boolean(),
   reconciliation: z.array(reconciliationSchema),
+  /** Overhead written in the block but not used by the source price (header refers to D); warning only. */
+  unusedOverhead: z
+    .object({ percent: decimal, overheadCell: z.string(), percentCell: z.string(), directCell: z.string() })
+    .nullable()
+    .optional(),
 });
 export type DraftAnalysis = z.infer<typeof draftAnalysisSchema>;
 
-export const workItemCandidateSchema = z.object({ workItemId: z.string(), code: z.string(), description: z.string(), groupPath: z.string() });
+export const workItemCandidateSchema = z.object({
+  workItemId: z.string(),
+  code: z.string(),
+  description: z.string(),
+  groupPath: z.string(),
+});
 export const analysisCandidateSchema = z.object({
   /** Official analysis version of the project, or … */
   analysisVersionId: z.string().nullable(),
@@ -119,6 +172,11 @@ export const draftRowSchema = z.object({
   taxPercent: decimal.nullable(),
   analysisCode: z.string().nullable(),
   sourceUnitPrice: decimal.nullable(),
+  /**
+   * Cached workbook floats of the row (price + PPN, amount) as 17-digit strings for reconciliation (D-054);
+   * strings because MySQL JSON does not keep every double digit. Absent in old drafts.
+   */
+  workbook: z.object({ unitPriceWithTax: z.string().nullable(), subtotal: z.string().nullable() }).optional(),
   price: z.object({
     /** ANALYSIS = formula chain proves an analysis; DIRECT = literal price; UNRESOLVED = chain broken/ambiguous. */
     kind: z.enum(['ANALYSIS', 'DIRECT', 'UNRESOLVED', 'NONE']),
@@ -151,7 +209,8 @@ export const rabImportDraftSchema = z.object({
   rows: z.array(draftRowSchema),
   analyses: z.array(draftAnalysisSchema),
   prices: z.array(draftPriceSchema),
-  workbookTotals: z.object({ value: decimal, rounded: decimal.nullable() }).nullable(),
+  /** `valueRaw` = cached float of the total cell as a 17-digit string (absent in old drafts). */
+  workbookTotals: z.object({ value: decimal, rounded: decimal.nullable(), valueRaw: z.string().nullable().optional() }).nullable(),
   /** Location/period from the price list headers ("Lokasi", "Tahun"), metadata of the price list (D-050). */
   priceMetadata: z.object({ location: z.string().nullable(), period: z.string().nullable() }),
   stats: z.object({
@@ -169,23 +228,51 @@ export type RabImportDraft = z.infer<typeof rabImportDraftSchema>;
 export const createRabImportSchema = z.object({
   targetVersionType: z.enum(RAB_VERSION_TYPES),
   sources: z
-    .array(z.object({ documentId: z.uuid(), role: z.enum(DOCUMENT_ROLES).default('RAB'), rabSheet: z.string().trim().min(1).max(120).optional() }))
+    .array(
+      z.object({
+        documentId: z.uuid(),
+        role: z.enum(DOCUMENT_ROLES).default('RAB'),
+        rabSheet: z.string().trim().min(1).max(120).optional(),
+      }),
+    )
     .min(1, { message: 'Pilih minimal satu dokumen.' })
     .max(10)
-    .refine((list) => list.some((x) => x.role === 'RAB'), { message: 'Minimal satu dokumen berperan RAB.' }),
+    .refine((list) => list.some((x) => x.role === 'RAB'), {
+      message: 'Minimal satu dokumen berperan RAB.',
+    }),
 });
 export type CreateRabImportInput = z.infer<typeof createRabImportSchema>;
 
 const decisionValue = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('ANALYSIS_LINK'), value: z.union([z.object({ analysisKey: z.string() }), z.object({ analysisVersionId: z.uuid() })]) }),
-  z.object({ kind: z.literal('PRICE_CHOICE'), value: z.object({ source: z.enum(['ANALYSIS', 'SOURCE_OVERRIDE']) }) }),
+  z.object({
+    kind: z.literal('ANALYSIS_LINK'),
+    value: z.union([
+      z.object({ analysisKey: z.string() }),
+      z.object({ analysisVersionId: z.uuid() }),
+    ]),
+  }),
+  z.object({
+    kind: z.literal('PRICE_CHOICE'),
+    value: z.object({ source: z.enum(['ANALYSIS', 'SOURCE_OVERRIDE']) }),
+  }),
   z.object({ kind: z.literal('DIRECT_PRICE'), value: z.object({ accept: z.literal(true) }) }),
-  z.object({ kind: z.literal('WORK_ITEM_MATCH'), value: z.object({ workItemId: z.uuid().nullable() }) }),
+  z.object({
+    kind: z.literal('WORK_ITEM_MATCH'),
+    value: z.object({ workItemId: z.uuid().nullable() }),
+  }),
 ]);
 
 export const rabImportDecisionsSchema = z.object({
   decisions: z
-    .array(z.intersection(z.object({ rowKey: z.string().min(1).max(100), reason: z.string().trim().max(1000).optional() }), decisionValue))
+    .array(
+      z.intersection(
+        z.object({
+          rowKey: z.string().min(1).max(100),
+          reason: z.string().trim().max(1000).optional(),
+        }),
+        decisionValue,
+      ),
+    )
     .min(1)
     .max(2000),
 });
@@ -239,7 +326,26 @@ export interface RabImportDetailDto {
   decisions: RabImportDecisionDto[];
   aiRuns: AiRunDto[];
   /** Reconciliation of the version the import would create, D-043 formula. */
-  reconciliation: { realCost: string; rounded: string; workbookRealCost: string | null; workbookRounded: string | null; matches: boolean | null } | null;
+  reconciliation: RabReconciliation | null;
+}
+
+/**
+ * App totals (D-043) against the source RAB. `matches` compares REAL COST/DIBULATKAN. Items and the total are
+ * reconciled with D-054: `totalStatus` MATCH, FLOAT_RESIDUE (total equals Σ cached item amounts; only the
+ * float-summed total cell differs) or MISMATCH (a real nominal difference); null when not every item could be
+ * computed and compared yet.
+ */
+export interface RabReconciliation {
+  realCost: string;
+  rounded: string;
+  workbookRealCost: string | null;
+  workbookRounded: string | null;
+  matches: boolean | null;
+  value: string;
+  rowsChecked: number;
+  rowsMismatched: number;
+  totalStatus: 'MATCH' | 'FLOAT_RESIDUE' | 'MISMATCH' | null;
+  entries: ReconciliationEntry[];
 }
 
 export interface DocumentDto {
@@ -265,6 +371,7 @@ export interface PackageOwnerDto {
 
 /** Provenance of a copy from another version's package (D-057). */
 export interface CopiedFromDto {
+  analysisId: string;
   analysisVersionId: string;
   rabVersion: PackageOwnerDto;
 }
@@ -307,11 +414,17 @@ export interface AhspAnalysisDetailDto {
     discipline: string | null;
     overheadPercent: string | null;
     roundingScale: number | null;
+    categoryTotals: Record<AhspCategory, string>;
     directCost: string;
     overheadAmount: string;
     priceExact: string;
     price: string;
-    priceList: { id: string; versionNumber: number; location: string | null; period: string | null };
+    priceList: {
+      id: string;
+      versionNumber: number;
+      location: string | null;
+      period: string | null;
+    };
     sourceLocator: unknown;
     createdAt: string;
     copiedFrom: CopiedFromDto | null;
@@ -324,10 +437,21 @@ export interface AhspAnalysisDetailDto {
       unitPrice: string;
       amount: string;
       priceItem: { id: string; name: string; price: string } | null;
-      subAnalysis: { analysisId: string; versionId: string; code: string | null; name: string; basis: 'EXACT' | 'ROUNDED' | null } | null;
+      subAnalysis: {
+        analysisId: string;
+        versionId: string;
+        code: string | null;
+        name: string;
+        basis: 'EXACT' | 'ROUNDED' | null;
+      } | null;
       sourceLocator: unknown;
     }[];
-    rabItems: { id: string; description: string; displayNumber: string | null; rabVersion: { id: string; versionType: string; revisionNumber: number; status: string } }[];
+    rabItems: {
+      id: string;
+      description: string;
+      displayNumber: string | null;
+      rabVersion: { id: string; versionType: string; revisionNumber: number; status: string };
+    }[];
   }[];
 }
 
@@ -339,5 +463,13 @@ export interface PriceListDto {
   period: string | null;
   createdAt: string;
   sourceImportId: string | null;
-  items: { id: string; name: string; unit: string | null; price: string; sourceLocator: unknown; copiedFrom: { priceItemId: string; rabVersion: PackageOwnerDto } | null }[];
+  items: {
+    id: string;
+    name: string;
+    unit: string | null;
+    price: string;
+    categories: AhspCategory[];
+    sourceLocator: unknown;
+    copiedFrom: { priceItemId: string; rabVersion: PackageOwnerDto } | null;
+  }[];
 }

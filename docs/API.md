@@ -119,7 +119,7 @@ GET  /projects/:projectId/documents/:documentId/download  document.read
 ```text
 GET  /projects/:projectId/rab-imports                                  rabImport.review | rabImport.approve
 POST /projects/:projectId/rab-imports   { targetVersionType, sources: [{ documentId, role: RAB|SUPPORT, rabSheet? }] }   rabImport.review -> 201, status UPLOADED → diproses di latar
-GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns }
+GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns, reconciliation }
 POST /projects/:projectId/rab-imports/:importId/decisions  { rowKey, kind, value, reason? }   rabImport.review
 POST /projects/:projectId/rab-imports/:importId/retry                  rabImport.review -> run baru
 POST /projects/:projectId/rab-imports/:importId/approve                rabImport.approve
@@ -130,6 +130,7 @@ POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport
 - keputusan hanya pada status `NEEDS_REVIEW`; approve ditolak (`409`) bila masih ada issue `BLOCKING`
 - approve dalam satu transaksi: versi daftar harga, analisa/versi/komponen terpakai, RAB versi DRAFT tertaut, audit; mengikuti aturan urutan versi M4 (satu DRAFT per proyek)
 - AI dipakai otomatis saat pemrosesan untuk baris putus/ambigu bila 9router dikonfigurasi; hasilnya hanya kandidat
+- `reconciliation` (D-063): `realCost`, `rounded`, `workbookRealCost`, `workbookRounded`, `matches`, `value` (total eksak), `rowsChecked`, `rowsMismatched`, `totalStatus` (`MATCH` | `FLOAT_RESIDUE` | `MISMATCH` | null), `entries` (perbandingan total D-054); selisih item/total dan `OVERHEAD_UNUSED` muncul sebagai issue `WARNING`
 
 ## 6. RAB
 
@@ -303,3 +304,16 @@ Jangan expose detail sensitif ke public health endpoint.
 - pagination untuk daftar besar
 - authorization server-side
 - bulk endpoint untuk progress
+
+D-060: `GET /projects/:projectId/rab-versions/:versionId/price-list` menerima
+`category=LABOR|MATERIAL|EQUIPMENT` opsional, bersama `search`. Nilai kategori
+lain menghasilkan 400. Filter berdasarkan pemakaian komponen dalam paket
+ini. Setiap item mengembalikan `categories`; detail versi analisa menambahkan
+`categoryTotals` (LABOR/MATERIAL/EQUIPMENT, decimal string). Tetap `ahsp.read`.
+
+D-061: baris RAB menambahkan `sourceLocator` (provenance tersimpan),
+`sourceUnitPrice`, `analysisUnitPrice`, dan `priceDecidedAt` untuk penjelasan
+keputusan harga. `GET /projects/:projectId/documents/:documentId/preview`
+(`document.read`) menerima `sheet` dan `cell` (A1 secara default), menghasilkan
+nama dokumen, daftar sheet, sel terpilih (nilai cached, formula, referensi),
+dan jendela sekitar sel (maksimal 11×12). Tidak menjalankan rumus/link luar.

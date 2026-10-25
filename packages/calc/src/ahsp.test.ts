@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { calculateAnalysisPrice, compareWithWorkbook, componentAmount, findAnalysisCycle, matchesWorkbookValue } from './index.js';
+import {
+  analysisCategoryTotals,
+  calculateAnalysisPrice,
+  compareWithWorkbook,
+  Decimal,
+  componentAmount,
+  findAnalysisCycle,
+  matchesWorkbookValue,
+} from './index.js';
 
 describe('calculateAnalysisPrice (D-051)', () => {
   // Workbook SDN 2 Serangan, ANALISA I.1 "PASANGAN 1 M' BOUWPLANK".
@@ -24,15 +32,27 @@ describe('calculateAnalysisPrice (D-051)', () => {
   });
 
   it('does not round or add overhead unless the source does', () => {
-    expect(calculateAnalysisPrice(bouwplank, { overheadPercent: null, roundingScale: null })).toMatchObject({ overheadAmount: '0', priceExact: '143475', price: '143475' });
-    expect(calculateAnalysisPrice([{ coefficient: '0.333', unitPrice: '1000.5' }], { overheadPercent: '12.5', roundingScale: 2 })).toMatchObject({
+    expect(
+      calculateAnalysisPrice(bouwplank, { overheadPercent: null, roundingScale: null }),
+    ).toMatchObject({ overheadAmount: '0', priceExact: '143475', price: '143475' });
+    expect(
+      calculateAnalysisPrice([{ coefficient: '0.333', unitPrice: '1000.5' }], {
+        overheadPercent: '12.5',
+        roundingScale: 2,
+      }),
+    ).toMatchObject({
       priceExact: '374.8123125',
       price: '374.81',
     });
   });
 
   it('keeps zero coefficients as components', () => {
-    expect(calculateAnalysisPrice([{ coefficient: '0', unitPrice: '5000' }], { overheadPercent: '10', roundingScale: 0 }).componentAmounts).toEqual(['0']);
+    expect(
+      calculateAnalysisPrice([{ coefficient: '0', unitPrice: '5000' }], {
+        overheadPercent: '10',
+        roundingScale: 0,
+      }).componentAmounts,
+    ).toEqual(['0']);
     expect(componentAmount('0.0006', '165000')).toBe('99');
   });
 });
@@ -59,13 +79,62 @@ describe('matchesWorkbookValue', () => {
     expect(matchesWorkbookValue('157822.5', 157822.5)).toBe(true);
     expect(matchesWorkbookValue('157823', 157822.5)).toBe(false);
     expect(matchesWorkbookValue('0', 0)).toBe(true);
+    // A Decimal reference (Σ cached item amounts added exactly) is not re-read as a float.
+    expect(compareWithWorkbook('5121250896.4818', new Decimal('5121250896.481800091423792765'))).toMatchObject({ diff: '0.000000091423792765', matches: true });
+    expect(compareWithWorkbook('5121250896.52530005935926', 5121250896.525306).matches).toBe(false);
   });
 });
 
 describe('findAnalysisCycle', () => {
   it('finds sub-analysis cycles and accepts DAGs', () => {
-    expect(findAnalysisCycle(new Map([['A', ['B']], ['B', ['C']], ['C', []]]))).toBeNull();
-    expect(findAnalysisCycle(new Map([['A', ['B']], ['B', ['A']]]))).toEqual(['A', 'B', 'A']);
+    expect(
+      findAnalysisCycle(
+        new Map([
+          ['A', ['B']],
+          ['B', ['C']],
+          ['C', []],
+        ]),
+      ),
+    ).toBeNull();
+    expect(
+      findAnalysisCycle(
+        new Map([
+          ['A', ['B']],
+          ['B', ['A']],
+        ]),
+      ),
+    ).toEqual(['A', 'B', 'A']);
     expect(findAnalysisCycle(new Map([['S', ['S']]]))).toEqual(['S', 'S']);
+  });
+});
+
+describe('AHSP worksheet subtotals', () => {
+  it('reconciles the sample demolition worksheet including an empty material group', () => {
+    expect(
+      analysisCategoryTotals([
+        { category: 'LABOR', amount: '21000' },
+        { category: 'LABOR', amount: '3300' },
+        { category: 'EQUIPMENT', amount: '12000' },
+      ]),
+    ).toEqual({ LABOR: '24300', MATERIAL: '0', EQUIPMENT: '12000' });
+    expect(
+      calculateAnalysisPrice(
+        [
+          { coefficient: '0.15', unitPrice: '140000' },
+          { coefficient: '0.015', unitPrice: '220000' },
+          { coefficient: '0.015', unitPrice: '800000' },
+        ],
+        { overheadPercent: '10', roundingScale: 0 },
+      ),
+    ).toMatchObject({ directCost: '36300', overheadAmount: '3630', price: '39930' });
+  });
+  it('keeps fine decimal precision and zero-valued groups', () => {
+    expect(
+      analysisCategoryTotals([
+        { category: 'MATERIAL', amount: '0.000000000001' },
+        { category: 'MATERIAL', amount: '0.000000000002' },
+      ]),
+    ).toEqual({ LABOR: '0', MATERIAL: '0.000000000003', EQUIPMENT: '0' });
+    expect(analysisCategoryTotals([])).toEqual({ LABOR: '0', MATERIAL: '0', EQUIPMENT: '0' });
   });
 });

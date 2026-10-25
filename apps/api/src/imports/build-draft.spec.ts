@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildDraft, DraftInputError, type DraftContext } from './build-draft';
+import { evaluateImport } from './evaluate';
 import { GUIDE_DOC_VERSION, GUIDE_VERSION } from './guide/rab-import-guide';
 import { analysisBlock, rabSheet, recap, recapLookup, workbookOf, type SheetSpec } from './test-workbook';
 import { parseFormula } from './workbook/formula';
@@ -398,6 +399,76 @@ describe('acceptance gaps (ACCEPTANCE_TESTS K)', () => {
 });
 
 const analysisCode = (draft: ReturnType<typeof buildDraft>, key: string | null | undefined) => draft.analyses.find((a) => a.key === key)?.code;
+
+describe('source reconciliation and overhead evidence (D-063)', () => {
+  const ctx: DraftContext = { targetVersionType: 'CONTRACT', officialAnalyses: [], previousItems: [] };
+  // Pekerja 0.5 × 100000 = D 50000; overhead 10% would give F 55000.
+  const workbook = (opts: { headerToDirect?: boolean; amount?: number; totalCell?: number }) => {
+    const block = analysisBlock(5, { seq: 1, code: 'A.1', name: 'X', unit: 'm3', components: [{ category: 'TENAGA', name: 'Pekerja', unit: 'OH', coef: 0.5, price: 100000 }] });
+    // Rows: 8 Pekerja, 9 subtotal, 10 D, 11 E = D × 10%, 12 F = D + E; header H5 normally = H12.
+    if (opts.headerToDirect) block.cells.H5 = ['H10', 50000];
+    const price = opts.headerToDirect ? 50000 : 55000;
+    const rab = rabSheet([
+      { no: 'A', desc: 'P' },
+      { no: 1, desc: 'Item', vol: 2, unit: 'm3', code: 'A.1', price: recapLookup(14, price) },
+    ]);
+    const withTax = price * 1.11;
+    rab.I14 = ['IFERROR(IF(G14*1>0,G14+G14*H14/100,0),0)', withTax];
+    rab.J14 = ['IFERROR(D14*I14,0)', opts.amount ?? withTax * 2];
+    rab.G16 = 'JUMLAH';
+    rab.J16 = ['SUM(J12:J15)', opts.totalCell ?? opts.amount ?? withTax * 2];
+    const draft = buildDraft(
+      [{ model: workbookOf({ 'RAB + PPN': rab, 'REKAP ANALISA': recap([{ seq: 1, code: 'A.1', price }]), ANALISA: block.cells }), documentId: 'd', filename: 'f', sha256: 's' }],
+      ctx,
+    );
+    return { draft, evaluation: evaluateImport(draft, [], new Map()) };
+  };
+
+  it('normal analysis (F = D + E): overhead applied, no warning; items and total match', () => {
+    const { draft, evaluation } = workbook({});
+    expect(draft.analyses[0]).toMatchObject({ overheadPercent: '10', unusedOverhead: null, computed: { price: '55000' } });
+    expect(draft.issues.filter((i) => i.code === 'OVERHEAD_UNUSED')).toEqual([]);
+    expect(evaluation.reconciliation).toMatchObject({ value: '122100', rowsChecked: 1, rowsMismatched: 0, totalStatus: 'MATCH' });
+    expect([...evaluation.rowReconciliation.values()][0]!.map((e) => [e.what, e.matches])).toEqual([
+      ['harga + PPN', true],
+      ['jumlah', true],
+    ]);
+  });
+
+  it('overhead listed while the header price refers to D: non-blocking warning with evidence; source price kept', () => {
+    const { draft, evaluation } = workbook({ headerToDirect: true });
+    expect(draft.analyses[0]).toMatchObject({
+      overheadPercent: null,
+      computed: { overheadAmount: '0', priceExact: '50000', price: '50000' },
+      unusedOverhead: { percent: '10', overheadCell: 'ANALISA!H11', percentCell: 'ANALISA!E11', directCell: 'ANALISA!H10' },
+    });
+    const warning = evaluation.issues.find((i) => i.code === 'OVERHEAD_UNUSED')!;
+    expect(warning).toMatchObject({ severity: 'WARNING', analysisKey: draft.analyses[0]!.key });
+    expect(warning.message).toBe(
+      'Analisa A.1: overhead 10% tercantum di ANALISA!H11 (persentase ANALISA!E11), tetapi harga analisa merujuk biaya langsung D ANALISA!H10. Harga dipakai sesuai sumber tanpa overhead: 50000 (eksak 50000).',
+    );
+    expect(evaluation.issues.filter((i) => i.severity === 'BLOCKING')).toEqual([]);
+    expect(evaluation.reconciliation).toMatchObject({ value: '111000', rowsMismatched: 0, totalStatus: 'MATCH' });
+  });
+
+  it('float residue in the total cell is told apart from a real nominal difference; app values never change', () => {
+    // Σ items exact = app total; only the float-summed total cell is off by more than Rp 0.000001.
+    const residue = workbook({ totalCell: 122100.00002 }).evaluation;
+    expect(residue.reconciliation).toMatchObject({ value: '122100', rowsMismatched: 0, totalStatus: 'FLOAT_RESIDUE' });
+    expect(residue.issues.filter((i) => i.code === 'RAB_TOTAL_MISMATCH' || i.code === 'RAB_ROW_MISMATCH')).toEqual([]);
+    // Float noise in an item amount stays within the tolerance.
+    expect(workbook({ amount: 122100.0000004 }).evaluation.reconciliation).toMatchObject({ rowsMismatched: 0, totalStatus: 'MATCH' });
+
+    // A real nominal difference: shown per item and in the total, as warnings, with the difference.
+    const real = workbook({ amount: 122100.5 }).evaluation;
+    expect(real.reconciliation).toMatchObject({ value: '122100', realCost: '122100.00', rowsMismatched: 1, totalStatus: 'MISMATCH' });
+    const row = real.issues.find((i) => i.code === 'RAB_ROW_MISMATCH')!;
+    expect(row.severity).toBe('WARNING');
+    expect(row.message).toBe('Item (baris 14): jumlah aplikasi 122100 ≠ workbook 122100.5 (selisih 0.5 > toleransi 0.000001). Nilai aplikasi tidak diganti.');
+    expect(real.issues).toContainEqual(expect.objectContaining({ code: 'RAB_TOTAL_MISMATCH', severity: 'WARNING', message: expect.stringContaining('selisih 0.5') }));
+    expect(real.rows.find((r) => r.row.rowType === 'ITEM')).toMatchObject({ priceSource: 'ANALYSIS', unitPrice: '55000' });
+  });
+});
 
 describe('import guide', () => {
   it('runtime instruction version matches docs/RAB_IMPORT_GUIDE.md', () => {

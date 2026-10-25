@@ -197,6 +197,10 @@ UI perbandingan wajib menunjukkan perubahan antar baseline.
 
 ## 11. AHSP
 
+Navigasi analisa berada di dalam halaman lihat versi RAB, bersama rekap dan
+harga paketnya, bukan tab mandiri pada detail proyek (D-059). Konteks versi
+RAB tetap saat membuka detail analisa/subanalisa dan kembali ke daftar.
+
 Di sistem, analisa ditampilkan dan dikelola sebagai **satu daftar gabungan**
 untuk **masing-masing versi RAB**, bukan satu daftar bersama seluruh proyek
 (D-056). Penawaran/Kontrak, MC0, dan setiap Addendum memiliki rekap, analisa,
@@ -644,3 +648,25 @@ Backup harus berada di lokasi berbeda dari disk utama.
 - AI gagal validasi tidak dapat menjadi RAB official
 - snapshot export konsisten
 - Kurva S mengikuti versi schedule yang berlaku
+
+### Rincian paket pada Lihat RAB (D-060)
+
+Lima tab: Rekap RAB, Analisa, Bahan, Alat, Upah. Semua mengikuti versi RAB
+yang dipilih. Detail analisa mengikuti lembar AHSP: tenaga/bahan/peralatan,
+koefisien, harga dan jumlah, subtotal A/B/C, biaya langsung D, overhead &
+profit E sesuai sumber, harga D+E serta pembulatan sumber. TKDN ditunda.
+
+### UI konsisten dan penelusuran nilai (D-061)
+
+Semua halaman memakai hirarki judul, formulir, tabel, loading/error dan navigasi
+yang konsisten serta nyaman di mobile. Nilai domain RAB/AHSP/harga dan jadwal
+dapat dibuka untuk melihat asalnya: rumus, operand, baris rinci, analisa,
+harga dasar atau dokumen asli. Nilai input manual dan override dijelaskan
+sebagai input/keputusan, bukan diberi sumber Excel buatan. Nilai tidak
+mengubah histori atau dihitung ulang untuk mengganti snapshot approved.
+
+### Satu tingkat tab pada Lihat RAB (D-062)
+
+Halaman satu versi RAB dan semua rincian paketnya hanya menampilkan tab
+Rekap RAB / Analisa / Bahan / Alat / Upah. Tab detail proyek tidak diulang;
+tautan kembali ke proyek dan daftar versi tersedia di atas tab paket.

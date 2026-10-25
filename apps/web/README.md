@@ -8,6 +8,7 @@ Frontend hanya membantu UX; authorization tetap di `apps/api`.
 - Server component memanggil API langsung dengan meneruskan cookie (`lib/server-api.ts`); client component memakai `lib/api.ts`.
 - Halaman: `/login`, `/`, `/projects/new`, `/projects/[projectId]` (tab `?tab=calendar|team`), `/profile`, `/admin/users`, `/admin/users/[userId]`, `/admin/roles`, `/admin/roles/[roleId]`, `/admin/projects`, `/admin/projects/[projectId]/members`.
 - RAB: `/projects/[projectId]/rab`, `/projects/[projectId]/rab/[versionId]` (grid + editor draft), `/projects/[projectId]/rab/compare?base=&target=`. Angka ditampilkan dari decimal string tanpa konversi float (`formatNumber`); pilihan kolom grid disimpan per browser.
+- Analisa ada di dalam Lihat RAB: `/projects/[projectId]/rab/[versionId]/analyses` dan detail `.../analyses/[analysisId]`. Tab Rekap RAB / Analisa / Bahan / Alat / Upah mempertahankan konteks paket. URL analisa lama dengan versi eksplisit diarahkan ke lokasi baru; tanpa versi menuju daftar versi RAB.
 - Daftar proyek memakai query `?search=&page=` yang dirender server (`components/pager.tsx`).
 - Pratinjau jadwal (`components/calendar-preview.tsx`) memakai `@laporan-proyek/calc`, perhitungan yang sama dengan backend.
 - Lint memakai ESLint langsung (`next lint` sudah dihapus di Next.js 16).
@@ -28,3 +29,7 @@ Tidak ada dependency runtime atau asset yang diambil dari proyek OLMAT.
   horizontal halaman, dan state kosong/error tetap terbaca.
 - Bila Turbopack diblokir lingkungan yang melarang bind port, build web dapat
   diverifikasi menggunakan `npm run build -w @laporan-proyek/web -- --webpack`.
+
+Klik nilai bergaris putus-putus untuk membuka **Asal nilai**: nilai lengkap,
+rumus, operand dan tautan rinci. Sumber Excel dibuka dalam pratinjau sheet
+(izin `document.read`); nilai cached tidak dihitung ulang. Baris tujuan disorot.

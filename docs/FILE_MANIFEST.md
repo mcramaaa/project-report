@@ -129,6 +129,21 @@
 - `apps/web/components/logout-button.tsx`
 - `apps/web/components/pager.tsx`
 - `apps/web/components/project-tabs.tsx`
+- `apps/web/components/rab-tabs.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/analyses/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/analyses/[analysisId]/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/materials/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/equipment/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/rab/[versionId]/labor/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/documents/[documentId]/page.tsx`
+- `apps/web/app/(app)/error.tsx`
+- `apps/web/app/(app)/loading.tsx`
+- `apps/web/components/rab-resource-page.tsx`
+- `apps/web/components/source-value.tsx`
+- `apps/web/lib/value-source.ts`
+- `apps/api/src/documents/workbook-preview.ts`
+- `apps/api/src/documents/workbook-preview.spec.ts`
+- `packages/shared/src/workbook-preview.ts`
 - `apps/web/components/ui.tsx`
 - `apps/web/eslint.config.mjs`
 - `apps/web/lib/api.ts`
@@ -210,3 +225,14 @@
 - `storage/exports/.gitkeep`
 - `storage/projects/.gitkeep`
 - `storage/temp/.gitkeep`
+
+D-060: `apps/web/components/rab-resource-page.tsx` digunakan halaman
+`rab/[versionId]/{materials,equipment,labor}/page.tsx`; rincian worksheet
+ada di `rab/[versionId]/analyses/[analysisId]/page.tsx`. Kategori harga
+diturunkan dari relasi komponen; tidak ada migration baru.
+
+D-061: `components/source-value.tsx` dialog nilai; `lib/value-source.ts`
+penautan provenance; `projects/[projectId]/documents/[documentId]/page.tsx`
+pratinjau sheet; `apps/api/src/documents/workbook-preview.ts` referensi
+rumus/window terbatas, dengan unit test; DTO `packages/shared/src/workbook-preview.ts`.
+`app/(app)/loading.tsx` dan `error.tsx` menangani state halaman bersama.

@@ -17,7 +17,7 @@ import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
 import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
-export const PARSER_VERSION = 'rab-parser@1';
+export const PARSER_VERSION = 'rab-parser@2'; // @2: item/total reconciliation, unused overhead (D-063)
 
 export interface DraftSource {
   model: WorkbookModel;
@@ -151,7 +151,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       throw err;
     }
     sourceInfo.push({ documentId: src.documentId, filename: src.filename, sha256: src.sha256, role: 'RAB', sheet: sheet.sheet, block: sheet.columns.block, analysisSheets: [] });
-    if (sheet.totals && sources.filter((x) => x.role !== 'SUPPORT').length === 1) workbookTotals = { value: sheet.totals.value, rounded: sheet.totals.rounded };
+    if (sheet.totals && sources.filter((x) => x.role !== 'SUPPORT').length === 1) workbookTotals = { value: sheet.totals.value, rounded: sheet.totals.rounded, valueRaw: sheet.totals.valueRaw };
 
     const keyOf = (row: number) => `${docIndex}:${row}`;
     const byRow = new Map(sheet.rows.map((r) => [r.row, r]));
@@ -184,6 +184,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
         rows.push(base);
         continue;
       }
+      base.workbook = r.workbook;
 
       const t = traceCell(src.model, r.priceCell.sheet, r.priceCell.row, r.priceCell.col);
       base.price.evidence = evidence(t);
@@ -506,6 +507,15 @@ function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIs
     });
     if (a.block.sourceDirectCostRaw !== null) check('biaya langsung', computed.directCost, a.block.sourceDirectCostRaw);
     if (a.block.sourcePriceExactRaw !== null) check('harga eksak', computed.priceExact, a.block.sourcePriceExactRaw);
+    const unused = a.block.unusedOverhead;
+    if (unused) {
+      issues.push({
+        code: 'OVERHEAD_UNUSED',
+        severity: 'WARNING',
+        message: `Analisa ${label}: overhead ${unused.percent}% tercantum di ${unused.overheadCell} (persentase ${unused.percentCell}), tetapi harga analisa merujuk biaya langsung D ${unused.directCell}. Harga dipakai sesuai sumber tanpa overhead: ${computed.price} (eksak ${computed.priceExact}).`,
+        analysisKey: a.key,
+      });
+    }
     const result: DraftAnalysis = {
       key: a.key,
       code: a.block.code,
@@ -522,6 +532,7 @@ function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIs
       usedByAnalyses: [...a.usedByAnalyses],
       candidateOnly: false,
       reconciliation: entries,
+      unusedOverhead: unused,
     };
     done.set(a.key, result);
     return result;

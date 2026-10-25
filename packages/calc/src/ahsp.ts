@@ -31,9 +31,15 @@ export function calculateAnalysisPrice(
 ): AhspPrice {
   const amounts = components.map((c) => new Decimal(c.coefficient).times(c.unitPrice));
   const direct = amounts.reduce((sum, a) => sum.plus(a), new Decimal(0));
-  const overhead = options.overheadPercent === null ? new Decimal(0) : direct.times(options.overheadPercent).div(HUNDRED);
+  const overhead =
+    options.overheadPercent === null
+      ? new Decimal(0)
+      : direct.times(options.overheadPercent).div(HUNDRED);
   const exact = direct.plus(overhead);
-  const price = options.roundingScale === null ? exact : exact.toDecimalPlaces(options.roundingScale, Decimal.ROUND_HALF_UP);
+  const price =
+    options.roundingScale === null
+      ? exact
+      : exact.toDecimalPlaces(options.roundingScale, Decimal.ROUND_HALF_UP);
   return {
     componentAmounts: amounts.map((a) => a.toFixed()),
     directCost: direct.toFixed(),
@@ -59,10 +65,11 @@ export interface WorkbookComparison {
 /**
  * Compares an exact Decimal result with a cached workbook float (Excel computes in binary floating point,
  * so tiny differences are float noise). Returns the evidence a reviewer sees: values, difference, tolerance.
+ * A Decimal reference (e.g. Σ of cached item amounts, added exactly) is compared as is.
  */
-export function compareWithWorkbook(exact: DecimalValue, cached: number): WorkbookComparison {
+export function compareWithWorkbook(exact: DecimalValue, cached: number | Decimal): WorkbookComparison {
   const e = new Decimal(exact);
-  const c = Number.isFinite(cached) ? new Decimal(cached.toPrecision(17)) : null;
+  const c = typeof cached !== 'number' ? cached : Number.isFinite(cached) ? new Decimal(cached.toPrecision(17)) : null;
   const diff = c ? e.minus(c).abs() : null;
   return {
     exact: e.toFixed(),
@@ -74,7 +81,8 @@ export function compareWithWorkbook(exact: DecimalValue, cached: number): Workbo
   };
 }
 
-export const matchesWorkbookValue = (exact: DecimalValue, cached: number): boolean => compareWithWorkbook(exact, cached).matches;
+export const matchesWorkbookValue = (exact: DecimalValue, cached: number): boolean =>
+  compareWithWorkbook(exact, cached).matches;
 
 /** Depth-first cycle check over analysis -> sub-analysis edges; returns the cycle path or null. */
 export function findAnalysisCycle(edges: Map<string, string[]>): string[] | null {
@@ -98,4 +106,17 @@ export function findAnalysisCycle(edges: Map<string, string[]>): string[] | null
     if (cycle) return cycle;
   }
   return null;
+}
+
+/** Worksheet group subtotals; sums exact stored amounts without display rounding. */
+export function analysisCategoryTotals(
+  components: { category: 'LABOR' | 'MATERIAL' | 'EQUIPMENT'; amount: string }[],
+): Record<'LABOR' | 'MATERIAL' | 'EQUIPMENT', string> {
+  const totals = { LABOR: new Decimal(0), MATERIAL: new Decimal(0), EQUIPMENT: new Decimal(0) };
+  for (const c of components) totals[c.category] = totals[c.category].plus(c.amount);
+  return {
+    LABOR: totals.LABOR.toFixed(),
+    MATERIAL: totals.MATERIAL.toFixed(),
+    EQUIPMENT: totals.EQUIPMENT.toFixed(),
+  };
 }

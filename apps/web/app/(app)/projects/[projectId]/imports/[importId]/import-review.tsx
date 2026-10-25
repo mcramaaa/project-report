@@ -1,6 +1,15 @@
 'use client';
 
-import type { DraftAnalysis, DraftRow, ImportIssue, RabImportDetailDto, RabImportSummaryDto } from '@laporan-proyek/shared';
+import { SourceValue } from '@/components/source-value';
+import { workbookSource } from '@/lib/value-source';
+
+import type {
+  DraftAnalysis,
+  DraftRow,
+  ImportIssue,
+  RabImportDetailDto,
+  RabImportSummaryDto,
+} from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -14,11 +23,25 @@ type Filter = 'all' | 'open' | 'warning';
 
 const SEVERITY_TONE = { BLOCKING: 'red', WARNING: 'blue', INFO: 'slate' } as const;
 
-export function ImportReview({ projectId, initial, canReview, canApprove }: { projectId: string; initial: RabImportDetailDto; canReview: boolean; canApprove: boolean }) {
+export function ImportReview({
+  projectId,
+  initial,
+  canReview,
+  canApprove,
+}: {
+  projectId: string;
+  initial: RabImportDetailDto;
+  canReview: boolean;
+  canApprove: boolean;
+}) {
   const router = useRouter();
   const [detail, setDetail] = useState(initial);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string; issues?: ImportIssue[] }>();
+  const [notice, setNotice] = useState<{
+    kind: 'success' | 'error';
+    text: string;
+    issues?: ImportIssue[];
+  }>();
   const [filter, setFilter] = useState<Filter>('open');
   const { import: run, draft, issues, decisions, aiRuns, reconciliation } = detail;
   const base = `/projects/${projectId}/rab-imports/${run.id}`;
@@ -46,14 +69,24 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
   const blocking = issues.filter((i) => i.severity === 'BLOCKING');
   const general = issues.filter((i) => !i.rowKey);
   const items = draft?.rows.filter((r) => r.rowType === 'ITEM') ?? [];
-  const shown = items.filter((r) => filter === 'all' || (issuesByRow.get(r.key) ?? []).some((i) => (filter === 'open' ? i.severity === 'BLOCKING' : i.severity !== 'BLOCKING')));
+  const shown = items.filter(
+    (r) =>
+      filter === 'all' ||
+      (issuesByRow.get(r.key) ?? []).some((i) =>
+        filter === 'open' ? i.severity === 'BLOCKING' : i.severity !== 'BLOCKING',
+      ),
+  );
   const analyses = new Map((draft?.analyses ?? []).map((a) => [a.key, a]));
 
   async function run_(method: string, path: string, body: unknown, success: string) {
     setBusy(true);
     setNotice(undefined);
     try {
-      const out = await api<RabImportDetailDto | RabImportSummaryDto>(method, `${base}${path}`, body);
+      const out = await api<RabImportDetailDto | RabImportSummaryDto>(
+        method,
+        `${base}${path}`,
+        body,
+      );
       if ('import' in out) setDetail(out);
       setNotice({ kind: 'success', text: success });
       return out;
@@ -66,7 +99,8 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
     }
   }
 
-  const decide = (list: Decision[], success: string) => run_('POST', '/decisions', { decisions: list }, success);
+  const decide = (list: Decision[], success: string) =>
+    run_('POST', '/decisions', { decisions: list }, success);
 
   function acceptSingleCandidates() {
     const list: Decision[] = [];
@@ -74,14 +108,34 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
       const open = issuesByRow.get(r.key) ?? [];
       if (open.some((i) => i.code === 'ANALYSIS_UNRESOLVED') && r.analysisCandidates.length === 1) {
         const c = r.analysisCandidates[0]!;
-        list.push({ rowKey: r.key, kind: 'ANALYSIS_LINK', value: c.analysisVersionId ? { analysisVersionId: c.analysisVersionId } : { analysisKey: c.analysisKey }, reason: `Reviewer menerima kandidat tunggal: ${c.reason}`.slice(0, 1000) });
+        list.push({
+          rowKey: r.key,
+          kind: 'ANALYSIS_LINK',
+          value: c.analysisVersionId
+            ? { analysisVersionId: c.analysisVersionId }
+            : { analysisKey: c.analysisKey },
+          reason: `Reviewer menerima kandidat tunggal: ${c.reason}`.slice(0, 1000),
+        });
       }
       if (open.some((i) => i.code === 'WORK_ITEM_UNDECIDED') && r.workItemCandidates.length === 1) {
-        list.push({ rowKey: r.key, kind: 'WORK_ITEM_MATCH', value: { workItemId: r.workItemCandidates[0]!.workItemId }, reason: 'Reviewer menerima kandidat tunggal (jalur kelompok + uraian sama).' });
+        list.push({
+          rowKey: r.key,
+          kind: 'WORK_ITEM_MATCH',
+          value: { workItemId: r.workItemCandidates[0]!.workItemId },
+          reason: 'Reviewer menerima kandidat tunggal (jalur kelompok + uraian sama).',
+        });
       }
     }
-    if (!list.length) return setNotice({ kind: 'error', text: 'Tidak ada baris dengan tepat satu kandidat yang masih terbuka.' });
-    if (window.confirm(`Catat ${list.length} keputusan untuk baris yang hanya memiliki satu kandidat? Setiap keputusan tercatat atas nama Anda.`)) {
+    if (!list.length)
+      return setNotice({
+        kind: 'error',
+        text: 'Tidak ada baris dengan tepat satu kandidat yang masih terbuka.',
+      });
+    if (
+      window.confirm(
+        `Catat ${list.length} keputusan untuk baris yang hanya memiliki satu kandidat? Setiap keputusan tercatat atas nama Anda.`,
+      )
+    ) {
       void decide(list, `${list.length} keputusan dicatat.`);
     }
   }
@@ -91,7 +145,8 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
       <section className="panel rab-header" aria-labelledby="run-title">
         <div className="min-w-0">
           <h2 id="run-title" className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-            Impor {VERSION_LABEL[run.targetVersionType]} <Badge tone={IMPORT_STATUS[run.status].tone}>{IMPORT_STATUS[run.status].label}</Badge>
+            Impor {VERSION_LABEL[run.targetVersionType]}{' '}
+            <Badge tone={IMPORT_STATUS[run.status].tone}>{IMPORT_STATUS[run.status].label}</Badge>
           </h2>
           <p className="text-sm text-slate-600">
             Panduan {run.guideVersion} · percobaan {run.attemptNumber} · {run.createdBy.name}
@@ -100,7 +155,10 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
             <ul className="mt-1 text-sm text-slate-600">
               {draft.sources.map((s) => (
                 <li key={s.documentId}>
-                  {s.filename} — {s.role === 'RAB' ? `RAB, sheet ${s.sheet}${s.block ? ` (blok ${s.block})` : ''}` : 'pendukung'}
+                  {s.filename} —{' '}
+                  {s.role === 'RAB'
+                    ? `RAB, sheet ${s.sheet}${s.block ? ` (blok ${s.block})` : ''}`
+                    : 'pendukung'}
                   {s.analysisSheets.length > 0 && `; analisa: ${s.analysisSheets.join(', ')}`}
                 </li>
               ))}
@@ -117,12 +175,21 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
           <dl className="calendar-preview">
             <div>
               <dt>Item</dt>
-              <dd>{draft.stats.items}</dd>
+              <dd>
+                <SourceValue
+                  title="Jumlah item impor"
+                  value={String(draft.stats.items)}
+                  sources={[{ label: 'Item pekerjaan dalam draft', href: '#rows-title' }]}
+                >
+                  {draft.stats.items}
+                </SourceValue>
+              </dd>
             </div>
             <div>
               <dt>Analisa diimpor / di workbook</dt>
               <dd>
-                {draft.stats.analysesImported} / {draft.stats.analysesInWorkbook} ({draft.stats.subAnalyses} subanalisa)
+                {draft.stats.analysesImported} / {draft.stats.analysesInWorkbook} (
+                {draft.stats.subAnalyses} subanalisa)
               </dd>
             </div>
             <div>
@@ -135,7 +202,9 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
         )}
       </section>
 
-      {(run.status === 'UPLOADED' || run.status === 'PROCESSING') && <Alert kind="info">Sedang diproses… halaman diperbarui otomatis.</Alert>}
+      {(run.status === 'UPLOADED' || run.status === 'PROCESSING') && (
+        <Alert kind="info">Sedang diproses… halaman diperbarui otomatis.</Alert>
+      )}
       {notice && (
         <Alert kind={notice.kind}>
           {notice.text}
@@ -155,23 +224,131 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
             Rekonsiliasi total (D-043)
           </h2>
           <p className="text-sm">
-            Aplikasi: Rp {formatNumber(reconciliation.realCost)} · dibulatkan Rp {formatNumber(reconciliation.rounded)}
+            Aplikasi: Rp{' '}
+            <SourceValue
+              title="Total hasil impor"
+              value={reconciliation.realCost}
+              formula="Agregasi item RAB, PPN dan pembulatan real cost 2 desimal"
+              sources={[{ label: 'Item pekerjaan draft', href: '#rows-title' }]}
+            >
+              {formatNumber(reconciliation.realCost)}
+            </SourceValue>{' '}
+            · dibulatkan Rp{' '}
+            <SourceValue
+              title="Total impor dibulatkan"
+              value={reconciliation.rounded}
+              formula="TRUNC(real cost, 0)"
+              sources={[
+                {
+                  label: 'Real cost hasil impor',
+                  value: reconciliation.realCost,
+                  href: '#recon-title',
+                },
+              ]}
+            >
+              {formatNumber(reconciliation.rounded)}
+            </SourceValue>
             {reconciliation.workbookRealCost && (
               <>
                 {' '}
-                — workbook: Rp {formatNumber(reconciliation.workbookRealCost)}
-                {reconciliation.workbookRounded && ` · dibulatkan Rp ${formatNumber(reconciliation.workbookRounded)}`}{' '}
-                <Badge tone={reconciliation.matches ? 'green' : 'red'}>{reconciliation.matches ? 'Cocok' : 'Berbeda'}</Badge>
+                — workbook: Rp{' '}
+                <SourceValue
+                  title="Real cost workbook"
+                  value={reconciliation.workbookRealCost}
+                  note="Nilai cached workbook yang dicatat saat rekonsiliasi impor."
+                  sources={(draft?.sources ?? [])
+                    .filter((source) => source.role === 'RAB')
+                    .flatMap((source) =>
+                      workbookSource(projectId, {
+                        documentId: source.documentId,
+                        sheet: source.sheet,
+                      }),
+                    )}
+                >
+                  {formatNumber(reconciliation.workbookRealCost)}
+                </SourceValue>
+                {reconciliation.workbookRounded && (
+                  <>
+                    {' '}
+                    · dibulatkan Rp{' '}
+                    <SourceValue
+                      title="Pembulatan workbook"
+                      value={reconciliation.workbookRounded}
+                      note="Nilai pembulatan sumber yang dicatat pada rekonsiliasi."
+                      sources={(draft?.sources ?? [])
+                        .filter((source) => source.role === 'RAB')
+                        .flatMap((source) =>
+                          workbookSource(projectId, {
+                            documentId: source.documentId,
+                            sheet: source.sheet,
+                          }),
+                        )}
+                    >
+                      {formatNumber(reconciliation.workbookRounded)}
+                    </SourceValue>
+                  </>
+                )}{' '}
+                <Badge tone={reconciliation.matches ? 'green' : 'red'}>
+                  {reconciliation.matches ? 'Cocok' : 'Berbeda'}
+                </Badge>
               </>
             )}
           </p>
+          {reconciliation.rowsChecked > 0 ? (
+            <p className="text-sm">
+              Item dicocokkan dengan nilai cached workbook (toleransi Rp 0,000001, D-054):{' '}
+              {reconciliation.rowsChecked} item,{' '}
+              <Badge tone={reconciliation.rowsMismatched ? 'red' : 'green'}>
+                {reconciliation.rowsMismatched
+                  ? `${reconciliation.rowsMismatched} berbeda`
+                  : 'semua cocok'}
+              </Badge>
+              {reconciliation.totalStatus && (
+                <>
+                  {' '}
+                  · total{' '}
+                  <Badge
+                    tone={
+                      reconciliation.totalStatus === 'MISMATCH'
+                        ? 'red'
+                        : reconciliation.totalStatus === 'FLOAT_RESIDUE'
+                          ? 'blue'
+                          : 'green'
+                    }
+                  >
+                    {reconciliation.totalStatus === 'MISMATCH'
+                      ? 'selisih nominal'
+                      : reconciliation.totalStatus === 'FLOAT_RESIDUE'
+                        ? 'cocok · sisa float Excel di sel total'
+                        : 'cocok'}
+                  </Badge>
+                </>
+              )}
+            </p>
+          ) : (
+            <p className="text-sm text-slate-600">
+              Rekonsiliasi per item belum tersedia (draft lama atau harga item belum diputuskan).
+            </p>
+          )}
+          {reconciliation.entries.length > 0 && (
+            <ul className="text-sm text-slate-600">
+              {reconciliation.entries.map((e) => (
+                <li key={e.what}>
+                  {e.what}: aplikasi {e.exact} · workbook {e.cached} · selisih {e.diff}{' '}
+                  {e.matches ? '≤' : '>'} {e.tolerance}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
 
       {draft && (
         <section className="space-y-3" aria-labelledby="issues-title">
           <h2 id="issues-title" className="text-base font-semibold">
-            Pemeriksaan: {blocking.length} harus diputuskan · {issues.filter((i) => i.severity === 'WARNING').length} peringatan · {issues.filter((i) => i.severity === 'INFO').length} info
+            Pemeriksaan: {blocking.length} harus diputuskan ·{' '}
+            {issues.filter((i) => i.severity === 'WARNING').length} peringatan ·{' '}
+            {issues.filter((i) => i.severity === 'INFO').length} info
           </h2>
           {general.length > 0 && (
             <ul className="panel form-panel space-y-1 text-sm">
@@ -203,7 +380,12 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
                 ['all', 'Semua'],
               ] as [Filter, string][]
             ).map(([key, label]) => (
-              <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>
+              <button
+                key={key}
+                type="button"
+                aria-pressed={filter === key}
+                onClick={() => setFilter(key)}
+              >
                 {label}
               </button>
             ))}
@@ -215,10 +397,18 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
               <table className="rab-grid">
                 <thead>
                   <tr>
-                    <th scope="col" className="rab-sticky-no">No</th>
-                    <th scope="col" className="rab-sticky-desc">Uraian</th>
-                    <th scope="col" className="num">Volume</th>
-                    <th scope="col" className="num">Harga sumber</th>
+                    <th scope="col" className="rab-sticky-no">
+                      No
+                    </th>
+                    <th scope="col" className="rab-sticky-desc">
+                      Uraian
+                    </th>
+                    <th scope="col" className="num">
+                      Volume
+                    </th>
+                    <th scope="col" className="num">
+                      Harga sumber
+                    </th>
                     <th scope="col">Analisa &amp; bukti</th>
                     <th scope="col">Keputusan</th>
                   </tr>
@@ -227,6 +417,7 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
                   {shown.map((r) => (
                     <RowReview
                       key={r.key}
+                      projectId={projectId}
                       row={r}
                       issues={issuesByRow.get(r.key) ?? []}
                       analysis={r.price.analysisKey ? analyses.get(r.price.analysisKey) : undefined}
@@ -245,11 +436,12 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
       {draft && draft.analyses.length > 0 && (
         <section className="space-y-3" aria-labelledby="analyses-title">
           <h2 id="analyses-title" className="text-base font-semibold">
-            Analisa terpakai ({draft.analyses.filter((a) => !a.candidateOnly).length}) dan kandidat ({draft.analyses.filter((a) => a.candidateOnly).length})
+            Analisa terpakai ({draft.analyses.filter((a) => !a.candidateOnly).length}) dan kandidat
+            ({draft.analyses.filter((a) => a.candidateOnly).length})
           </h2>
           <div className="space-y-2">
             {draft.analyses.map((a) => (
-              <AnalysisDraft key={a.key} analysis={a} />
+              <AnalysisDraft key={a.key} analysis={a} projectId={projectId} />
             ))}
           </div>
         </section>
@@ -263,7 +455,8 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
           <ul className="panel form-panel space-y-1 text-sm">
             {aiRuns.map((a) => (
               <li key={a.id}>
-                <Badge tone={a.status === 'SUCCEEDED' ? 'green' : 'red'}>{a.status}</Badge> {a.model} · percobaan {a.attempt} · {a.instructionVersion}
+                <Badge tone={a.status === 'SUCCEEDED' ? 'green' : 'red'}>{a.status}</Badge>{' '}
+                {a.model} · percobaan {a.attempt} · {a.instructionVersion}
                 {a.error && ` · ${a.error}`}
               </li>
             ))}
@@ -272,19 +465,29 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
       )}
 
       {(canApprove || canReview) && (
-        <section className="panel form-panel flex flex-wrap items-end gap-3" aria-label="Aksi impor">
+        <section
+          className="panel form-panel flex flex-wrap items-end gap-3"
+          aria-label="Aksi impor"
+        >
           {canApprove && reviewable && (
             <>
               <Button
                 disabled={busy || blocking.length > 0}
                 onClick={() =>
-                  window.confirm('Approve impor? Daftar harga dan analisa resmi dibuat, serta RAB versi DRAFT yang tertaut. RAB tetap perlu di-approve di tab RAB.') &&
-                  run_('POST', '/approve', undefined, 'Impor di-approve; RAB DRAFT dibuat.').then(() => router.refresh())
+                  window.confirm(
+                    'Approve impor? Daftar harga dan analisa resmi dibuat, serta RAB versi DRAFT yang tertaut. RAB tetap perlu di-approve di tab RAB.',
+                  ) &&
+                  run_('POST', '/approve', undefined, 'Impor di-approve; RAB DRAFT dibuat.').then(
+                    () => router.refresh(),
+                  )
                 }
               >
                 Approve impor
               </Button>
-              <RejectForm busy={busy} onReject={(reason) => run_('POST', '/reject', { reason }, 'Impor ditolak.')} />
+              <RejectForm
+                busy={busy}
+                onReject={(reason) => run_('POST', '/reject', { reason }, 'Impor ditolak.')}
+              />
             </>
           )}
           {canReview && (run.status === 'FAILED' || run.status === 'REJECTED') && (
@@ -293,13 +496,18 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
               disabled={busy}
               onClick={async () => {
                 const out = await run_('POST', '/retry', undefined, 'Run baru dibuat.');
-                if (out && !('import' in out)) router.push(`/projects/${projectId}/imports/${out.id}`);
+                if (out && !('import' in out))
+                  router.push(`/projects/${projectId}/imports/${out.id}`);
               }}
             >
               Ulangi (run baru)
             </Button>
           )}
-          {blocking.length > 0 && reviewable && <p className="field-hint w-full">Approve aktif setelah semua {blocking.length} masalah diputuskan.</p>}
+          {blocking.length > 0 && reviewable && (
+            <p className="field-hint w-full">
+              Approve aktif setelah semua {blocking.length} masalah diputuskan.
+            </p>
+          )}
         </section>
       )}
     </div>
@@ -307,6 +515,7 @@ export function ImportReview({ projectId, initial, canReview, canApprove }: { pr
 }
 
 function RowReview({
+  projectId,
   row,
   issues,
   analysis,
@@ -314,6 +523,7 @@ function RowReview({
   editable,
   onDecide,
 }: {
+  projectId: string;
   row: DraftRow;
   issues: ImportIssue[];
   analysis: DraftAnalysis | undefined;
@@ -336,9 +546,25 @@ function RowReview({
         </span>
       </td>
       <td className="num">
-        {formatNumber(row.volume, { trim: true })} {row.unit}
+        <SourceValue
+          title={`Volume sumber · ${row.description}`}
+          value={row.volume}
+          sources={workbookSource(projectId, row.locator)}
+        >
+          {formatNumber(row.volume, { trim: true })}
+        </SourceValue>{' '}
+        {row.unit}
       </td>
-      <td className="num">{formatRounded(row.sourceUnitPrice, 2)}</td>
+      <td className="num">
+        <SourceValue
+          title={`Harga sumber · ${row.description}`}
+          value={row.sourceUnitPrice}
+          sources={workbookSource(projectId, row.locator)}
+          note="Harga pada dokumen sumber, belum menjadi harga resmi sebelum approval."
+        >
+          {formatRounded(row.sourceUnitPrice, 2)}
+        </SourceValue>
+      </td>
       <td className="rab-wrap">
         {row.price.kind === 'ANALYSIS' && analysis ? (
           <span>
@@ -355,8 +581,21 @@ function RowReview({
             <ol className="list-decimal pl-5">
               {row.price.evidence.map((e, n) => (
                 <li key={n} className="font-mono">
-                  {e.cell}
-                  {e.formula ? ` = ${e.formula}` : ''} → {String(e.value)}
+                  <SourceValue
+                    title={`Bukti rumus · ${e.cell}`}
+                    value={String(e.value)}
+                    formula={e.formula ?? undefined}
+                    sources={workbookSource(projectId, {
+                      documentId: row.locator.documentId,
+                      sheet: e.cell.includes('!')
+                        ? e.cell.slice(0, e.cell.lastIndexOf('!'))
+                        : row.locator.sheet,
+                      cell: e.cell.split('!').at(-1),
+                    })}
+                  >
+                    {e.cell}
+                    {e.formula ? ` = ${e.formula}` : ''} → {String(e.value)}
+                  </SourceValue>
                 </li>
               ))}
             </ol>
@@ -374,10 +613,20 @@ function RowReview({
           {direct && <p>Harga langsung diterima oleh {direct.decidedBy.name}</p>}
           {price && (
             <p>
-              Harga: {(price.value as { source: string }).source === 'SOURCE_OVERRIDE' ? `override sumber (${price.reason})` : 'harga analisa'} — {price.decidedBy.name}
+              Harga:{' '}
+              {(price.value as { source: string }).source === 'SOURCE_OVERRIDE'
+                ? `override sumber (${price.reason})`
+                : 'harga analisa'}{' '}
+              — {price.decidedBy.name}
             </p>
           )}
-          {work && <p>Pekerjaan: {(work.value as { workItemId: string | null }).workItemId ? 'dicocokkan' : 'baru'} — {work.decidedBy.name}</p>}
+          {work && (
+            <p>
+              Pekerjaan:{' '}
+              {(work.value as { workItemId: string | null }).workItemId ? 'dicocokkan' : 'baru'} —{' '}
+              {work.decidedBy.name}
+            </p>
+          )}
           {editable && has('ANALYSIS_UNRESOLVED') && (
             <div className="row-actions">
               {row.analysisCandidates.map((c) => (
@@ -387,16 +636,32 @@ function RowReview({
                   title={c.reason}
                   onClick={() =>
                     onDecide(
-                      { rowKey: row.key, kind: 'ANALYSIS_LINK', value: c.analysisVersionId ? { analysisVersionId: c.analysisVersionId } : { analysisKey: c.analysisKey }, reason: c.reason },
+                      {
+                        rowKey: row.key,
+                        kind: 'ANALYSIS_LINK',
+                        value: c.analysisVersionId
+                          ? { analysisVersionId: c.analysisVersionId }
+                          : { analysisKey: c.analysisKey },
+                        reason: c.reason,
+                      },
                       `Analisa ${c.code ?? ''} dipilih.`,
                     )
                   }
                 >
-                  {c.analysisVersionId ? 'Salin' : 'Pakai'} {c.code} {c.origin === 'AI' ? '(AI)' : ''}
+                  {c.analysisVersionId ? 'Salin' : 'Pakai'} {c.code}{' '}
+                  {c.origin === 'AI' ? '(AI)' : ''}
                 </Button>
               ))}
               {row.sourceUnitPrice && (
-                <Button variant="secondary" onClick={() => onDecide({ rowKey: row.key, kind: 'DIRECT_PRICE', value: { accept: true } }, 'Harga langsung diterima.')}>
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    onDecide(
+                      { rowKey: row.key, kind: 'DIRECT_PRICE', value: { accept: true } },
+                      'Harga langsung diterima.',
+                    )
+                  }
+                >
                   Harga langsung
                 </Button>
               )}
@@ -404,14 +669,31 @@ function RowReview({
           )}
           {editable && (has('PRICE_MISMATCH') || has('PRICE_SCALE')) && (
             <div className="row-actions">
-              <Button variant="secondary" onClick={() => onDecide({ rowKey: row.key, kind: 'PRICE_CHOICE', value: { source: 'ANALYSIS' } }, 'Harga analisa dipakai.')}>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  onDecide(
+                    { rowKey: row.key, kind: 'PRICE_CHOICE', value: { source: 'ANALYSIS' } },
+                    'Harga analisa dipakai.',
+                  )
+                }
+              >
                 Pakai harga analisa
               </Button>
               <Button
                 variant="secondary"
                 onClick={() => {
                   const reason = window.prompt('Alasan override harga sumber (wajib):')?.trim();
-                  if (reason) onDecide({ rowKey: row.key, kind: 'PRICE_CHOICE', value: { source: 'SOURCE_OVERRIDE' }, reason }, 'Harga sumber dipertahankan.');
+                  if (reason)
+                    onDecide(
+                      {
+                        rowKey: row.key,
+                        kind: 'PRICE_CHOICE',
+                        value: { source: 'SOURCE_OVERRIDE' },
+                        reason,
+                      },
+                      'Harga sumber dipertahankan.',
+                    );
                 }}
               >
                 Override harga sumber
@@ -421,11 +703,33 @@ function RowReview({
           {editable && has('WORK_ITEM_UNDECIDED') && (
             <div className="row-actions">
               {row.workItemCandidates.map((c) => (
-                <Button key={c.workItemId} variant="secondary" title={`${c.groupPath} · ${c.description}`} onClick={() => onDecide({ rowKey: row.key, kind: 'WORK_ITEM_MATCH', value: { workItemId: c.workItemId } }, `Dicocokkan ke ${c.code}.`)}>
+                <Button
+                  key={c.workItemId}
+                  variant="secondary"
+                  title={`${c.groupPath} · ${c.description}`}
+                  onClick={() =>
+                    onDecide(
+                      {
+                        rowKey: row.key,
+                        kind: 'WORK_ITEM_MATCH',
+                        value: { workItemId: c.workItemId },
+                      },
+                      `Dicocokkan ke ${c.code}.`,
+                    )
+                  }
+                >
                   Cocokkan {c.code}
                 </Button>
               ))}
-              <Button variant="secondary" onClick={() => onDecide({ rowKey: row.key, kind: 'WORK_ITEM_MATCH', value: { workItemId: null } }, 'Pekerjaan baru.')}>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  onDecide(
+                    { rowKey: row.key, kind: 'WORK_ITEM_MATCH', value: { workItemId: null } },
+                    'Pekerjaan baru.',
+                  )
+                }
+              >
                 Pekerjaan baru
               </Button>
             </div>
@@ -436,47 +740,149 @@ function RowReview({
   );
 }
 
-function AnalysisDraft({ analysis: a }: { analysis: DraftAnalysis }) {
+function AnalysisDraft({ analysis: a, projectId }: { analysis: DraftAnalysis; projectId: string }) {
   const failed = a.reconciliation.filter((r) => !r.matches).length;
   return (
     <details className="panel form-panel">
       <summary className="cursor-pointer">
-        <span className="font-mono">{a.code}</span> {a.name} — Rp {formatRounded(a.computed.price, 2)}/{a.unit}
-        {a.candidateOnly && ' · kandidat'} · {a.components.length} komponen · rekonsiliasi {a.reconciliation.length - failed}/{a.reconciliation.length} cocok
+        <span className="font-mono">{a.code}</span> {a.name} — Rp{' '}
+        <SourceValue
+          title={`Harga draft analisa ${a.code ?? a.name}`}
+          value={a.computed.price}
+          formula={
+            a.roundingScale === null
+              ? 'Biaya langsung + overhead (tanpa pembulatan)'
+              : `ROUND(biaya langsung + overhead, ${a.roundingScale}), HALF_UP`
+          }
+          sources={workbookSource(projectId, a.locator)}
+        >
+          {formatRounded(a.computed.price, 2)}
+        </SourceValue>
+        /{a.unit}
+        {a.candidateOnly && ' · kandidat'} · {a.components.length} komponen · rekonsiliasi{' '}
+        {a.reconciliation.length - failed}/{a.reconciliation.length} cocok
       </summary>
       <p className="mt-2 text-xs text-slate-600">
-        Biaya langsung {formatRounded(a.computed.directCost, 6)} + overhead {a.overheadPercent ?? 0}% = {formatRounded(a.computed.priceExact, 6)}
-        {a.roundingScale !== null && ` → dibulatkan ${a.roundingScale} desimal = ${formatNumber(a.computed.price)}`} · sumber {a.locator.sheet}!{a.locator.cell}
+        Biaya langsung{' '}
+        <SourceValue
+          title="Biaya langsung draft"
+          value={a.computed.directCost}
+          formula="Σ (koefisien × harga satuan efektif)"
+          sources={a.components.map((c) => ({
+            label: c.description,
+            value: c.amount,
+            href: workbookSource(projectId, c.locator)[0]?.href,
+          }))}
+        >
+          {formatRounded(a.computed.directCost, 6)}
+        </SourceValue>{' '}
+        + overhead{' '}
+        <SourceValue
+          title="Overhead draft (%)"
+          value={a.overheadPercent}
+          sources={workbookSource(projectId, a.locator)}
+          note="Persentase per analisa sesuai sumber; tanpa overhead bila tidak tercatat."
+        >
+          {a.overheadPercent ?? 0}%
+        </SourceValue>{' '}
+        ={' '}
+        <SourceValue
+          title="Harga eksak draft"
+          value={a.computed.priceExact}
+          formula="Biaya langsung + nilai overhead"
+          sources={[
+            { label: 'Biaya langsung', value: a.computed.directCost },
+            { label: 'Nilai overhead', value: a.computed.overheadAmount },
+          ]}
+        >
+          {formatRounded(a.computed.priceExact, 6)}
+        </SourceValue>
+        {a.roundingScale !== null && (
+          <>
+            {' '}
+            → dibulatkan {a.roundingScale} desimal ={' '}
+            <SourceValue
+              title="Harga draft setelah pembulatan"
+              value={a.computed.price}
+              formula={`ROUND(harga eksak, ${a.roundingScale}), HALF_UP`}
+              sources={[{ label: 'Harga eksak', value: a.computed.priceExact }]}
+            >
+              {formatNumber(a.computed.price)}
+            </SourceValue>
+          </>
+        )}{' '}
+        · sumber {a.locator.sheet}!{a.locator.cell}
       </p>
-      <table className="rab-grid mt-2">
-        <thead>
-          <tr>
-            <th scope="col">Kategori</th>
-            <th scope="col">Komponen</th>
-            <th scope="col" className="num">Koefisien</th>
-            <th scope="col" className="num">Harga</th>
-            <th scope="col" className="num">Nilai</th>
-            <th scope="col">Sumber harga</th>
-          </tr>
-        </thead>
-        <tbody>
-          {a.components.map((c, n) => (
-            <tr key={n}>
-              <td>{CATEGORY_LABEL[c.category]}</td>
-              <td>
-                {c.description} <span className="text-xs text-slate-500">{c.unit}</span>
-              </td>
-              <td className="num">{formatNumber(c.coefficient, { trim: true })}</td>
-              <td className="num">{formatRounded(c.unitPrice, 2)}</td>
-              <td className="num">{formatRounded(c.amount, 2)}</td>
-              <td className="text-xs">
-                {c.source.kind === 'PRICE_ITEM' ? `daftar harga${c.source.factor ? ` ${c.source.factor.op} ${c.source.factor.value}` : ''}` : c.source.kind === 'ANALYSIS' ? `subanalisa (${c.source.basis === 'EXACT' ? 'eksak' : 'dibulatkan'})` : 'nilai di analisa'}
-                <span className="block font-mono text-slate-500">{c.evidence.at(-1)?.cell}</span>
-              </td>
+      <div className="workbook-wrap">
+        <table className="rab-grid mt-2">
+          <thead>
+            <tr>
+              <th scope="col">Kategori</th>
+              <th scope="col">Komponen</th>
+              <th scope="col" className="num">
+                Koefisien
+              </th>
+              <th scope="col" className="num">
+                Harga
+              </th>
+              <th scope="col" className="num">
+                Nilai
+              </th>
+              <th scope="col">Sumber harga</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {a.components.map((c, n) => (
+              <tr key={n}>
+                <td>{CATEGORY_LABEL[c.category]}</td>
+                <td>
+                  {c.description} <span className="text-xs text-slate-500">{c.unit}</span>
+                </td>
+                <td className="num">
+                  <SourceValue
+                    title={`Koefisien draft · ${c.description}`}
+                    value={c.coefficient}
+                    sources={workbookSource(projectId, c.locator)}
+                  >
+                    {formatNumber(c.coefficient, { trim: true })}
+                  </SourceValue>
+                </td>
+                <td className="num">
+                  <SourceValue
+                    title={`Harga draft · ${c.description}`}
+                    value={c.unitPrice}
+                    sources={workbookSource(projectId, c.locator)}
+                  >
+                    {formatRounded(c.unitPrice, 2)}
+                  </SourceValue>
+                </td>
+                <td className="num">
+                  <SourceValue
+                    title={`Jumlah draft · ${c.description}`}
+                    value={c.amount}
+                    formula="Koefisien × harga satuan efektif"
+                    sources={[
+                      { label: 'Koefisien', value: c.coefficient },
+                      { label: 'Harga satuan', value: c.unitPrice },
+                      ...workbookSource(projectId, c.locator),
+                    ]}
+                  >
+                    {formatRounded(c.amount, 2)}
+                  </SourceValue>
+                </td>
+                <td className="text-xs">
+                  {c.source.kind === 'PRICE_ITEM'
+                    ? `daftar harga${c.source.factor ? ` ${c.source.factor.op} ${c.source.factor.value}` : ''}`
+                    : c.source.kind === 'ANALYSIS'
+                      ? `subanalisa (${c.source.basis === 'EXACT' ? 'eksak' : 'dibulatkan'})`
+                      : 'nilai di analisa'}
+                  <span className="block font-mono text-slate-500">{c.evidence.at(-1)?.cell}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </details>
   );
 }
@@ -485,8 +891,17 @@ function RejectForm({ busy, onReject }: { busy: boolean; onReject: (reason: stri
   const [reason, setReason] = useState('');
   return (
     <div className="flex flex-wrap items-end gap-2">
-      <Field id="reject-reason" label="Alasan menolak" value={reason} onChange={(e) => setReason(e.target.value)} />
-      <Button variant="danger" disabled={busy || reason.trim().length < 3} onClick={() => window.confirm('Tolak impor ini? Run tetap tersimpan.') && onReject(reason)}>
+      <Field
+        id="reject-reason"
+        label="Alasan menolak"
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+      />
+      <Button
+        variant="danger"
+        disabled={busy || reason.trim().length < 3}
+        onClick={() => window.confirm('Tolak impor ini? Run tetap tersimpan.') && onReject(reason)}
+      >
         Tolak
       </Button>
     </div>

@@ -1,6 +1,17 @@
 import { randomUUID } from 'node:crypto';
-import { aggregateRabGroups, calculateRab, Decimal, rabTotals, type RabRowValues } from '@laporan-proyek/calc';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  aggregateRabGroups,
+  calculateRab,
+  Decimal,
+  rabTotals,
+  type RabRowValues,
+} from '@laporan-proyek/calc';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   rabVersionLabel,
   type CreateRabItemInput,
@@ -70,7 +81,14 @@ const ITEM_SELECT = {
   priceDecidedBy: true,
   priceDecidedAt: true,
   sourceLocator: true,
-  analysisVersion: { select: { analysisId: true, code: true, name: true, analysis: { select: { rabVersionId: true } } } },
+  analysisVersion: {
+    select: {
+      analysisId: true,
+      code: true,
+      name: true,
+      analysis: { select: { rabVersionId: true } },
+    },
+  },
 } as const satisfies Prisma.RabVersionItemSelect;
 type ItemRow = Prisma.RabVersionItemGetPayload<{ select: typeof ITEM_SELECT }>;
 
@@ -78,15 +96,18 @@ const ITEM_ONLY_FIELDS = ['volume', 'unit', 'analysisCode', 'unitPrice', 'taxPer
 const NOT_DRAFT = 'Versi RAB ini sudah tidak berstatus draft dan tidak dapat diubah.';
 /** Snapshot columns (D-043): integer digits each can hold; larger values would fail or truncate on approval. */
 const LIMITS = { unitPriceWithTax: 20, subtotal: 30, total: 32 } as const;
-const exceeds = (value: string | null, integerDigits: number) => value !== null && new Decimal(value).abs().gte(new Decimal(10).pow(integerDigits));
+const exceeds = (value: string | null, integerDigits: number) =>
+  value !== null && new Decimal(value).abs().gte(new Decimal(10).pow(integerDigits));
 
 /** Exact decimal string without trailing zeros or exponent (DB scale padding is not meaningful). */
-const num = (value: Prisma.Decimal | null) => (value === null ? null : new Decimal(value.toString()).toFixed());
+const num = (value: Prisma.Decimal | null) =>
+  value === null ? null : new Decimal(value.toString()).toFixed();
 
 /** Depth-first order by sort_order, with depth (the grid and exports show the hierarchy). */
 function treeOrder(items: ItemRow[]): (ItemRow & { depth: number })[] {
   const byParent = new Map<string | null, ItemRow[]>();
-  for (const item of items) byParent.set(item.parentItemId, [...(byParent.get(item.parentItemId) ?? []), item]);
+  for (const item of items)
+    byParent.set(item.parentItemId, [...(byParent.get(item.parentItemId) ?? []), item]);
   const ordered: (ItemRow & { depth: number })[] = [];
   const walk = (parentId: string | null, depth: number) => {
     for (const item of (byParent.get(parentId) ?? []).sort((a, b) => a.sortOrder - b.sortOrder)) {
@@ -99,7 +120,10 @@ function treeOrder(items: ItemRow[]): (ItemRow & { depth: number })[] {
 }
 
 /** APPROVED versions show their stored snapshot (D-042); drafts are computed now. */
-function rowValues(status: string, items: ItemRow[]): { values: Map<string, RabRowValues>; totals: RabTotalsDto } {
+function rowValues(
+  status: string,
+  items: ItemRow[],
+): { values: Map<string, RabRowValues>; totals: RabTotalsDto } {
   const inputs = items.map((i) => ({
     id: i.id,
     parentId: i.parentItemId,
@@ -117,10 +141,18 @@ function rowValues(status: string, items: ItemRow[]): { values: Map<string, RabR
   let value = new Decimal(0);
   for (const i of items) {
     if (i.rowType !== 'ITEM') continue;
-    const itemBeforeTax = i.volume && i.unitPrice ? new Decimal(i.volume.toString()).times(i.unitPrice.toString()) : null;
+    const itemBeforeTax =
+      i.volume && i.unitPrice
+        ? new Decimal(i.volume.toString()).times(i.unitPrice.toString())
+        : null;
     if (itemBeforeTax) beforeTax = beforeTax.plus(itemBeforeTax);
     if (i.subtotal) value = value.plus(i.subtotal.toString());
-    values.set(i.id, { unitPriceWithTax: num(i.unitPriceWithTax), subtotalBeforeTax: itemBeforeTax?.toFixed() ?? null, subtotal: num(i.subtotal), weight: null });
+    values.set(i.id, {
+      unitPriceWithTax: num(i.unitPriceWithTax),
+      subtotalBeforeTax: itemBeforeTax?.toFixed() ?? null,
+      subtotal: num(i.subtotal),
+      weight: null,
+    });
   }
   aggregateRabGroups(inputs, values, value.toFixed());
   return { values, totals: rabTotals(beforeTax, value) };
@@ -150,9 +182,19 @@ function toRows(items: ItemRow[], values: Map<string, RabRowValues>): RabRowDto[
       priceSource: i.priceSource,
       analysis:
         i.analysisVersionId && i.analysisVersion
-          ? { analysisId: i.analysisVersion.analysisId, versionId: i.analysisVersionId, rabVersionId: i.analysisVersion.analysis.rabVersionId, code: i.analysisVersion.code, name: i.analysisVersion.name }
+          ? {
+              analysisId: i.analysisVersion.analysisId,
+              versionId: i.analysisVersionId,
+              rabVersionId: i.analysisVersion.analysis.rabVersionId,
+              code: i.analysisVersion.code,
+              name: i.analysisVersion.name,
+            }
           : null,
       priceNote: i.priceNote,
+      sourceLocator: i.sourceLocator,
+      sourceUnitPrice: num(i.sourceUnitPrice),
+      analysisUnitPrice: num(i.analysisUnitPrice),
+      priceDecidedAt: i.priceDecidedAt?.toISOString() ?? null,
     };
   });
 }
@@ -167,7 +209,10 @@ function toSummary(v: VersionRow, totals: RabTotalsDto, itemCount: number): RabV
     documentNumber: v.documentNumber,
     documentDate: v.documentDate ? fromDbDate(v.documentDate) : null,
     previousVersionId: v.previousVersionId,
-    totals: v.status === 'APPROVED' ? rabTotals(v.totalBeforeTax!.toString(), v.totalValue!.toString()) : totals,
+    totals:
+      v.status === 'APPROVED'
+        ? rabTotals(v.totalBeforeTax!.toString(), v.totalValue!.toString())
+        : totals,
     itemCount,
     createdBy: v.createdByUser,
     createdAt: v.createdAt.toISOString(),
@@ -179,47 +224,103 @@ function toSummary(v: VersionRow, totals: RabTotalsDto, itemCount: number): RabV
 }
 
 /** Blocking errors and warnings that must be acknowledged before approval (D-040). */
-function validate(rows: RabRowDto[], totals: RabTotalsDto, contractValue: string | null, versionType: string, versionId: string): { errors: RabIssue[]; warnings: RabIssue[] } {
+function validate(
+  rows: RabRowDto[],
+  totals: RabTotalsDto,
+  contractValue: string | null,
+  versionType: string,
+  versionId: string,
+): { errors: RabIssue[]; warnings: RabIssue[] } {
   const errors: RabIssue[] = [];
   const warnings: RabIssue[] = [];
   const items = rows.filter((r) => r.rowType === 'ITEM');
   if (items.length === 0) errors.push({ message: 'RAB belum memiliki baris pekerjaan (ITEM).' });
   for (const r of items) {
-    const missing = [!r.unit && 'satuan', r.volume === null && 'volume', r.unitPrice === null && 'harga satuan', r.taxPercent === null && 'PPN'].filter(Boolean);
-    if (missing.length) errors.push({ itemId: r.id, message: `${r.displayNumber ?? ''} ${r.description}: ${missing.join(', ')} belum diisi.`.trim() });
-    else if (r.volume !== null && new Decimal(r.volume).isZero()) warnings.push({ itemId: r.id, message: `${r.displayNumber ?? ''} ${r.description}: volume 0.`.trim() });
+    const missing = [
+      !r.unit && 'satuan',
+      r.volume === null && 'volume',
+      r.unitPrice === null && 'harga satuan',
+      r.taxPercent === null && 'PPN',
+    ].filter(Boolean);
+    if (missing.length)
+      errors.push({
+        itemId: r.id,
+        message:
+          `${r.displayNumber ?? ''} ${r.description}: ${missing.join(', ')} belum diisi.`.trim(),
+      });
+    else if (r.volume !== null && new Decimal(r.volume).isZero())
+      warnings.push({
+        itemId: r.id,
+        message: `${r.displayNumber ?? ''} ${r.description}: volume 0.`.trim(),
+      });
   }
   // Valid inputs can still overflow DECIMAL(20,2) after tax or multiplication; block before the snapshot is stored.
   for (const r of items) {
     const label = `${r.displayNumber ?? ''} ${r.description}`.trim();
-    if (exceeds(r.unitPriceWithTax, LIMITS.unitPriceWithTax)) errors.push({ itemId: r.id, message: `${label}: harga + PPN melebihi batas nilai yang dapat disimpan (maks. 20 digit rupiah).` });
-    else if (exceeds(r.subtotal, LIMITS.subtotal)) errors.push({ itemId: r.id, message: `${label}: jumlah (volume × harga + PPN) melebihi batas nilai yang dapat disimpan.` });
+    if (exceeds(r.unitPriceWithTax, LIMITS.unitPriceWithTax))
+      errors.push({
+        itemId: r.id,
+        message: `${label}: harga + PPN melebihi batas nilai yang dapat disimpan (maks. 20 digit rupiah).`,
+      });
+    else if (exceeds(r.subtotal, LIMITS.subtotal))
+      errors.push({
+        itemId: r.id,
+        message: `${label}: jumlah (volume × harga + PPN) melebihi batas nilai yang dapat disimpan.`,
+      });
   }
   // D-056/D-057: a version only links analyses of its own package.
   for (const r of items) {
-    if (r.analysis && r.analysis.rabVersionId !== versionId) errors.push({ itemId: r.id, message: `${r.displayNumber ?? ''} ${r.description}: analisa ${r.analysis.code ?? r.analysis.name} milik paket versi RAB lain.`.trim() });
+    if (r.analysis && r.analysis.rabVersionId !== versionId)
+      errors.push({
+        itemId: r.id,
+        message:
+          `${r.displayNumber ?? ''} ${r.description}: analisa ${r.analysis.code ?? r.analysis.name} milik paket versi RAB lain.`.trim(),
+      });
   }
-  if (exceeds(totals.value, LIMITS.total) || exceeds(totals.beforeTax, LIMITS.total)) errors.push({ message: 'Total RAB melebihi batas nilai yang dapat disimpan (maks. 32 digit rupiah).' });
+  if (exceeds(totals.value, LIMITS.total) || exceeds(totals.beforeTax, LIMITS.total))
+    errors.push({
+      message: 'Total RAB melebihi batas nilai yang dapat disimpan (maks. 32 digit rupiah).',
+    });
   const hasChild = new Set(rows.map((r) => r.parentId));
-  for (const r of rows) if (r.rowType !== 'ITEM' && !hasChild.has(r.id)) warnings.push({ itemId: r.id, message: `${r.displayNumber ?? ''} ${r.description}: tidak memiliki sub-baris.`.trim() });
+  for (const r of rows)
+    if (r.rowType !== 'ITEM' && !hasChild.has(r.id))
+      warnings.push({
+        itemId: r.id,
+        message: `${r.displayNumber ?? ''} ${r.description}: tidak memiliki sub-baris.`.trim(),
+      });
   // The contract may state the REAL COST or the DIBULATKAN figure (D-043).
-  if (versionType === 'CONTRACT' && contractValue !== null && !new Decimal(contractValue).equals(totals.realCost) && !new Decimal(contractValue).equals(totals.rounded)) {
-    warnings.push({ message: `Total RAB Kontrak (${totals.realCost}; dibulatkan ${totals.rounded}) berbeda dengan nilai kontrak proyek (${contractValue}).` });
+  if (
+    versionType === 'CONTRACT' &&
+    contractValue !== null &&
+    !new Decimal(contractValue).equals(totals.realCost) &&
+    !new Decimal(contractValue).equals(totals.rounded)
+  ) {
+    warnings.push({
+      message: `Total RAB Kontrak (${totals.realCost}; dibulatkan ${totals.rounded}) berbeda dengan nilai kontrak proyek (${contractValue}).`,
+    });
   }
   return { errors, warnings };
 }
 
-const sameDecimal = (a: string | null, b: string | null) => (a === null || b === null ? a === b : new Decimal(a).equals(b));
+const sameDecimal = (a: string | null, b: string | null) =>
+  a === null || b === null ? a === b : new Decimal(a).equals(b);
 
 @Injectable()
 export class RabService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(projectId: string): Promise<RabVersionSummaryDto[]> {
-    const versions = await this.prisma.rabVersion.findMany({ where: { projectId }, select: VERSION_SELECT, orderBy: { createdAt: 'asc' } });
+    const versions = await this.prisma.rabVersion.findMany({
+      where: { projectId },
+      select: VERSION_SELECT,
+      orderBy: { createdAt: 'asc' },
+    });
     return Promise.all(
       versions.map(async (v) => {
-        const items = await this.prisma.rabVersionItem.findMany({ where: { rabVersionId: v.id }, select: ITEM_SELECT });
+        const items = await this.prisma.rabVersionItem.findMany({
+          where: { rabVersionId: v.id },
+          select: ITEM_SELECT,
+        });
         const { totals } = rowValues(v.status, items);
         return toSummary(v, totals, items.filter((i) => i.rowType === 'ITEM').length);
       }),
@@ -231,8 +332,15 @@ export class RabService {
   }
 
   /** CONTRACT starts empty; MC0/ADDENDUM copy the latest approved version (D-040). One DRAFT per project. */
-  async create(actor: AuthUser, projectId: string, input: CreateRabVersionInput): Promise<RabVersionDetailDto> {
-    const versionId = await this.prisma.$transaction(async (tx) => (await this.createVersionInTx(tx, actor, projectId, input, { copyPrevious: true })).id);
+  async create(
+    actor: AuthUser,
+    projectId: string,
+    input: CreateRabVersionInput,
+  ): Promise<RabVersionDetailDto> {
+    const versionId = await this.prisma.$transaction(
+      async (tx) =>
+        (await this.createVersionInTx(tx, actor, projectId, input, { copyPrevious: true })).id,
+    );
     return this.get(projectId, versionId);
   }
 
@@ -247,25 +355,42 @@ export class RabService {
     projectId: string,
     input: CreateRabVersionInput,
     options: { copyPrevious: boolean },
-  ): Promise<{ id: string; previousVersionId: string | null; versionType: string; revisionNumber: number }> {
+  ): Promise<{
+    id: string;
+    previousVersionId: string | null;
+    versionType: string;
+    revisionNumber: number;
+  }> {
     await this.lockActiveProject(tx, projectId);
     const versions = await tx.rabVersion.findMany({
       where: { projectId, status: { not: 'DISCARDED' } },
       select: { id: true, versionType: true, revisionNumber: true, status: true, approvedAt: true },
     });
-    if (versions.some((v) => v.status === 'DRAFT')) throw new ConflictException('Masih ada draft RAB; approve atau batalkan draft tersebut lebih dahulu.');
-    const approved = versions.filter((v) => v.status === 'APPROVED').sort((a, b) => a.approvedAt!.getTime() - b.approvedAt!.getTime());
+    if (versions.some((v) => v.status === 'DRAFT'))
+      throw new ConflictException(
+        'Masih ada draft RAB; approve atau batalkan draft tersebut lebih dahulu.',
+      );
+    const approved = versions
+      .filter((v) => v.status === 'APPROVED')
+      .sort((a, b) => a.approvedAt!.getTime() - b.approvedAt!.getTime());
     const latest = approved.at(-1);
 
     let revisionNumber = 0;
     if (input.versionType === 'CONTRACT') {
       if (versions.length > 0) throw new ConflictException('RAB Kontrak sudah ada.');
     } else if (!latest) {
-      throw new ConflictException('RAB Kontrak harus di-approve sebelum membuat MC-0 atau Addendum.');
+      throw new ConflictException(
+        'RAB Kontrak harus di-approve sebelum membuat MC-0 atau Addendum.',
+      );
     } else if (input.versionType === 'MC0') {
-      if (versions.some((v) => v.versionType !== 'CONTRACT')) throw new ConflictException('MC-0 hanya dapat dibuat satu kali dan sebelum Addendum.');
+      if (versions.some((v) => v.versionType !== 'CONTRACT'))
+        throw new ConflictException('MC-0 hanya dapat dibuat satu kali dan sebelum Addendum.');
     } else {
-      revisionNumber = Math.max(0, ...versions.filter((v) => v.versionType === 'ADDENDUM').map((v) => v.revisionNumber)) + 1;
+      revisionNumber =
+        Math.max(
+          0,
+          ...versions.filter((v) => v.versionType === 'ADDENDUM').map((v) => v.revisionNumber),
+        ) + 1;
     }
 
     const version = await tx.rabVersion.create({
@@ -279,7 +404,8 @@ export class RabService {
         createdBy: actor.id,
       },
     });
-    if (input.versionType !== 'CONTRACT' && options.copyPrevious) await this.copyItems(tx, actor, projectId, latest!.id, version.id);
+    if (input.versionType !== 'CONTRACT' && options.copyPrevious)
+      await this.copyItems(tx, actor, projectId, latest!.id, version.id);
     await writeAudit(tx, {
       actorId: actor.id,
       action: 'CREATE_RAB_VERSION',
@@ -294,37 +420,73 @@ export class RabService {
         documentDate: input.documentDate ?? null,
       },
     });
-    return { id: version.id, previousVersionId: version.previousVersionId, versionType: version.versionType, revisionNumber };
+    return {
+      id: version.id,
+      previousVersionId: version.previousVersionId,
+      versionType: version.versionType,
+      revisionNumber,
+    };
   }
 
-  async updateVersion(actor: AuthUser, projectId: string, versionId: string, input: UpdateRabVersionInput): Promise<RabVersionDetailDto> {
+  async updateVersion(
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    input: UpdateRabVersionInput,
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       const version = await this.lockDraft(tx, projectId, versionId);
-      const current = { documentNumber: version.documentNumber, documentDate: version.documentDate ? fromDbDate(version.documentDate) : null };
+      const current = {
+        documentNumber: version.documentNumber,
+        documentDate: version.documentDate ? fromDbDate(version.documentDate) : null,
+      };
       const next = {
-        documentNumber: input.documentNumber === undefined ? current.documentNumber : input.documentNumber,
+        documentNumber:
+          input.documentNumber === undefined ? current.documentNumber : input.documentNumber,
         documentDate: input.documentDate === undefined ? current.documentDate : input.documentDate,
       };
-      if (next.documentNumber === current.documentNumber && next.documentDate === current.documentDate) return;
+      if (
+        next.documentNumber === current.documentNumber &&
+        next.documentDate === current.documentDate
+      )
+        return;
       await tx.rabVersion.update({
         where: { id: versionId },
-        data: { documentNumber: next.documentNumber, documentDate: next.documentDate ? toDbDate(next.documentDate) : null },
+        data: {
+          documentNumber: next.documentNumber,
+          documentDate: next.documentDate ? toDbDate(next.documentDate) : null,
+        },
       });
-      await writeAudit(tx, { actorId: actor.id, action: 'UPDATE_RAB_VERSION', entityType: 'RAB_VERSION', entityId: versionId, projectId, oldValue: current, newValue: next });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'UPDATE_RAB_VERSION',
+        entityType: 'RAB_VERSION',
+        entityId: versionId,
+        projectId,
+        oldValue: current,
+        newValue: next,
+      });
     });
     return this.get(projectId, versionId);
   }
 
-  async addItem(projectId: string, versionId: string, input: CreateRabItemInput): Promise<RabVersionDetailDto> {
+  async addItem(
+    projectId: string,
+    versionId: string,
+    input: CreateRabItemInput,
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       await this.lockDraft(tx, projectId, versionId);
       const parentId = input.parentId ?? null;
       await this.assertValidParent(tx, versionId, input.rowType, parentId);
       const { rowType, ...fields } = input;
       if (rowType !== 'ITEM' && ITEM_ONLY_FIELDS.some((f) => fields[f] != null)) {
-        throw new BadRequestException('Hanya baris ITEM yang memiliki volume, satuan, no analisa, harga, dan PPN.');
+        throw new BadRequestException(
+          'Hanya baris ITEM yang memiliki volume, satuan, no analisa, harga, dan PPN.',
+        );
       }
-      const workItemId = rowType === 'ITEM' ? await this.newWorkItem(tx, projectId, input.description) : null;
+      const workItemId =
+        rowType === 'ITEM' ? await this.newWorkItem(tx, projectId, input.description) : null;
       await tx.rabVersionItem.create({
         data: {
           displayNumber: fields.displayNumber,
@@ -345,16 +507,25 @@ export class RabService {
     return this.get(projectId, versionId);
   }
 
-  async updateItem(projectId: string, versionId: string, itemId: string, input: UpdateRabItemInput): Promise<RabVersionDetailDto> {
+  async updateItem(
+    projectId: string,
+    versionId: string,
+    itemId: string,
+    input: UpdateRabItemInput,
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       await this.lockDraft(tx, projectId, versionId);
       const item = await this.findItem(tx, versionId, itemId);
       const { parentId, ...fields } = input;
       if (item.analysisVersionId && fields.unitPrice !== undefined) {
-        throw new ConflictException('Harga satuan item ini mengikuti analisa; ubah lewat impor/analisa, bukan langsung di RAB.');
+        throw new ConflictException(
+          'Harga satuan item ini mengikuti analisa; ubah lewat impor/analisa, bukan langsung di RAB.',
+        );
       }
       if (item.rowType !== 'ITEM' && ITEM_ONLY_FIELDS.some((f) => fields[f] != null)) {
-        throw new BadRequestException('Hanya baris ITEM yang memiliki volume, satuan, no analisa, harga, dan PPN.');
+        throw new BadRequestException(
+          'Hanya baris ITEM yang memiliki volume, satuan, no analisa, harga, dan PPN.',
+        );
       }
       const data: Prisma.RabVersionItemUncheckedUpdateInput = { ...fields };
       if (parentId !== undefined && parentId !== item.parentItemId) {
@@ -367,50 +538,97 @@ export class RabService {
     return this.get(projectId, versionId);
   }
 
-  async deleteItem(projectId: string, versionId: string, itemId: string): Promise<RabVersionDetailDto> {
+  async deleteItem(
+    projectId: string,
+    versionId: string,
+    itemId: string,
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       await this.lockDraft(tx, projectId, versionId);
       const item = await this.findItem(tx, versionId, itemId);
-      if (await tx.rabVersionItem.count({ where: { parentItemId: itemId } })) throw new ConflictException('Hapus atau pindahkan sub-baris lebih dahulu.');
+      if (await tx.rabVersionItem.count({ where: { parentItemId: itemId } }))
+        throw new ConflictException('Hapus atau pindahkan sub-baris lebih dahulu.');
       await tx.rabVersionItem.delete({ where: { id: itemId } });
       // A work item created in this draft and used nowhere else goes too; copied ones stay (history).
-      if (item.workItemId) await tx.workItem.deleteMany({ where: { id: item.workItemId, versionItems: { none: {} } } });
+      if (item.workItemId)
+        await tx.workItem.deleteMany({
+          where: { id: item.workItemId, versionItems: { none: {} } },
+        });
     });
     return this.get(projectId, versionId);
   }
 
-  async moveItem(projectId: string, versionId: string, itemId: string, direction: 'up' | 'down'): Promise<RabVersionDetailDto> {
+  async moveItem(
+    projectId: string,
+    versionId: string,
+    itemId: string,
+    direction: 'up' | 'down',
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       await this.lockDraft(tx, projectId, versionId);
       const item = await this.findItem(tx, versionId, itemId);
       const sibling = await tx.rabVersionItem.findFirst({
-        where: { rabVersionId: versionId, parentItemId: item.parentItemId, sortOrder: direction === 'up' ? { lt: item.sortOrder } : { gt: item.sortOrder } },
+        where: {
+          rabVersionId: versionId,
+          parentItemId: item.parentItemId,
+          sortOrder: direction === 'up' ? { lt: item.sortOrder } : { gt: item.sortOrder },
+        },
         orderBy: { sortOrder: direction === 'up' ? 'desc' : 'asc' },
         select: { id: true, sortOrder: true },
       });
       if (!sibling) return;
-      await tx.rabVersionItem.update({ where: { id: item.id }, data: { sortOrder: sibling.sortOrder } });
-      await tx.rabVersionItem.update({ where: { id: sibling.id }, data: { sortOrder: item.sortOrder } });
+      await tx.rabVersionItem.update({
+        where: { id: item.id },
+        data: { sortOrder: sibling.sortOrder },
+      });
+      await tx.rabVersionItem.update({
+        where: { id: sibling.id },
+        data: { sortOrder: item.sortOrder },
+      });
     });
     return this.get(projectId, versionId);
   }
 
   /** Validates, stores per-row and total snapshots, and locks the version (D-040, D-042). */
-  async approve(actor: AuthUser, projectId: string, versionId: string, acknowledgeWarnings: boolean): Promise<RabVersionDetailDto> {
+  async approve(
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    acknowledgeWarnings: boolean,
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       await this.lockDraft(tx, projectId, versionId);
       const { rows, totals, issues } = await this.detail(tx, projectId, versionId);
-      if (issues.errors.length) throw new ConflictException({ message: 'RAB belum dapat di-approve.', errors: issues.errors, warnings: issues.warnings });
+      if (issues.errors.length)
+        throw new ConflictException({
+          message: 'RAB belum dapat di-approve.',
+          errors: issues.errors,
+          warnings: issues.warnings,
+        });
       if (issues.warnings.length && !acknowledgeWarnings) {
-        throw new ConflictException({ message: 'Konfirmasi peringatan sebelum approve.', errors: [], warnings: issues.warnings });
+        throw new ConflictException({
+          message: 'Konfirmasi peringatan sebelum approve.',
+          errors: [],
+          warnings: issues.warnings,
+        });
       }
       for (const row of rows.filter((r) => r.rowType === 'ITEM')) {
-        await tx.rabVersionItem.update({ where: { id: row.id }, data: { unitPriceWithTax: row.unitPriceWithTax, subtotal: row.subtotal } });
+        await tx.rabVersionItem.update({
+          where: { id: row.id },
+          data: { unitPriceWithTax: row.unitPriceWithTax, subtotal: row.subtotal },
+        });
       }
       const approvedAt = new Date();
       await tx.rabVersion.update({
         where: { id: versionId },
-        data: { status: 'APPROVED', totalBeforeTax: totals.beforeTax, totalTax: totals.tax, totalValue: totals.value, approvedBy: actor.id, approvedAt },
+        data: {
+          status: 'APPROVED',
+          totalBeforeTax: totals.beforeTax,
+          totalTax: totals.tax,
+          totalValue: totals.value,
+          approvedBy: actor.id,
+          approvedAt,
+        },
       });
       await writeAudit(tx, {
         actorId: actor.id,
@@ -430,10 +648,23 @@ export class RabService {
     return this.get(projectId, versionId);
   }
 
-  async discard(actor: AuthUser, projectId: string, versionId: string, reason: string): Promise<RabVersionDetailDto> {
+  async discard(
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    reason: string,
+  ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
       await this.lockDraft(tx, projectId, versionId);
-      await tx.rabVersion.update({ where: { id: versionId }, data: { status: 'DISCARDED', discardedBy: actor.id, discardedAt: new Date(), discardReason: reason } });
+      await tx.rabVersion.update({
+        where: { id: versionId },
+        data: {
+          status: 'DISCARDED',
+          discardedBy: actor.id,
+          discardedAt: new Date(),
+          discardReason: reason,
+        },
+      });
       await writeAudit(tx, {
         actorId: actor.id,
         action: 'DISCARD_RAB_VERSION',
@@ -454,7 +685,10 @@ export class RabService {
    * they were first created as), so the new ids a copy gets are not a change by themselves.
    */
   async compare(projectId: string, baseId: string, targetId: string): Promise<RabCompareDto> {
-    const [base, target] = await Promise.all([this.get(projectId, baseId), this.get(projectId, targetId)]);
+    const [base, target] = await Promise.all([
+      this.get(projectId, baseId),
+      this.get(projectId, targetId),
+    ]);
     const groups = await this.prisma.rabVersionItem.findMany({
       where: { rabVersion: { projectId }, rowType: { not: 'ITEM' } },
       select: { id: true, previousVersionItemId: true },
@@ -473,19 +707,39 @@ export class RabService {
       const byId = new Map(rows.map((r) => [r.id, r]));
       return (row: RabRowDto) => {
         const ancestors: RabRowDto[] = [];
-        for (let p = row.parentId ? byId.get(row.parentId) : undefined; p; p = p.parentId ? byId.get(p.parentId) : undefined) ancestors.unshift(p);
-        return { key: ancestors.map((a) => origin(a.id)).join('>'), label: ancestors.map((a) => a.displayNumber || a.description).join(' › ') };
+        for (
+          let p = row.parentId ? byId.get(row.parentId) : undefined;
+          p;
+          p = p.parentId ? byId.get(p.parentId) : undefined
+        )
+          ancestors.unshift(p);
+        return {
+          key: ancestors.map((a) => origin(a.id)).join('>'),
+          label: ancestors.map((a) => a.displayNumber || a.description).join(' › '),
+        };
       };
     };
     const baseLineage = lineage(base.rows);
     const targetLineage = lineage(target.rows);
 
-    const baseItems = new Map(base.rows.filter((r) => r.rowType === 'ITEM').map((r) => [r.workItemId!, r]));
+    const baseItems = new Map(
+      base.rows.filter((r) => r.rowType === 'ITEM').map((r) => [r.workItemId!, r]),
+    );
     const targetItems = target.rows.filter((r) => r.rowType === 'ITEM');
     const rows: RabCompareDto['rows'] = targetItems.map((t) => {
       const b = baseItems.get(t.workItemId!) ?? null;
       const tg = targetLineage(t);
-      if (!b) return { workItemId: t.workItemId!, workItemCode: t.workItemCode!, change: 'NEW', changes: [], baseGroup: null, targetGroup: tg.label, base: null, target: t };
+      if (!b)
+        return {
+          workItemId: t.workItemId!,
+          workItemCode: t.workItemCode!,
+          change: 'NEW',
+          changes: [],
+          baseGroup: null,
+          targetGroup: tg.label,
+          base: null,
+          target: t,
+        };
       const bg = baseLineage(b);
       const changes: RabCompareDto['rows'][number]['changes'] = [];
       if (b.description !== t.description) changes.push('description');
@@ -496,28 +750,61 @@ export class RabService {
       if (!sameDecimal(b.taxPercent, t.taxPercent)) changes.push('taxPercent');
       if (bg.key !== tg.key) changes.push('group');
       const change: RabChangeType = changes.length ? 'MODIFIED' : 'UNCHANGED';
-      return { workItemId: t.workItemId!, workItemCode: t.workItemCode!, change, changes, baseGroup: bg.label, targetGroup: tg.label, base: b, target: t };
+      return {
+        workItemId: t.workItemId!,
+        workItemCode: t.workItemCode!,
+        change,
+        changes,
+        baseGroup: bg.label,
+        targetGroup: tg.label,
+        base: b,
+        target: t,
+      };
     });
     const inTarget = new Set(targetItems.map((t) => t.workItemId));
     for (const b of baseItems.values()) {
       if (!inTarget.has(b.workItemId)) {
-        rows.push({ workItemId: b.workItemId!, workItemCode: b.workItemCode!, change: 'REMOVED', changes: [], baseGroup: baseLineage(b).label, targetGroup: null, base: b, target: null });
+        rows.push({
+          workItemId: b.workItemId!,
+          workItemCode: b.workItemCode!,
+          change: 'REMOVED',
+          changes: [],
+          baseGroup: baseLineage(b).label,
+          targetGroup: null,
+          base: b,
+          target: null,
+        });
       }
     }
     return { base: base.version, target: target.version, rows };
   }
 
   private async detail(db: Db, projectId: string, versionId: string): Promise<RabVersionDetailDto> {
-    const version = await db.rabVersion.findFirst({ where: { id: versionId, projectId }, select: VERSION_SELECT });
+    const version = await db.rabVersion.findFirst({
+      where: { id: versionId, projectId },
+      select: VERSION_SELECT,
+    });
     if (!version) throw new NotFoundException('Versi RAB tidak ditemukan.');
-    const items = await db.rabVersionItem.findMany({ where: { rabVersionId: versionId }, select: ITEM_SELECT });
+    const items = await db.rabVersionItem.findMany({
+      where: { rabVersionId: versionId },
+      select: ITEM_SELECT,
+    });
     const { values, totals: computed } = rowValues(version.status, items);
     const rows = toRows(items, values);
     const summary = toSummary(version, computed, rows.filter((r) => r.rowType === 'ITEM').length);
     let issues: RabVersionDetailDto['issues'] = { errors: [], warnings: [] };
     if (version.status === 'DRAFT') {
-      const project = await db.project.findUniqueOrThrow({ where: { id: projectId }, select: { contractValue: true } });
-      issues = validate(rows, summary.totals, project.contractValue?.toFixed(2) ?? null, version.versionType, versionId);
+      const project = await db.project.findUniqueOrThrow({
+        where: { id: projectId },
+        select: { contractValue: true },
+      });
+      issues = validate(
+        rows,
+        summary.totals,
+        project.contractValue?.toFixed(2) ?? null,
+        version.versionType,
+        versionId,
+      );
     }
     return { version: summary, rows, totals: summary.totals, issues };
   }
@@ -526,15 +813,41 @@ export class RabService {
    * Copies rows in tree order so parents exist before children; ids are generated here for createMany.
    * Linked analyses are copied into the new version's package with their sub-analyses and prices (D-057).
    */
-  private async copyItems(tx: Db, actor: AuthUser, projectId: string, fromVersionId: string, toVersionId: string): Promise<void> {
-    const source = treeOrder(await tx.rabVersionItem.findMany({ where: { rabVersionId: fromVersionId }, select: ITEM_SELECT }));
+  private async copyItems(
+    tx: Db,
+    actor: AuthUser,
+    projectId: string,
+    fromVersionId: string,
+    toVersionId: string,
+  ): Promise<void> {
+    const source = treeOrder(
+      await tx.rabVersionItem.findMany({
+        where: { rabVersionId: fromVersionId },
+        select: ITEM_SELECT,
+      }),
+    );
     const newIds = new Map(source.map((i) => [i.id, randomUUID()]));
-    const linked = new Set(source.flatMap((i) => (i.analysisVersionId ? [i.analysisVersionId] : [])));
+    const linked = new Set(
+      source.flatMap((i) => (i.analysisVersionId ? [i.analysisVersionId] : [])),
+    );
     let copied = new Map<string, string>();
     if (linked.size) {
-      const from = await tx.priceList.findUnique({ where: { rabVersionId: fromVersionId }, select: { location: true, period: true } });
-      const priceListId = await ensurePackage(tx, projectId, toVersionId, actor.id, from ?? { location: null, period: null });
-      copied = await copyAnalysesIntoPackage(tx, { projectId, rabVersionId: toVersionId, priceListId, sourceImportId: null }, linked);
+      const from = await tx.priceList.findUnique({
+        where: { rabVersionId: fromVersionId },
+        select: { location: true, period: true },
+      });
+      const priceListId = await ensurePackage(
+        tx,
+        projectId,
+        toVersionId,
+        actor.id,
+        from ?? { location: null, period: null },
+      );
+      copied = await copyAnalysesIntoPackage(
+        tx,
+        { projectId, rabVersionId: toVersionId, priceListId, sourceImportId: null },
+        linked,
+      );
     }
     await tx.rabVersionItem.createMany({
       data: source.map((i) => ({
@@ -568,14 +881,21 @@ export class RabService {
   /** Project row lock first, then the version, so every RAB write on a project serializes. */
   private async lockActiveProject(tx: Db, projectId: string): Promise<void> {
     await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
-    const project = await tx.project.findUnique({ where: { id: projectId }, select: { status: true } });
+    const project = await tx.project.findUnique({
+      where: { id: projectId },
+      select: { status: true },
+    });
     if (!project) throw new NotFoundException('Proyek tidak ditemukan.');
-    if (project.status === 'CLOSED') throw new ConflictException('Proyek sudah ditutup; RAB tidak dapat diubah.');
+    if (project.status === 'CLOSED')
+      throw new ConflictException('Proyek sudah ditutup; RAB tidak dapat diubah.');
   }
 
   private async lockDraft(tx: Db, projectId: string, versionId: string) {
     await this.lockActiveProject(tx, projectId);
-    const version = await tx.rabVersion.findFirst({ where: { id: versionId, projectId }, select: { status: true, documentNumber: true, documentDate: true } });
+    const version = await tx.rabVersion.findFirst({
+      where: { id: versionId, projectId },
+      select: { status: true, documentNumber: true, documentDate: true },
+    });
     if (!version) throw new NotFoundException('Versi RAB tidak ditemukan.');
     if (version.status !== 'DRAFT') throw new ConflictException(NOT_DRAFT);
     return version;
@@ -584,38 +904,70 @@ export class RabService {
   private async findItem(tx: Db, versionId: string, itemId: string) {
     const item = await tx.rabVersionItem.findFirst({
       where: { id: itemId, rabVersionId: versionId },
-      select: { id: true, rowType: true, parentItemId: true, sortOrder: true, workItemId: true, analysisVersionId: true },
+      select: {
+        id: true,
+        rowType: true,
+        parentItemId: true,
+        sortOrder: true,
+        workItemId: true,
+        analysisVersionId: true,
+      },
     });
     if (!item) throw new NotFoundException('Baris RAB tidak ditemukan.');
     return item;
   }
 
   /** SECTION only at the top; a parent is a non-ITEM row of the same version and never the row itself or its descendant. */
-  private async assertValidParent(tx: Db, versionId: string, rowType: string, parentId: string | null, itemId?: string): Promise<void> {
-    if (rowType === 'SECTION' && parentId !== null) throw new BadRequestException('SECTION hanya boleh di tingkat teratas.');
+  private async assertValidParent(
+    tx: Db,
+    versionId: string,
+    rowType: string,
+    parentId: string | null,
+    itemId?: string,
+  ): Promise<void> {
+    if (rowType === 'SECTION' && parentId !== null)
+      throw new BadRequestException('SECTION hanya boleh di tingkat teratas.');
     if (parentId === null) return;
-    const rows = await tx.rabVersionItem.findMany({ where: { rabVersionId: versionId }, select: { id: true, parentItemId: true, rowType: true } });
+    const rows = await tx.rabVersionItem.findMany({
+      where: { rabVersionId: versionId },
+      select: { id: true, parentItemId: true, rowType: true },
+    });
     const parent = rows.find((r) => r.id === parentId);
     if (!parent) throw new BadRequestException('Induk baris tidak ditemukan di versi ini.');
-    if (parent.rowType === 'ITEM') throw new BadRequestException('Baris ITEM tidak dapat memiliki sub-baris.');
+    if (parent.rowType === 'ITEM')
+      throw new BadRequestException('Baris ITEM tidak dapat memiliki sub-baris.');
     // Walk up from the new parent: reaching the row itself means self- or descendant-parent (A → B → A).
     const parentOf = new Map(rows.map((r) => [r.id, r.parentItemId]));
     const seen = new Set<string>();
-    for (let cursor: string | null = parentId; cursor !== null && !seen.has(cursor); cursor = parentOf.get(cursor) ?? null) {
-      if (cursor === itemId) throw new BadRequestException('Baris tidak dapat dipindahkan ke dalam dirinya sendiri atau sub-barisnya.');
+    for (
+      let cursor: string | null = parentId;
+      cursor !== null && !seen.has(cursor);
+      cursor = parentOf.get(cursor) ?? null
+    ) {
+      if (cursor === itemId)
+        throw new BadRequestException(
+          'Baris tidak dapat dipindahkan ke dalam dirinya sendiri atau sub-barisnya.',
+        );
       seen.add(cursor);
     }
   }
 
   private async nextSortOrder(tx: Db, versionId: string, parentId: string | null): Promise<number> {
-    const last = await tx.rabVersionItem.aggregate({ where: { rabVersionId: versionId, parentItemId: parentId }, _max: { sortOrder: true } });
+    const last = await tx.rabVersionItem.aggregate({
+      where: { rabVersionId: versionId, parentItemId: parentId },
+      _max: { sortOrder: true },
+    });
     return (last._max.sortOrder ?? 0) + 1;
   }
 
   /** WI-0001, WI-0002, … per project; the project row lock makes the sequence safe. */
   private async newWorkItem(tx: Db, projectId: string, description: string): Promise<string> {
     const workItem = await tx.workItem.create({
-      data: { projectId, internalCode: workItemCode(await nextWorkItemNumber(tx, projectId)), canonicalDescription: description },
+      data: {
+        projectId,
+        internalCode: workItemCode(await nextWorkItemNumber(tx, projectId)),
+        canonicalDescription: description,
+      },
     });
     return workItem.id;
   }

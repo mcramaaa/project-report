@@ -75,7 +75,9 @@ export class RabImportsService implements OnModuleInit {
     const decisions = await this.prisma.rabImportDecision.findMany({ where: { importId }, include: { decider: USER_REF }, orderBy: { decidedAt: 'asc' } });
     const aiRuns = await this.prisma.aiRun.findMany({ where: { importId }, orderBy: { startedAt: 'asc' } });
     const draft = row.draft ? (row.draft as unknown as RabImportDraft) : null;
-    const evaluation = draft ? evaluateImport(draft, decisions.map(toRecord), await this.officialVersions(projectId)) : null;
+    // A finished run is shown against the analyses it linked, even after a later version became the latest package.
+    const linked = row.status === 'NEEDS_REVIEW' ? [] : decisions.flatMap((d) => (d.kind === 'ANALYSIS_LINK' && typeof (d.value as { analysisVersionId?: unknown })?.analysisVersionId === 'string' ? [(d.value as { analysisVersionId: string }).analysisVersionId] : []));
+    const evaluation = draft ? evaluateImport(draft, decisions.map(toRecord), await this.officialVersions(projectId, this.prisma, linked)) : null;
     return {
       import: this.summary(row, evaluation && row.status === 'NEEDS_REVIEW' ? blockingIssues(evaluation.issues).length : 0),
       draft,
@@ -387,7 +389,7 @@ export class RabImportsService implements OnModuleInit {
             overheadAmount: a.computed.overheadAmount,
             priceExact: a.computed.priceExact,
             price: a.computed.price,
-            sourceLocator: { ...a.locator, reconciliation: a.reconciliation } as Prisma.InputJsonValue,
+            sourceLocator: { ...a.locator, reconciliation: a.reconciliation, ...(a.unusedOverhead ? { unusedOverhead: a.unusedOverhead } : {}) } as Prisma.InputJsonValue,
           })),
         });
         await tx.ahspComponent.createMany({
@@ -459,7 +461,9 @@ export class RabImportsService implements OnModuleInit {
           priceNote: decision?.reason ?? null,
           priceDecidedBy: decision?.decidedBy ?? null,
           priceDecidedAt: decision?.decidedAt ?? null,
-          sourceLocator: r.row.locator as Prisma.InputJsonValue,
+          sourceLocator: (evaluation.rowReconciliation.has(r.row.key)
+            ? { ...r.row.locator, reconciliation: evaluation.rowReconciliation.get(r.row.key) }
+            : r.row.locator) as Prisma.InputJsonValue,
           previousVersionItemId: !previousRows
             ? null
             : r.row.rowType === 'ITEM'
@@ -510,11 +514,12 @@ export class RabImportsService implements OnModuleInit {
    * Candidates for broken chains (D-057): analyses of the latest approved RAB version's package — the version
    * a new MC-0/Addendum continues from. Linking one copies it into the new package at approval.
    */
-  private async officialVersions(projectId: string, db: Db = this.prisma): Promise<Map<string, OfficialVersion>> {
+  /** Analyses of the latest approved version's package (D-057), plus `alsoIds` of the same project. */
+  private async officialVersions(projectId: string, db: Db = this.prisma, alsoIds: string[] = []): Promise<Map<string, OfficialVersion>> {
     const latest = await db.rabVersion.findFirst({ where: { projectId, status: 'APPROVED' }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
-    if (!latest) return new Map();
+    if (!latest && !alsoIds.length) return new Map();
     const versions = await db.ahspAnalysisVersion.findMany({
-      where: { analysis: { rabVersionId: latest.id } },
+      where: { analysis: { projectId }, OR: [...(latest ? [{ analysis: { rabVersionId: latest.id } }] : []), { id: { in: alsoIds } }] },
       select: { id: true, code: true, name: true, unit: true, price: true },
       orderBy: [{ code: 'asc' }, { id: 'asc' }],
     });

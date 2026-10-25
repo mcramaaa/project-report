@@ -17,6 +17,9 @@ export interface RabColumns {
   unit: number;
   price: number;
   tax: number | null;
+  /** HARGA SAT + PPN and SUB JUMLAH of the block: cached values for reconciliation only. */
+  priceWithTax: number | null;
+  amount: number | null;
   block: string | null;
 }
 
@@ -31,6 +34,8 @@ export interface RabSheetRow {
   analysisCode: string | null;
   taxPercent: string | null;
   sourceUnitPrice: string | null;
+  /** Cached floats of price + PPN and amount as 17-digit strings (D-054 reconciliation); never app values. */
+  workbook: { unitPriceWithTax: string | null; subtotal: string | null };
   priceCell: { sheet: string; row: number; col: number };
 }
 
@@ -39,7 +44,7 @@ export interface RabSheet {
   columns: RabColumns;
   rows: RabSheetRow[];
   /** "JUMLAH TOTAL"/"JUMLAH" and "DIBULATKAN" of the chosen block, when present. */
-  totals: { value: string; rounded: string | null } | null;
+  totals: { value: string; rounded: string | null; valueRaw: string | null } | null;
 }
 
 export class RabSheetError extends Error {}
@@ -111,12 +116,14 @@ export function detectRabColumns(model: WorkbookModel, sheet: string, target: Ra
   const analysis = first((c) => /^NO\.? ?ANALISA/.test(top(c)), false);
   const price = first((c) => /^HARGA/.test(label(c)) && !/PPN/.test(label(c)), true);
   const tax = first((c) => /^PPN\b/.test(label(c)), true) ?? first((c) => /^PPN\b/.test(label(c)), false);
+  const priceWithTax = first((c) => /^HARGA/.test(label(c)) && /PPN/.test(label(c)), true);
+  const amount = first((c) => /^(SUB ?JUMLAH|JUMLAH)\b/.test(label(c)), true);
   if (!volume || !no || !description || !price) {
     throw new RabSheetError(`Kolom NO, uraian, VOLUME, atau HARGA tidak dikenali di sheet "${sheet}".`);
   }
   // The unit column is "SAT"/"SATUAN" or, without its own header, the column after VOLUME.
   const unit = first((c) => /^(SAT|SATUAN)$/.test(top(c)), true) ?? volume + 1;
-  return { headerRow, no, description, analysis, volume, unit, price, tax, block };
+  return { headerRow, no, description, analysis, volume, unit, price, tax, priceWithTax, amount, block };
 }
 
 const isSection = (no: string) => /^[A-Z]$/.test(no);
@@ -131,8 +138,12 @@ export function readRabSheet(model: WorkbookModel, sheetName: string, target: Ra
   let section: number | null = null;
   let subsection: number | null = null;
   let parentItem: number | null = null;
-  let totalValue: string | null = null;
+  let totalValue: { value: string; raw: string | null } | null = null;
   let rounded: string | null = null;
+  const raw = (r: number, c: number | null) => {
+    const v = c === null ? null : model.cell(sheet, r, c).value;
+    return typeof v === 'number' && Number.isFinite(v) ? v.toPrecision(17) : null;
+  };
 
   for (let r = cols.headerRow + 1; r <= model.rowCount(sheet); r++) {
     const no = model.text(sheet, r, cols.no);
@@ -145,7 +156,7 @@ export function readRabSheet(model: WorkbookModel, sheetName: string, target: Ra
       const grandTotal = /^JUMLAH TOTAL/.test(labelled.t) || (labelled.t === 'JUMLAH' && labelled.c !== cols.description);
       if (grandTotal) totalValue = blockAmount(model, sheet, r, cols) ?? totalValue;
       if (/^DIBULATKAN/.test(labelled.t)) {
-        rounded = blockAmount(model, sheet, r, cols);
+        rounded = blockAmount(model, sheet, r, cols)?.value ?? null;
         break;
       }
       continue;
@@ -168,6 +179,7 @@ export function readRabSheet(model: WorkbookModel, sheetName: string, target: Ra
       analysisCode: null as string | null,
       taxPercent: null as string | null,
       sourceUnitPrice: null as string | null,
+      workbook: { unitPriceWithTax: null as string | null, subtotal: null as string | null },
       priceCell: { sheet, row: r, col: cols.price },
     };
 
@@ -189,6 +201,7 @@ export function readRabSheet(model: WorkbookModel, sheetName: string, target: Ra
         analysisCode,
         taxPercent: cols.tax ? excelDecimal(model.cell(sheet, r, cols.tax).value) : null,
         sourceUnitPrice,
+        workbook: { unitPriceWithTax: raw(r, cols.priceWithTax), subtotal: raw(r, cols.amount) },
       });
     } else if (no) {
       rows.push({ ...base, rowType: 'PARENT_ITEM', parentRow: subsection ?? section });
@@ -201,7 +214,7 @@ export function readRabSheet(model: WorkbookModel, sheetName: string, target: Ra
   // Group rows without any item under them are headings with nothing to price.
   const hasChild = new Set(rows.map((r) => r.parentRow));
   const keep = rows.filter((r) => r.rowType === 'ITEM' || hasChild.has(r.row) || descendantItem(rows, r.row));
-  return { sheet, columns: cols, rows: keep, totals: totalValue ? { value: totalValue, rounded } : null };
+  return { sheet, columns: cols, rows: keep, totals: totalValue ? { value: totalValue.value, rounded, valueRaw: totalValue.raw } : null };
 }
 
 function descendantItem(rows: RabSheetRow[], row: number): boolean {
@@ -209,10 +222,11 @@ function descendantItem(rows: RabSheetRow[], row: number): boolean {
 }
 
 /** Amount of the chosen block on a total row: the first numeric cell right of the price column. */
-function blockAmount(model: WorkbookModel, sheet: string, row: number, cols: RabColumns): string | null {
+function blockAmount(model: WorkbookModel, sheet: string, row: number, cols: RabColumns): { value: string; raw: string } | null {
   for (let c = cols.price + 1; c <= cols.price + 4; c++) {
-    const v = excelDecimal(model.cell(sheet, row, c).value);
-    if (v !== null && !new Decimal(v).isZero()) return v;
+    const cached = model.cell(sheet, row, c).value;
+    const v = excelDecimal(cached);
+    if (v !== null && !new Decimal(v).isZero()) return { value: v, raw: (cached as number).toPrecision(17) };
   }
   return null;
 }

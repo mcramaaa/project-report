@@ -1,4 +1,10 @@
-import type { ProjectDto, ProjectTeamMemberDto, ProjectWeekDto, ReportPeriodDto } from '@laporan-proyek/shared';
+import { SourceValue } from '@/components/source-value';
+import type {
+  ProjectDto,
+  ProjectTeamMemberDto,
+  ProjectWeekDto,
+  ReportPeriodDto,
+} from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectTabs, type ProjectTab } from '@/components/project-tabs';
@@ -11,13 +17,24 @@ import { ProjectActions } from './project-actions';
 type Tab = Exclude<ProjectTab, 'rab'>;
 const TABS: Tab[] = ['info', 'calendar', 'team'];
 
-export default async function ProjectPage({ params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ tab?: string }> }) {
-  const [{ projectId }, { tab: rawTab }, me] = await Promise.all([params, searchParams, requireMe()]);
+export default async function ProjectPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const [{ projectId }, { tab: rawTab }, me] = await Promise.all([
+    params,
+    searchParams,
+    requireMe(),
+  ]);
   const tab: Tab = TABS.includes(rawTab as Tab) ? (rawTab as Tab) : 'info';
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const { status, data: p } = await serverGet<ProjectDto>(base);
   if (status === 404) notFound();
-  if (status === 403) return <Alert>Role Anda di proyek ini tidak memiliki izin untuk melihat data proyek.</Alert>;
+  if (status === 403)
+    return <Alert>Role Anda di proyek ini tidak memiliki izin untuk melihat data proyek.</Alert>;
   if (!p) return <Alert>Proyek tidak dapat dimuat.</Alert>;
 
   return (
@@ -26,7 +43,11 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{p.code}</span>
-            {p.status === 'CLOSED' ? <Badge tone="red">Ditutup</Badge> : <Badge tone="green">Aktif</Badge>}
+            {p.status === 'CLOSED' ? (
+              <Badge tone="red">Ditutup</Badge>
+            ) : (
+              <Badge tone="green">Aktif</Badge>
+            )}
           </span>
         }
       >
@@ -34,8 +55,10 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
       </PageTitle>
       <ProjectTabs projectId={p.id} active={tab} permissions={p.permissions} />
       {tab === 'info' && <InfoTab project={p} />}
-      {tab === 'calendar' && <CalendarTab base={base} />}
-      {tab === 'team' && <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />}
+      {tab === 'calendar' && <CalendarTab base={base} project={p} />}
+      {tab === 'team' && (
+        <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />
+      )}
     </>
   );
 }
@@ -84,7 +107,32 @@ function InfoTab({ project: p }: { project: ProjectDto }) {
             {rows.map(([label, value]) => (
               <div key={label} className="min-w-0">
                 <dt>{label}</dt>
-                <dd>{value}</dd>
+                <dd>
+                  <SourceValue
+                    title={label}
+                    value={String(value)}
+                    formula={
+                      label === 'Tanggal selesai rencana'
+                        ? 'Tanggal mulai + masa pelaksanaan − 1 hari (inklusif)'
+                        : undefined
+                    }
+                    note={
+                      label === 'Tanggal selesai rencana'
+                        ? 'Tanggal selesai diturunkan dari jadwal proyek.'
+                        : 'Data yang tersimpan pada formulir identitas proyek. Tautan dokumen sumber untuk field ini belum tercatat.'
+                    }
+                    sources={
+                      label === 'Tanggal selesai rencana'
+                        ? [
+                            { label: 'Tanggal mulai', value: p.startDate },
+                            { label: 'Masa pelaksanaan (hari)', value: String(p.durationDays) },
+                          ]
+                        : []
+                    }
+                  >
+                    {value}
+                  </SourceValue>
+                </dd>
               </div>
             ))}
           </dl>
@@ -95,15 +143,25 @@ function InfoTab({ project: p }: { project: ProjectDto }) {
   );
 }
 
-async function CalendarTab({ base }: { base: string }) {
-  const [weeks, periods] = await Promise.all([serverGet<ProjectWeekDto[]>(`${base}/weeks`), serverGet<ReportPeriodDto[]>(`${base}/report-periods`)]);
+async function CalendarTab({ base, project }: { base: string; project: ProjectDto }) {
+  const [weeks, periods] = await Promise.all([
+    serverGet<ProjectWeekDto[]>(`${base}/weeks`),
+    serverGet<ReportPeriodDto[]>(`${base}/report-periods`),
+  ]);
   if (!weeks.data || !periods.data) return <Alert>Minggu dan periode tidak dapat dimuat.</Alert>;
   if (weeks.data.length === 0) return <EmptyState>Belum ada minggu proyek.</EmptyState>;
   return (
     <div className="space-y-6">
       {periods.data.map((period) => (
-        <section key={period.id} className="space-y-2" aria-labelledby={`period-${period.periodNumber}`}>
-          <h2 id={`period-${period.periodNumber}`} className="flex flex-wrap items-center gap-2 text-base font-semibold">
+        <section
+          key={period.id}
+          className="space-y-2"
+          aria-labelledby={`period-${period.periodNumber}`}
+        >
+          <h2
+            id={`period-${period.periodNumber}`}
+            className="flex flex-wrap items-center gap-2 text-base font-semibold"
+          >
             B{period.periodNumber} · {formatDate(period.startDate)} – {formatDate(period.endDate)}
             <span className="text-sm font-normal text-slate-500">
               M{period.firstWeekNumber}–M{period.lastWeekNumber}, {period.days} hari
@@ -114,23 +172,56 @@ async function CalendarTab({ base }: { base: string }) {
             <table role="table" className="data-table">
               <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
                 <tr role="row">
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Minggu</th>
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Mulai</th>
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Selesai</th>
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Hari</th>
+                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
+                    Minggu
+                  </th>
+                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
+                    Mulai
+                  </th>
+                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
+                    Selesai
+                  </th>
+                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
+                    Hari
+                  </th>
                 </tr>
               </thead>
               <tbody role="rowgroup" className="divide-y divide-slate-100">
-                {weeks.data!
-                  .filter((w) => w.periodNumber === period.periodNumber)
+                {weeks
+                  .data!.filter((w) => w.periodNumber === period.periodNumber)
                   .map((w) => (
                     <tr role="row" key={w.id}>
-                      <td role="cell" data-label="Minggu" className="px-3 py-2 font-medium">M{w.weekNumber}</td>
-                      <td role="cell" data-label="Mulai" className="px-3 py-2">{formatDate(w.startDate)}</td>
-                      <td role="cell" data-label="Selesai" className="px-3 py-2">{formatDate(w.endDate)}</td>
+                      <td role="cell" data-label="Minggu" className="px-3 py-2 font-medium">
+                        M{w.weekNumber}
+                      </td>
+                      <td role="cell" data-label="Mulai" className="px-3 py-2">
+                        {formatDate(w.startDate)}
+                      </td>
+                      <td role="cell" data-label="Selesai" className="px-3 py-2">
+                        {formatDate(w.endDate)}
+                      </td>
                       <td role="cell" data-label="Hari" className="px-3 py-2">
-                        {w.days}
-                        {w.days < 7 && <span className="ml-2"><Badge>Minggu pendek</Badge></span>}
+                        <SourceValue
+                          title={`Jumlah hari M${w.weekNumber}`}
+                          value={String(w.days)}
+                          formula="Tanggal selesai minggu − tanggal mulai minggu + 1"
+                          sources={[
+                            { label: 'Mulai minggu', value: w.startDate },
+                            { label: 'Selesai minggu', value: w.endDate },
+                            {
+                              label: 'Jadwal proyek',
+                              value: `${project.startDate} · ${project.durationDays} hari`,
+                              href: `${base}?tab=info`,
+                            },
+                          ]}
+                        >
+                          {w.days}
+                        </SourceValue>
+                        {w.days < 7 && (
+                          <span className="ml-2">
+                            <Badge>Minggu pendek</Badge>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -143,7 +234,15 @@ async function CalendarTab({ base }: { base: string }) {
   );
 }
 
-async function TeamTab({ base, projectId, canSeeAccess }: { base: string; projectId: string; canSeeAccess: boolean }) {
+async function TeamTab({
+  base,
+  projectId,
+  canSeeAccess,
+}: {
+  base: string;
+  projectId: string;
+  canSeeAccess: boolean;
+}) {
   const { data: team } = await serverGet<ProjectTeamMemberDto[]>(`${base}/team`);
   if (!team) return <Alert>Tim proyek tidak dapat dimuat.</Alert>;
   return (
@@ -160,15 +259,23 @@ async function TeamTab({ base, projectId, canSeeAccess }: { base: string; projec
           <table role="table" className="data-table">
             <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
               <tr role="row">
-                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Nama</th>
-                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">Role</th>
+                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
+                  Nama
+                </th>
+                <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
+                  Role
+                </th>
               </tr>
             </thead>
             <tbody role="rowgroup" className="divide-y divide-slate-100">
               {team.map((m) => (
                 <tr role="row" key={m.userId}>
-                  <td role="cell" data-label="Nama" className="px-3 py-2">{m.name}</td>
-                  <td role="cell" data-label="Role" className="px-3 py-2"><Badge tone="blue">{m.role.name}</Badge></td>
+                  <td role="cell" data-label="Nama" className="px-3 py-2">
+                    {m.name}
+                  </td>
+                  <td role="cell" data-label="Role" className="px-3 py-2">
+                    <Badge tone="blue">{m.role.name}</Badge>
+                  </td>
                 </tr>
               ))}
             </tbody>

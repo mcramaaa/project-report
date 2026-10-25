@@ -11,8 +11,15 @@ export type RabRowType = (typeof RAB_ROW_TYPES)[number];
 export const RAB_CHANGE_TYPES = ['UNCHANGED', 'MODIFIED', 'NEW', 'REMOVED'] as const;
 export type RabChangeType = (typeof RAB_CHANGE_TYPES)[number];
 
-export function rabVersionLabel(v: { versionType: RabVersionType; revisionNumber: number }): string {
-  return v.versionType === 'CONTRACT' ? 'Kontrak' : v.versionType === 'MC0' ? 'MC-0' : `Addendum ${v.revisionNumber}`;
+export function rabVersionLabel(v: {
+  versionType: RabVersionType;
+  revisionNumber: number;
+}): string {
+  return v.versionType === 'CONTRACT'
+    ? 'Kontrak'
+    : v.versionType === 'MC0'
+      ? 'MC-0'
+      : `Addendum ${v.revisionNumber}`;
 }
 
 const optionalText = (max: number) =>
@@ -50,7 +57,9 @@ export type CreateRabVersionInput = z.infer<typeof createRabVersionSchema>;
 
 export const updateRabVersionSchema = z
   .object({ documentNumber: optionalText(100), documentDate: optionalDate })
-  .refine((v) => v.documentNumber !== undefined || v.documentDate !== undefined, { message: 'Tidak ada perubahan.' });
+  .refine((v) => v.documentNumber !== undefined || v.documentDate !== undefined, {
+    message: 'Tidak ada perubahan.',
+  });
 export type UpdateRabVersionInput = z.infer<typeof updateRabVersionSchema>;
 
 const rowFields = {
@@ -59,9 +68,15 @@ const rowFields = {
   unit: optionalText(30),
   analysisCode: optionalText(50),
   unitPrice: decimal('Harga satuan', 18, 2),
-  taxPercent: decimal('PPN', 3, 2).refine((v) => v == null || Number(v) <= 100, { message: 'PPN 0–100%.' }),
+  taxPercent: decimal('PPN', 3, 2).refine((v) => v == null || Number(v) <= 100, {
+    message: 'PPN 0–100%.',
+  }),
 };
-const description = z.string({ message: 'Uraian wajib diisi.' }).trim().min(1, { message: 'Uraian wajib diisi.' }).max(1000);
+const description = z
+  .string({ message: 'Uraian wajib diisi.' })
+  .trim()
+  .min(1, { message: 'Uraian wajib diisi.' })
+  .max(1000);
 
 export const createRabItemSchema = z.object({
   parentId: z.uuid().nullable().optional(),
@@ -72,14 +87,22 @@ export const createRabItemSchema = z.object({
 export type CreateRabItemInput = z.infer<typeof createRabItemSchema>;
 
 export const updateRabItemSchema = z
-  .object({ parentId: z.uuid().nullable().optional(), description: description.optional(), ...rowFields })
-  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Tidak ada perubahan.' });
+  .object({
+    parentId: z.uuid().nullable().optional(),
+    description: description.optional(),
+    ...rowFields,
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'Tidak ada perubahan.',
+  });
 export type UpdateRabItemInput = z.infer<typeof updateRabItemSchema>;
 
 export const moveRabItemSchema = z.object({ direction: z.enum(['up', 'down']) });
 export type MoveRabItemInput = z.infer<typeof moveRabItemSchema>;
 
-export const approveRabVersionSchema = z.object({ acknowledgeWarnings: z.boolean().default(false) });
+export const approveRabVersionSchema = z.object({
+  acknowledgeWarnings: z.boolean().default(false),
+});
 export type ApproveRabVersionInput = z.infer<typeof approveRabVersionSchema>;
 
 /** Exact sums (D-043) plus the workbook's REAL COST (2 decimals) and DIBULATKAN (whole rupiah). */
@@ -132,8 +155,18 @@ export interface RabRowDto {
   /** MANUAL | ANALYSIS | SOURCE_OVERRIDE | DIRECT (D-051). */
   priceSource: 'MANUAL' | 'ANALYSIS' | 'SOURCE_OVERRIDE' | 'DIRECT';
   /** `rabVersionId` owns the analysis; it differs from the row's version only on legacy links (D-057). */
-  analysis: { analysisId: string; versionId: string; rabVersionId: string; code: string | null; name: string } | null;
+  analysis: {
+    analysisId: string;
+    versionId: string;
+    rabVersionId: string;
+    code: string | null;
+    name: string;
+  } | null;
   priceNote: string | null;
+  sourceLocator: unknown;
+  sourceUnitPrice: string | null;
+  analysisUnitPrice: string | null;
+  priceDecidedAt: string | null;
 }
 
 export interface RabIssue {
@@ -148,7 +181,15 @@ export interface RabVersionDetailDto {
   issues: { errors: RabIssue[]; warnings: RabIssue[] };
 }
 
-export const RAB_COMPARE_FIELDS = ['description', 'unit', 'analysisCode', 'volume', 'unitPrice', 'taxPercent', 'group'] as const;
+export const RAB_COMPARE_FIELDS = [
+  'description',
+  'unit',
+  'analysisCode',
+  'volume',
+  'unitPrice',
+  'taxPercent',
+  'group',
+] as const;
 export type RabCompareField = (typeof RAB_COMPARE_FIELDS)[number];
 
 export interface RabCompareRowDto {

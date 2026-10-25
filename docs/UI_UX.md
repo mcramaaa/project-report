@@ -70,8 +70,9 @@ Pengaturan
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
 | `/projects/:projectId/imports` | `document.read` / `rabImport.review` | dokumen (upload .xlsx, unduh asli, kandidat sheet RAB), buat run impor (peran RAB/pendukung, sheet, versi tujuan), daftar run |
 | `/projects/:projectId/imports/:importId` | `rabImport.review` / `rabImport.approve` | ringkasan & rekonsiliasi, issue, item dengan rantai rumus, kandidat, keputusan (analisa, harga langsung, harga analisa/override beralasan, pekerjaan permanen), terima kandidat tunggal, analisa terpakai & bukti rekonsiliasi, panggilan AI, approve/tolak/ulangi |
-| `/projects/:projectId/analyses?version=` | `ahsp.read` | pilih versi RAB (default approved terakhir); analisa dan harga upah/bahan/alat milik paket versi itu saja; asal salinan ditampilkan (D-056, D-057) |
-| `/projects/:projectId/analyses/:analysisId?version=` | `ahsp.read` | versi, D/E/harga, komponen dengan sumber harga atau subanalisa, item RAB yang merujuk |
+| `/projects/:projectId/rab/:versionId` | `rab.read` | Lihat RAB: tab Rekap RAB, Analisa, Bahan, Alat, dan Upah sesuai izin; konteks versi tetap (D-059) |
+| `/projects/:projectId/rab/:versionId/analyses` | `ahsp.read` | analisa dan harga upah/bahan/alat paket versi yang sedang dilihat, pencarian, asal salinan |
+| `/projects/:projectId/rab/:versionId/analyses/:analysisId` | `ahsp.read` | rincian analisa, D/E/harga, komponen dan tautan subanalisa dalam versi yang sama |
 | `/admin/users` | `users.read` | cari, pagination; dengan `users.manage`: buat, ubah, aktif/nonaktif; super admin: beri/cabut super admin |
 | `/admin/users/:userId` | `assignments.read` | role administrasi user dan daftar proyek yang dapat diaksesnya; tambah/ubah/cabut akses proyek |
 | `/admin/roles` | `roles.read` | kartu role proyek & role administrasi; tambah role |
@@ -81,6 +82,7 @@ Pengaturan
 
 Aturan UX:
 
+- Analisa tidak menjadi tab detail proyek. Aksesnya melalui Lihat RAB → Analisa. URL lama dengan `version` tetap dapat dibuka melalui redirect; tanpa versi menuju daftar RAB untuk pemilihan eksplisit.
 - Sidebar, drawer, dan navigasi bawah hanya memiliki satu menu "Pengguna" untuk manajemen akses. "Role & permission" dan "Akses proyek" dibuka melalui tab pada halaman admin, tanpa menu navigasi terpisah.
 - Menu "Pengguna" tampil bila akun memiliki salah satu permission baca: `users.read`, `roles.read`, atau `assignments.read`. Tujuannya adalah tab pertama yang diizinkan dalam urutan tersebut; tab lain tetap mengikuti permission masing-masing. Menu tetap aktif pada seluruh halaman manajemen akses dan breadcrumb menunjukkan bagian yang sedang dibuka. Backend tetap memeriksa izin.
 - setiap daftar memiliki loading, empty state, dan pesan error
@@ -388,3 +390,23 @@ Detail:
 - old
 - new
 - reason
+
+D-060: tab Bahan (`.../materials`), Alat (`.../equipment`), dan Upah
+(`.../labor`) menampilkan harga terpisah, pencarian, satuan dan sumber dalam
+versi terpilih. Detail analisa memakai tabel lembar kerja A/B/C, subtotal,
+D/E/F dan pembulatan; di layar kecil tabel dapat digeser horizontal.
+
+## D-061 Asal nilai dan penyempurnaan seluruh halaman
+
+Nilai bertanda garis bawah putus-putus membuka dialog Asal nilai: presisi
+lengkap, formula, operand dan tautan lanjut. Escape/tombol tutup mengembalikan
+fokus; tautan tujuan membawa konteks versi dan menyorot baris. Input manual
+dan sumber hilang dijelaskan jujur. Pratinjau sumber berada di
+`/projects/:projectId/documents/:documentId?sheet=&cell=` dan tetap berizin.
+Desain memperbesar teks tabel/form, memperjelas hirarki panel dan aksi,
+breadcrumb kontekstual, state memuat/gagal, target sentuh serta focus keyboard.
+
+D-062: halaman satu versi RAB beserta rincian hanya memakai satu baris tab
+paket. Di atasnya ada tautan teks ke proyek dan daftar versi (sesuai izin),
+bukan baris tab proyek tambahan. Detail analisa tetap punya tautan kembali
+ke daftar analisa dalam versi yang sama.

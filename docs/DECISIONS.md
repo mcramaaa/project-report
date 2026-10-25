@@ -628,6 +628,103 @@ Klarifikasi pengguna 2026-10-26; melengkapi D-056/D-057.
 - Prioritas tetap pemuatan paket RAB lengkap di aplikasi; skenario seed dan
   test wajib membuktikan fallback ini beserta isolasi paketnya.
 
+## D-059 Navigasi Analisa di Dalam Lihat RAB
+
+Permintaan pengguna 2026-10-26:
+
+- Hilangkan tab Analisa dari detail proyek. Buka RAB, pilih versi dan Lihat,
+  lalu gunakan tab Rekap RAB, Analisa, Bahan, Alat, dan Upah di dalam versi itu.
+- URL analisa bersarang di `/projects/:projectId/rab/:versionId/analyses`,
+  detail di `.../analyses/:analysisId`. Pencarian, subanalisa, dan tautan
+  kembali mempertahankan versi yang dipilih; tidak memilih versi lain otomatis.
+- URL lama dengan versi eksplisit diarahkan ke lokasi baru. URL daftar lama
+  tanpa versi menuju daftar versi RAB agar pengguna memilih konteksnya.
+- Tab Analisa mengikuti `ahsp.read`; backend tetap memeriksa proyek
+  dan kepemilikan paket. Ini perubahan navigasi, tidak mengubah data/schema.
+
+## D-060 Rincian AHSP Seperti Lembar RAB
+
+Permintaan pengguna 2026-10-26: Lihat RAB memiliki lima tab: Rekap RAB,
+Analisa, Bahan, Alat, Upah. Tiga tab harga dipisahkan menurut kategori
+komponen yang memakai harga tersebut dalam paket RAB terpilih, bukan nama
+sheet sumber. Satu harga yang dipakai dalam beberapa kategori tampil pada
+masing-masing kategori tanpa menduplikasi data.
+
+Detail analisa menampilkan A Tenaga, B Bahan, C Peralatan, koefisien, harga
+satuan, jumlah komponen dan subtotal setiap kelompok, D biaya langsung,
+E persentase overhead & profit dan jumlahnya, F harga satuan sebelum
+pembulatan, serta harga satuan yang dipakai setelah pembulatan sumber.
+Subtotal dihitung dengan Decimal di packages/calc. Kelompok kosong tetap
+tampil bernilai nol. Angka tersimpan dan aturan pembulatan D-051 tidak berubah.
+Pengguna memilih rincian dan overhead dahulu; TKDN tetap ditunda (OD-010).
+
+## D-061 UI Menyeluruh dan Asal Nilai
+
+Permintaan pengguna 2026-10-26: modernkan seluruh halaman dan buat nilai
+dapat ditelusuri seperti dependensi sel Excel. Panel Asal nilai menunjukkan
+nilai presisi lengkap, penjelasan rumus yang berlaku, operand dan tautan
+ke baris/analisa/harga/dokumen. Navigasi mempertahankan proyek dan versi;
+baris tujuan disorot dan kelompok induknya dibuka. Data sumber yang tidak
+tersimpan ditandai tidak tersedia, tanpa mengarang sel atau aturan baru.
+
+Pratinjau Excel membaca file asli dan nilai cached, tidak mengeksekusi rumus
+atau link eksternal. Referensi tertulis dapat dibuka untuk penelusuran
+selanjutnya; bukan klaim bahwa setiap cabang rumus dipakai. Akses dokumen
+tetap document.read dan akses RAB/AHSP tetap sesuai permission backend.
+Input manual/override menampilkan konteks/alasan yang ada; harga warisan
+menyediakan tautan paket asal. Tidak ada perubahan kalkulasi atau schema.
+
+## D-062 Satu Tingkat Tab pada Halaman Versi RAB
+
+Koreksi pengguna 2026-10-26: dua tingkat tab pada satu halaman terlalu ramai.
+Hilangkan ProjectTabs dari rekap satu versi, daftar/detail analisa, bahan,
+alat, dan upah. Pertahankan hanya lima tab paket; navigasi ke proyek dan
+daftar versi berupa tautan teks biasa. Daftar versi RAB dan halaman detail
+proyek tetap memakai tab proyek. Izin dan konteks versi tidak berubah.
+
+## D-063 Rekonsiliasi Item/Total dan Overhead yang Tidak Dipakai Sumber
+
+Arahan pengguna 2026-10-26 setelah audit SDN2-SERANGAN-2026-PAKET.
+
+- Patokan nilai resmi adalah RAB sumber yang disahkan. Aplikasi menghitung sendiri
+  mengikuti rantai rumus, harga, volume, PPN, dan pembulatan yang benar-benar
+  dipakai sumber (D-043, D-051); nilai cached workbook hanya pembanding.
+- **Overhead tercantum tetapi tidak dipakai**: bila rumus harga kepala analisa
+  merujuk biaya langsung D, sedangkan blok memuat baris E = D × persentase,
+  parser memberi WARNING `OVERHEAD_UNUSED` (tidak memblokir). Deteksi dari
+  bukti rumus, bukan kode item. Pesan memuat persentase, harga yang dipakai,
+  dan sel sumber (E, persentase, D). Harga tetap mengikuti sumber (tanpa
+  overhead); bukti disimpan di `source_locator.unusedOverhead` analisa dan
+  ikut tersalin ke paket versi berikutnya. Contoh: workbook 00 analisa VI.6,
+  VIII.4, XXI.3 (data approved tidak diubah).
+- **Rekonsiliasi per item**: harga + PPN dan jumlah tiap item dibandingkan
+  dengan nilai cached kolom HARGA SAT + PPN dan SUB JUMLAH pada blok versi
+  yang dipilih, memakai toleransi D-054. Selisih di atas toleransi menjadi
+  WARNING `RAB_ROW_MISMATCH` dengan nilai dan selisihnya; angka aplikasi tidak
+  diganti dan tidak ada override otomatis. Bukti disimpan di
+  `source_locator.reconciliation` item saat approval.
+  Nilai cached disimpan di draft sebagai string 17 digit, karena JSON MySQL
+  tidak mempertahankan semua digit double (contoh 31605812.106000002).
+- **Rekonsiliasi total**: nominal = total aplikasi vs Σ jumlah item cached
+  dijumlahkan eksak (D-054). Sel total workbook dibandingkan terpisah karena
+  Excel menjumlahkan float. Status `MATCH`; `FLOAT_RESIDUE` bila nominal cocok
+  tetapi sel total berbeda di atas toleransi (sisa float, contoh MC-0 Rp
+  0,000006); `MISMATCH` bila nominal berbeda (WARNING `RAB_TOTAL_MISMATCH`).
+  REAL COST dan DIBULATKAN tetap dibandingkan eksak seperti sebelumnya.
+  Keterbatasan: selisih sel total antara toleransi dan Rp 0,005 yang bukan
+  akibat penjumlahan float tidak dapat dibedakan bila setiap item cocok.
+- Draft lama (`rab-parser@1`) tidak menyimpan nilai cached item; rekonsiliasi
+  per item tampil "belum tersedia" untuk impor tersebut.
+- **Keterbatasan presisi 12 desimal** (tanpa migration pada pekerjaan ini):
+  volume, koefisien, dan harga komponen/daftar harga disimpan maksimal 12
+  desimal (`DECIMAL(30,12)` / `DECIMAL(40,12)`). Nilai sumber dengan 15 digit
+  signifikan yang melebihi 12 desimal dibulatkan oleh MySQL saat disimpan,
+  sedangkan jumlah dihitung dari nilai sebelum pembulatan. Akibatnya
+  koefisien × harga yang tampil dapat berbeda dari jumlah tersimpan hingga
+  sekitar Rp 10⁻⁹ (contoh workbook 00: XVIII.9 koefisien 12,3307511653399;
+  XXIII.6 harga subanalisa VI.13). Jauh di bawah toleransi D-054; total dan
+  harga analisa tidak terpengaruh. Pelebaran skala kolom diputuskan terpisah.
+
 ## Keputusan Terbuka
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.
