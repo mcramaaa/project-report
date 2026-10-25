@@ -41,7 +41,9 @@
 - `apps/api/src/prisma/prisma.module.ts`
 - `apps/api/src/prisma/prisma.service.ts`
 - `apps/api/src/projects/projects.controller.ts`
+- `apps/api/src/projects/project-calendar.ts`
 - `apps/api/src/projects/projects.service.ts`
+- `apps/api/src/projects/projects.spec.ts`
 - `apps/api/src/test/db.ts`
 - `apps/api/src/test/global-setup.ts`
 - `apps/api/src/test/http.ts`
@@ -67,6 +69,9 @@
 - `apps/web/app/(app)/profile/change-password-form.tsx`
 - `apps/web/app/(app)/profile/page.tsx`
 - `apps/web/app/(app)/projects/[projectId]/page.tsx`
+- `apps/web/app/(app)/projects/[projectId]/project-actions.tsx`
+- `apps/web/app/(app)/projects/new/page.tsx`
+- `apps/web/app/(app)/projects/new/project-wizard.tsx`
 - `apps/web/app/globals.css`
 - `apps/web/app/layout.tsx`
 - `apps/web/app/login/login-form.tsx`
@@ -74,12 +79,15 @@
 - `apps/web/components/access-tabs.tsx`
 - `apps/web/components/app-shell.tsx`
 - `apps/web/components/brand.tsx`
+- `apps/web/components/calendar-preview.tsx`
 - `apps/web/components/icon.tsx`
 - `apps/web/components/logout-button.tsx`
+- `apps/web/components/pager.tsx`
 - `apps/web/components/ui.tsx`
 - `apps/web/eslint.config.mjs`
 - `apps/web/lib/api.ts`
 - `apps/web/lib/permissions.ts`
+- `apps/web/lib/project-fields.ts`
 - `apps/web/lib/server-api.ts`
 - `apps/web/lib/use-project-roles.ts`
 - `apps/web/next.config.ts`
@@ -113,6 +121,8 @@
 - `packages/calc/README.md`
 - `packages/calc/src/decimal.test.ts`
 - `packages/calc/src/index.ts`
+- `packages/calc/src/project-calendar.ts`
+- `packages/calc/src/project-calendar.test.ts`
 - `packages/calc/tsconfig.build.json`
 - `packages/calc/tsconfig.json`
 - `packages/config/eslint.base.js`
@@ -133,6 +143,7 @@
 - `prisma.config.ts`
 - `prisma/migrations/20261025051445_init_base_schema/migration.sql`
 - `prisma/migrations/20261025070000_dynamic_roles/migration.sql`
+- `prisma/migrations/20261025090000_project_master/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

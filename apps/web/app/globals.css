@@ -217,3 +217,21 @@ svg { flex-shrink: 0; }
   .link-button { color: var(--blue); font-weight: 500; background: none; border: 0; padding: 0; }
   .link-button:disabled { opacity: .5; }
 }
+
+/* Project master (Milestone 3): wizard steps, form grid, calendar preview. */
+@layer components {
+  .btn[aria-disabled='true'] { opacity: .5; pointer-events: none; }
+  .wizard-steps { display: flex; flex-wrap: wrap; gap: 8px; counter-reset: step; }
+  .wizard-steps li { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-weight: 500; }
+  .wizard-steps li span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; background: var(--background); font-size: 12px; }
+  .wizard-steps li[aria-current='step'] { border-color: var(--blue); color: var(--blue); }
+  .wizard-steps li[aria-current='step'] span, .wizard-steps li[data-done] span { background: var(--blue); color: white; }
+  .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; }
+  .field-hint { margin-top: 4px; color: var(--muted); font-size: 12px; }
+  .calendar-preview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px 16px; border-radius: 14px; background: var(--blue-wash); }
+  .calendar-preview dt { color: var(--muted); font-size: 11px; }
+  .calendar-preview dd { color: var(--text); font-weight: 600; }
+  @media (max-width: 767px) {
+    .form-grid, .calendar-preview { grid-template-columns: minmax(0, 1fr); }
+  }
+}

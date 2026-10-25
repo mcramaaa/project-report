@@ -56,28 +56,75 @@ model AuthSession {
 }
 
 model Project {
-  id              String   @id @default(uuid(7)) @db.Char(36)
-  code            String   @unique @db.VarChar(50)
-  activityName    String   @map("activity_name") @db.VarChar(255)
-  subActivityName String   @map("sub_activity_name") @db.VarChar(255)
-  projectName     String   @map("project_name") @db.VarChar(500)
-  location        String   @db.VarChar(255)
-  fiscalYear      Int      @map("fiscal_year") @db.UnsignedSmallInt
-  contractorName  String   @map("contractor_name") @db.VarChar(255)
-  consultantName  String   @map("consultant_name") @db.VarChar(255)
-  contractNumber  String   @map("contract_number") @db.VarChar(100)
-  contractDate    DateTime @map("contract_date") @db.Date
-  spmkNumber      String   @map("spmk_number") @db.VarChar(100)
-  spmkDate        DateTime @map("spmk_date") @db.Date
-  startDate       DateTime @map("start_date") @db.Date
-  durationDays    Int      @map("duration_days") @db.UnsignedSmallInt
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  id              String        @id @default(uuid(7)) @db.Char(36)
+  code            String        @unique @db.VarChar(50)
+  activityName    String        @map("activity_name") @db.VarChar(255)
+  subActivityName String        @map("sub_activity_name") @db.VarChar(255)
+  projectName     String        @map("project_name") @db.VarChar(500)
+  location        String        @db.VarChar(255)
+  fiscalYear      Int           @map("fiscal_year") @db.UnsignedSmallInt
+  contractorName  String        @map("contractor_name") @db.VarChar(255)
+  consultantName  String        @map("consultant_name") @db.VarChar(255)
+  contractNumber  String        @map("contract_number") @db.VarChar(100)
+  contractDate    DateTime      @map("contract_date") @db.Date
+  /// Required by the API; null only for projects created before Milestone 3 (D-039).
+  contractValue   Decimal?      @map("contract_value") @db.Decimal(20, 2)
+  spmkNumber      String        @map("spmk_number") @db.VarChar(100)
+  spmkDate        DateTime      @map("spmk_date") @db.Date
+  startDate       DateTime      @map("start_date") @db.Date
+  /// Planned finish date is derived (start + duration − 1) and not stored (D-036).
+  durationDays    Int           @map("duration_days") @db.UnsignedSmallInt
+  status          ProjectStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
 
-  members   ProjectUser[]
-  auditLogs AuditLog[]
+  members       ProjectUser[]
+  auditLogs     AuditLog[]
+  weeks         ProjectWeek[]
+  reportPeriods ReportPeriod[]
 
   @@map("projects")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  CLOSED
+}
+
+/// 7-day blocks from the project start; the last one ends on the planned finish date (D-037).
+model ProjectWeek {
+  id             String   @id @default(uuid(7)) @db.Char(36)
+  projectId      String   @map("project_id") @db.Char(36)
+  reportPeriodId String   @map("report_period_id") @db.Char(36)
+  weekNumber     Int      @map("week_number") @db.UnsignedSmallInt
+  startDate      DateTime @map("start_date") @db.Date
+  endDate        DateTime @map("end_date") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  reportPeriod ReportPeriod @relation(fields: [reportPeriodId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, weekNumber])
+  @@index([reportPeriodId])
+  @@map("weeks")
+}
+
+/// 4-week blocks (B.n = weeks 4n−3..4n); the last one may be shorter than 28 days (D-037).
+model ReportPeriod {
+  id           String   @id @default(uuid(7)) @db.Char(36)
+  projectId    String   @map("project_id") @db.Char(36)
+  periodNumber Int      @map("period_number") @db.UnsignedSmallInt
+  startDate    DateTime @map("start_date") @db.Date
+  endDate      DateTime @map("end_date") @db.Date
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  weeks   ProjectWeek[]
+
+  @@unique([projectId, periodNumber])
+  @@map("report_periods")
 }
 
 /// Roles are data (D-035). System roles: code, scope, and isActive are locked.

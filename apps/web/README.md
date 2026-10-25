@@ -6,7 +6,9 @@ Frontend hanya membantu UX; authorization tetap di `apps/api`.
 
 - Browser hanya bicara dengan web. `/api/*` di-rewrite ke `API_URL` (default `http://localhost:3001`) sehingga cookie session first-party (D-031). Rewrite dievaluasi saat build.
 - Server component memanggil API langsung dengan meneruskan cookie (`lib/server-api.ts`); client component memakai `lib/api.ts`.
-- Halaman: `/login`, `/`, `/projects/[projectId]`, `/profile`, `/admin/users`, `/admin/projects`, `/admin/projects/[projectId]/members`.
+- Halaman: `/login`, `/`, `/projects/new`, `/projects/[projectId]` (tab `?tab=calendar|team`), `/profile`, `/admin/users`, `/admin/users/[userId]`, `/admin/roles`, `/admin/roles/[roleId]`, `/admin/projects`, `/admin/projects/[projectId]/members`.
+- Daftar proyek memakai query `?search=&page=` yang dirender server (`components/pager.tsx`).
+- Pratinjau jadwal (`components/calendar-preview.tsx`) memakai `@laporan-proyek/calc`, perhitungan yang sama dengan backend.
 - Lint memakai ESLint langsung (`next lint` sudah dihapus di Next.js 16).
 
 ## UI

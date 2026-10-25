@@ -52,7 +52,7 @@ export async function ensureSystemRoles(prisma: PrismaClient): Promise<number> {
         ...role,
         scope: 'PROJECT',
         isSystem: true,
-        permissions: { create: SYSTEM_ROLE_DEFAULT_PERMISSIONS.map((permissionCode) => ({ permissionCode })) },
+        permissions: { create: SYSTEM_ROLE_DEFAULT_PERMISSIONS[role.code].map((permissionCode) => ({ permissionCode })) },
       },
     });
     created += 1;

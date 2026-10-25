@@ -64,14 +64,15 @@ Pengaturan
 | URL | Untuk | Isi |
 |---|---|---|
 | `/login` | publik | email + password; pesan gagal generik; info bila baru ganti password |
-| `/` | user login | proyek yang dapat diakses + role (super admin: semua proyek) |
-| `/projects/:projectId` | `project.read` | identitas proyek |
+| `/` | user login | proyek yang dapat dibuka + role, cari & pagination (super admin: semua proyek); tombol "Proyek baru" dengan `projects.create` |
+| `/projects/new` | `projects.create` | wizard pembuatan proyek (Milestone 3, §4) |
+| `/projects/:projectId` | `project.read` | tab Informasi, Minggu & Periode, Tim; dengan `project.update`: ubah identitas, ubah jadwal, tutup/buka kembali |
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
 | `/admin/users` | `users.read` | cari, pagination; dengan `users.manage`: buat, ubah, aktif/nonaktif; super admin: beri/cabut super admin |
 | `/admin/users/:userId` | `assignments.read` | role administrasi user dan daftar proyek yang dapat diaksesnya; tambah/ubah/cabut akses proyek |
 | `/admin/roles` | `roles.read` | kartu role proyek & role administrasi; tambah role |
 | `/admin/roles/:roleId` | `roles.read` | identitas role, permission per modul dengan pencarian dan pilih grup |
-| `/admin/projects` | `assignments.read` | daftar proyek (kode, nama) |
+| `/admin/projects` | `assignments.read` | daftar proyek (kode, nama), cari & pagination |
 | `/admin/projects/:projectId/members` | `assignments.read` | anggota proyek; dengan `assignments.manage`: tambah, ubah role, cabut |
 
 Aturan UX:
@@ -111,25 +112,40 @@ Kolom:
 
 ## 4. Create Project Wizard
 
+Milestone 3. Satu kali simpan di akhir; data belum tersimpan sampai langkah terakhir dikirim.
+
 ### Step 1 Identitas
+- kode proyek
 - kegiatan
 - sub kegiatan
 - pekerjaan
 - lokasi
-- tahun
+- tahun anggaran
 
 ### Step 2 Kontrak
+- kontraktor
+- konsultan
 - nomor
 - tanggal
-- nilai
+- nilai (decimal, maks. 2 desimal)
 
 ### Step 3 SPMK
 - nomor
 - tanggal
 - tanggal mulai
-- masa pelaksanaan
+- masa pelaksanaan (hari kalender)
 
-Sistem generate minggu dan periode 4 minggu.
+Pratinjau sebelum simpan: tanggal selesai rencana, jumlah minggu, dan jumlah periode 4 minggu (dihitung dengan `packages/calc`, sama dengan backend).
+
+Sistem generate minggu dan periode 4 minggu saat proyek disimpan.
+
+### Detail Proyek
+
+- tab Informasi: identitas, kontrak, SPMK, jadwal, status
+- tab Minggu & Periode: tabel minggu (nomor, tanggal, jumlah hari, periode) dikelompokkan per periode B.n; minggu/periode pendek ditandai
+- tab Tim: nama dan role anggota aktif (tanpa email); tautan ke Akses proyek bila punya `assignments.read`
+- ubah jadwal menampilkan pratinjau minggu/periode baru dan wajib alasan
+- tutup/buka kembali proyek wajib alasan dan konfirmasi; proyek CLOSED menampilkan badge dan form ubah dinonaktifkan
 
 ## 5. Documents
 

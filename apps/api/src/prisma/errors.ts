@@ -2,6 +2,11 @@ export function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string } | null)?.code === 'P2002';
 }
 
+/** A row is still referenced by a RESTRICT foreign key. */
+export function isForeignKeyViolation(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === 'P2003';
+}
+
 /** InnoDB deadlock (1213) / write conflict: the transaction was rolled back and may be retried. */
 export function isWriteConflict(err: unknown): boolean {
   const e = err as { code?: string; meta?: { driverAdapterError?: { cause?: { kind?: string } } } } | null;

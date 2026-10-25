@@ -1,12 +1,20 @@
 import { Icon } from '@/components/icon';
-import type { AdminProjectDto } from '@laporan-proyek/shared';
+import type { AdminProjectDto, Paginated } from '@laporan-proyek/shared';
 import Link from 'next/link';
-import { Alert, EmptyState, PageTitle } from '@/components/ui';
 import { AccessTabs } from '@/components/access-tabs';
+import { listHref, Pager } from '@/components/pager';
+import { Alert, EmptyState, PageTitle } from '@/components/ui';
 import { requireMe, serverGet } from '@/lib/server-api';
 
-export default async function AdminProjectsPage() {
-  const [me, { data: projects }] = await Promise.all([requireMe(), serverGet<AdminProjectDto[]>('/admin/projects')]);
+const PAGE_SIZE = 12;
+
+export default async function AdminProjectsPage({ searchParams }: { searchParams: Promise<{ search?: string; page?: string }> }) {
+  const { search = '', page: rawPage } = await searchParams;
+  const page = Math.max(1, Number.parseInt(rawPage ?? '1', 10) || 1);
+  const [me, { data }] = await Promise.all([
+    requireMe(),
+    serverGet<Paginated<AdminProjectDto>>(listHref('/admin/projects', { search: search.trim(), page, pageSize: PAGE_SIZE })),
+  ]);
 
   return (
     <>
@@ -14,13 +22,20 @@ export default async function AdminProjectsPage() {
         Akses proyek
       </PageTitle>
       <AccessTabs me={me} active="projects" />
-      {!projects ? (
+      <form className="mb-4 flex min-w-0 items-end gap-2" role="search" action="/admin/projects">
+        <div className="w-full max-w-xs">
+          <label htmlFor="search" className="field-label">Cari kode atau nama proyek</label>
+          <input id="search" name="search" className="field" defaultValue={search} />
+        </div>
+        <button type="submit" className="btn btn-secondary">Cari</button>
+      </form>
+      {!data ? (
         <Alert>Daftar proyek tidak dapat dimuat.</Alert>
-      ) : projects.length === 0 ? (
-        <EmptyState>Belum ada proyek yang tersedia untuk dikelola.</EmptyState>
+      ) : data.items.length === 0 ? (
+        <EmptyState>{search ? 'Tidak ada proyek yang cocok dengan pencarian.' : 'Belum ada proyek yang tersedia untuk dikelola.'}</EmptyState>
       ) : (
         <ul className="project-grid">
-          {projects.map((p) => (
+          {data.items.map((p) => (
             <li key={p.id} className="min-w-0">
               <Link href={`/admin/projects/${p.id}/members`} className="panel project-card h-full">
                 <span className="metric-icon"><Icon name="users" /></span>
@@ -32,6 +47,7 @@ export default async function AdminProjectsPage() {
           ))}
         </ul>
       )}
+      {data && <Pager page={data.page} pageSize={data.pageSize} total={data.total} noun="proyek" href={(n) => listHref('/admin/projects', { search, page: n })} />}
     </>
   );
 }

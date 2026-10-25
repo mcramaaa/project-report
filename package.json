@@ -11,7 +11,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build:packages": "prisma generate && npm run build -w @laporan-proyek/shared -w @laporan-proyek/calc",
+    "build:packages": "prisma generate && npm run build -w @laporan-proyek/calc -w @laporan-proyek/shared",
     "predev": "npm run build:packages",
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w @laporan-proyek/api\" \"npm run dev -w @laporan-proyek/web\"",
     "prebuild": "prisma generate",

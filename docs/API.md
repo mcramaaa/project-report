@@ -23,14 +23,29 @@ POST /auth/change-password  { currentPassword, newPassword } -> cabut semua sess
 - cookie `lp_session` HTTP-only, `SameSite=Lax`, `Secure` di HTTPS (D-031)
 - POST/PUT/PATCH/DELETE wajib header `Origin` = origin `APP_URL`
 
-## 2. Projects (membership aktif)
+## 2. Projects
 
 ```text
-GET /projects              -> [{ id, code, projectName, role: { id, code, name } | null }]
-GET /projects/:projectId   -> identitas proyek (permission project.read)
+GET   /projects?search=&page=&pageSize=&status=   -> Paginated<{ id, code, projectName, fiscalYear, status, startDate, plannedFinishDate, role | null }>
+POST  /projects                                   { identitas, kontrak, SPMK }  -> ProjectDto (201)
+GET   /projects/:projectId                        -> ProjectDto
+PATCH /projects/:projectId                        { field identitas/kontrak/SPMK?, reason? }
+PUT   /projects/:projectId/schedule               { startDate, durationDays, reason }
+POST  /projects/:projectId/close                  { reason }
+POST  /projects/:projectId/reopen                 { reason }
+GET   /projects/:projectId/weeks                  -> [{ id, weekNumber, periodNumber, startDate, endDate, days }]
+GET   /projects/:projectId/report-periods         -> [{ id, periodNumber, startDate, endDate, firstWeekNumber, lastWeekNumber, days }]
+GET   /projects/:projectId/team                   -> [{ userId, name, role: { id, code, name } }]
 ```
 
-Super admin melihat semua proyek (`role: null` bila tanpa membership). User lain hanya melihat proyek yang detailnya dapat ia buka: membership aktif dengan role aktif yang memiliki `project.read`. Tanpa membership aktif: `404` (D-033). Create/update proyek dikerjakan di Milestone 3.
+- `ProjectDto`: `{ id, code, activityName, subActivityName, projectName, location, fiscalYear, contractorName, consultantName, contractNumber, contractDate, contractValue, spmkNumber, spmkDate, startDate, durationDays, plannedFinishDate, status, createdAt, updatedAt }`
+- tanggal `YYYY-MM-DD`; `contractValue` decimal string maks. 2 desimal (`null` untuk proyek lama yang belum diisi); `plannedFinishDate` dihitung (D-036)
+- `GET /projects`: super admin melihat semua proyek (`role: null` bila tanpa membership); user lain hanya proyek yang detailnya dapat dibuka: membership aktif dengan role aktif yang memiliki `project.read`. Cari kode/nama; `pageSize` maks. 100
+- `POST /projects`: `projects.create`; pembuat menjadi MANAGER. Role MANAGER tanpa `project.read`/`project.update`: `409` (D-039). Kode duplikat: `409`
+- `PATCH`, `schedule`, `close`, `reopen`: `project.update`. Proyek `CLOSED`: `409` untuk `PATCH` dan `schedule`. `close` pada proyek CLOSED / `reopen` pada proyek ACTIVE: `409`
+- `schedule` membentuk ulang minggu/periode dalam transaksi yang sama; ID nomor yang sama dipertahankan; baris akhir yang memiliki data terkait: `409` (D-038)
+- `weeks`, `report-periods`, `team`: `project.read`. `team` hanya membership aktif user aktif, tanpa email
+- tanpa membership aktif: `404` (D-033); tanpa permission: `403`
 
 ## 3. Manajemen Akses
 
@@ -74,7 +89,7 @@ PUT   /admin/roles/:roleId/permissions   { permissionCodes }
 ### Projects & Members
 
 ```text
-GET    /admin/projects?search=                       -> [{ id, code, projectName }]
+GET    /admin/projects?search=&page=&pageSize=       -> Paginated<{ id, code, projectName }>
 GET    /admin/projects/:projectId/members            -> { project, members: [{ userId, name, email, isActive, role, createdAt }] }
 GET    /admin/projects/:projectId/member-candidates?search=  -> [{ id, name, email }]
 POST   /admin/projects/:projectId/members            { userId, roleId }
@@ -143,11 +158,11 @@ GET  /schedules/:scheduleVersionId
 ## 9. Weeks
 
 ```text
-GET /projects/:projectId/weeks
+GET /projects/:projectId/weeks   (Milestone 3, lihat §2)
 GET /weeks/:weekId
 ```
 
-Weeks biasanya generated dari start date + duration.
+Weeks dibentuk dari start date + duration (D-037).
 
 ## 10. Weekly Progress
 

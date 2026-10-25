@@ -2,9 +2,11 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, P
 import {
   addMemberSchema,
   changeMemberRoleSchema,
+  listAdminProjectsQuerySchema,
   reasonBodySchema,
   type AddMemberInput,
   type ChangeMemberRoleInput,
+  type ListAdminProjectsQuery,
   type ReasonInput,
 } from '@laporan-proyek/shared';
 import { CurrentAuth, type AuthContext } from '../auth/auth-context';
@@ -20,8 +22,8 @@ export class AdminProjectsController {
 
   @Get()
   @RequirePermission('assignments.read')
-  list(@Query('search') search?: string) {
-    return this.projects.listProjects(typeof search === 'string' ? search.trim().slice(0, 100) : undefined);
+  list(@Query(new ZodPipe(listAdminProjectsQuerySchema)) query: ListAdminProjectsQuery) {
+    return this.projects.listProjects(query);
   }
 
   @Get(':projectId/members')

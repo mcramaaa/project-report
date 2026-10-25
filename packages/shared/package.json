@@ -18,6 +18,7 @@
     "@laporan-proyek/config": "0.0.0"
   },
   "dependencies": {
+    "@laporan-proyek/calc": "0.0.0",
     "zod": "^4.6.7"
   }
 }

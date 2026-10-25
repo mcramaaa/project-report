@@ -56,7 +56,7 @@ describe('roles', () => {
       expect.arrayContaining([
         ['FILLER', true, ['project.read']],
         ['REVIEWER', true, ['project.read']],
-        ['MANAGER', true, ['project.read']],
+        ['MANAGER', true, ['project.read', 'project.update']],
         ['ADMIN', true, ['project.read']],
       ]),
     );
@@ -92,20 +92,20 @@ describe('roles', () => {
     const c = await loggedIn('u@example.com');
     expect((await c.get(`/projects/${project.id}`)).status).toBe(200);
 
-    expect((await c.get('/projects')).body).toHaveLength(1);
+    expect((await c.get('/projects')).body.items).toHaveLength(1);
 
     // The project list follows the same rule as the detail (regression): no project.read -> not listed.
     await admin.request('PUT', `/admin/roles/${custom.body.id}/permissions`, { permissionCodes: [] });
     expect((await c.get(`/projects/${project.id}`)).status).toBe(403);
-    expect((await c.get('/projects')).body).toEqual([]);
+    expect((await c.get('/projects')).body.items).toEqual([]);
 
     await admin.request('PUT', `/admin/roles/${custom.body.id}/permissions`, { permissionCodes: ['project.read'] });
     expect((await c.get(`/projects/${project.id}`)).status).toBe(200);
-    expect((await c.get('/projects')).body).toHaveLength(1);
+    expect((await c.get('/projects')).body.items).toHaveLength(1);
 
     await admin.patch(`/admin/roles/${custom.body.id}`, { isActive: false });
     expect((await c.get(`/projects/${project.id}`)).status).toBe(403);
-    expect((await c.get('/projects')).body).toEqual([]);
+    expect((await c.get('/projects')).body.items).toEqual([]);
     const other = await createUser(t.prisma, { email: 'v@example.com' });
     expect((await admin.post(`/admin/projects/${project.id}/members`, { userId: other.id, roleId: custom.body.id })).status).toBe(400);
   });
@@ -156,7 +156,7 @@ describe('delegated administration', () => {
     const filler = await roleId(t.prisma, 'FILLER');
     const manager = await roleId(t.prisma, 'MANAGER');
 
-    expect((await d.get('/admin/projects')).body).toEqual([{ id: project.id, code: 'A-001', projectName: 'Proyek A-001' }]);
+    expect((await d.get('/admin/projects')).body.items).toEqual([{ id: project.id, code: 'A-001', projectName: 'Proyek A-001' }]);
     expect((await d.post(`/admin/projects/${project.id}/members`, { userId: other.id, roleId: filler })).status).toBe(204);
     expect((await d.patch(`/admin/projects/${project.id}/members/${other.id}`, { roleId: manager })).status).toBe(204);
 

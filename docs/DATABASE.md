@@ -51,12 +51,14 @@ Kolom identitas mengikuti PRD §3 (data minimum, wajib diisi):
 - contract_date
 - spmk_number
 - spmk_date
+- contract_value DECIMAL(20,2) nullable — wajib lewat API; null hanya untuk proyek sebelum M3 (D-039)
 - start_date
-- duration_days
+- duration_days — 1–3650 (validasi API)
+- status — ACTIVE | CLOSED (D-036)
 - created_at
 - updated_at
 
-`status` dan `planned_finish_date` belum dibuat (OD-007, Milestone 3).
+Tanggal selesai rencana tidak disimpan; dihitung `start_date + duration_days − 1` (D-036).
 
 ### roles
 
@@ -358,16 +360,21 @@ component_type:
 
 ### weeks
 
+Blok 7 hari sejak `projects.start_date`; minggu terakhir dipotong pada tanggal selesai rencana (D-037).
+
 - id
-- project_id
+- project_id → projects (RESTRICT)
+- report_period_id → report_periods (RESTRICT) — periode tempat minggu ini berada
 - week_number
 - start_date
 - end_date
-- status
 - created_at
+- updated_at
 
 Unique:
 - project_id + week_number
+
+Jumlah hari dihitung dari tanggal. `status` ditunda sampai OD-005. Foreign key dari tabel lain ke `weeks` wajib RESTRICT.
 
 ### week_baseline_segments
 
@@ -479,22 +486,20 @@ allocation_method:
 
 ### report_periods
 
-Periode 4 minggu/28 hari.
+Periode 4 minggu/28 hari (B.n), minggu `4n−3` s.d. `4n`; periode terakhir dipotong pada tanggal selesai rencana (D-037).
 
 - id
-- project_id
+- project_id → projects (RESTRICT)
 - period_number
 - start_date
 - end_date
-- first_week_number
-- last_week_number
-- number_of_days
-- status
+- created_at
+- updated_at
 
-### report_period_weeks
+Unique:
+- project_id + period_number
 
-- report_period_id
-- week_id
+Tidak disimpan karena dapat dihitung: `number_of_days`, `first_week_number`, `last_week_number`. Keanggotaan minggu disimpan di `weeks.report_period_id` (menggantikan `report_period_weeks`). `status` ditunda sampai OD-005.
 
 ## 10. Finalization
 

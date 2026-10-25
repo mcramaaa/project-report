@@ -37,9 +37,9 @@ beforeEach(async () => {
 
 describe('project data access', () => {
   it('super admin reads every project without a membership (D-035)', async () => {
-    expect((await admin.get('/projects')).body).toEqual([
-      { id: projectA.id, code: 'A-001', projectName: 'Proyek A-001', role: null },
-      { id: projectB.id, code: 'B-001', projectName: 'Proyek B-001', role: null },
+    expect((await admin.get('/projects')).body.items).toEqual([
+      expect.objectContaining({ id: projectA.id, code: 'A-001', projectName: 'Proyek A-001', role: null }),
+      expect.objectContaining({ id: projectB.id, code: 'B-001', projectName: 'Proyek B-001', role: null }),
     ]);
     expect((await admin.get(`/projects/${projectA.id}`)).status).toBe(200);
     expect((await admin.get('/projects/0192f0f0-0000-7000-8000-000000000000')).status).toBe(404);
@@ -50,7 +50,9 @@ describe('project data access', () => {
     await admin.post(members(projectA.id), { userId: u.id, roleId: roles.FILLER });
     const c = await loggedIn('filler@example.com');
 
-    expect((await c.get('/projects')).body).toEqual([{ id: projectA.id, code: 'A-001', projectName: 'Proyek A-001', role: role('FILLER') }]);
+    expect((await c.get('/projects')).body.items).toEqual([
+      { id: projectA.id, code: 'A-001', projectName: 'Proyek A-001', fiscalYear: 2026, status: 'ACTIVE', startDate: '2026-01-05', plannedFinishDate: '2026-05-04', role: role('FILLER') },
+    ]);
     const read = await c.get(`/projects/${projectA.id}`);
     expect(read.status).toBe(200);
     expect(read.body).toMatchObject({ code: 'A-001', startDate: '2026-01-05', durationDays: 120 });
@@ -129,10 +131,10 @@ describe('membership management', () => {
     const u = await createUser(t.prisma, { email: 'u@example.com' });
     await admin.post(members(projectA.id), { userId: u.id, roleId: roles.FILLER });
     const c = await loggedIn('u@example.com');
-    expect((await c.get('/projects')).body[0].role.code).toBe('FILLER');
+    expect((await c.get('/projects')).body.items[0].role.code).toBe('FILLER');
 
     expect((await admin.patch(`${members(projectA.id)}/${u.id}`, { roleId: roles.REVIEWER })).status).toBe(204);
-    expect((await c.get('/projects')).body[0].role.code).toBe('REVIEWER');
+    expect((await c.get('/projects')).body.items[0].role.code).toBe('REVIEWER');
   });
 
   it('revocation removes access immediately, keeps the user and history, and re-adding reuses the row', async () => {
@@ -143,13 +145,13 @@ describe('membership management', () => {
 
     expect((await admin.delete(`${members(projectA.id)}/${u.id}`, { reason: 'pindah tugas' })).status).toBe(204);
     expect((await c.get(`/projects/${projectA.id}`)).status).toBe(404);
-    expect((await c.get('/projects')).body).toEqual([]);
+    expect((await c.get('/projects')).body.items).toEqual([]);
     expect((await c.get('/auth/me')).status).toBe(200); // global account untouched
     expect((await admin.get(members(projectA.id))).body.members).toEqual([]);
     expect((await admin.delete(`${members(projectA.id)}/${u.id}`)).status).toBe(404);
 
     expect((await admin.post(members(projectA.id), { userId: u.id, roleId: roles.MANAGER })).status).toBe(204);
-    expect((await c.get('/projects')).body[0].role.code).toBe('MANAGER');
+    expect((await c.get('/projects')).body.items[0].role.code).toBe('MANAGER');
     expect(await t.prisma.projectUser.count({ where: { projectId: projectA.id, userId: u.id } })).toBe(1);
 
     const audit = await t.prisma.auditLog.findMany({ where: { projectId: projectA.id }, orderBy: { createdAt: 'asc' } });
@@ -167,7 +169,7 @@ describe('membership management', () => {
     await admin.post(members(projectA.id), { userId: u.id, roleId: roles.FILLER });
     await admin.post(members(projectB.id), { userId: u.id, roleId: roles.MANAGER });
     const c = await loggedIn('u@example.com');
-    expect((await c.get('/projects')).body.map((p: { code: string; role: { code: string } }) => [p.code, p.role.code])).toEqual([
+    expect((await c.get('/projects')).body.items.map((p: { code: string; role: { code: string } }) => [p.code, p.role.code])).toEqual([
       ['A-001', 'FILLER'],
       ['B-001', 'MANAGER'],
     ]);

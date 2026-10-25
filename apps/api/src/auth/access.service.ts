@@ -20,6 +20,17 @@ export class AccessService {
     return new Set(rows.map((row) => row.permissionCode));
   }
 
+  /** Project permissions the user holds in the project (for UI hints; guards stay authoritative). */
+  async projectPermissions(user: AuthUser, projectId: string): Promise<string[]> {
+    if (user.isSystemAdmin) return permissionsForScope('PROJECT');
+    const membership = await this.prisma.projectUser.findUnique({
+      where: { projectId_userId: { projectId, userId: user.id } },
+      select: { revokedAt: true, role: { select: { isActive: true, permissions: { select: { permissionCode: true } } } } },
+    });
+    if (!membership || membership.revokedAt || !membership.role.isActive) return [];
+    return membership.role.permissions.map((p) => p.permissionCode).sort();
+  }
+
   /** Returns null when the user has no active membership (super admins always pass). */
   async hasProjectPermission(user: AuthUser, projectId: string, permission: string): Promise<boolean | null> {
     if (user.isSystemAdmin) return true;

@@ -38,7 +38,21 @@ export const PERMISSIONS = [
     name: 'Kelola akses proyek',
     description: 'Menambah, mengubah role, dan mencabut anggota proyek. Tidak berlaku untuk akses diri sendiri.',
   },
-  { code: 'project.read', scope: 'PROJECT', module: 'Proyek', name: 'Lihat proyek', description: 'Membaca identitas proyek.' },
+  { code: 'projects.create', scope: 'GLOBAL', module: 'Proyek', name: 'Buat proyek', description: 'Membuat proyek baru; pembuat menjadi MANAGER proyek tersebut.' },
+  {
+    code: 'project.read',
+    scope: 'PROJECT',
+    module: 'Proyek',
+    name: 'Lihat proyek',
+    description: 'Membaca identitas, minggu, periode laporan, dan tim proyek.',
+  },
+  {
+    code: 'project.update',
+    scope: 'PROJECT',
+    module: 'Proyek',
+    name: 'Ubah proyek',
+    description: 'Mengubah identitas dan jadwal, serta menutup/membuka kembali proyek.',
+  },
 ] as const satisfies readonly { code: string; scope: PermissionScope; module: string; name: string; description: string }[];
 
 export type PermissionCode = (typeof PERMISSIONS)[number]['code'];
@@ -56,7 +70,16 @@ export const SYSTEM_PROJECT_ROLES = [
   { code: 'MANAGER', name: 'Manager', description: 'Fungsi reviewer, aktivasi baseline, reopen laporan, Addendum.' },
   { code: 'ADMIN', name: 'Admin Proyek', description: 'Upload dokumen dan review ekstraksi AI.' },
 ] as const;
-export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: ProjectPermission[] = ['project.read'];
+export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
+  FILLER: ['project.read'],
+  REVIEWER: ['project.read'],
+  MANAGER: ['project.read', 'project.update'],
+  ADMIN: ['project.read'],
+};
+
+/** Permissions the MANAGER role must hold for project creation to hand the creator a usable project (D-039). */
+export const PROJECT_CREATOR_ROLE = 'MANAGER';
+export const PROJECT_CREATOR_REQUIRED_PERMISSIONS: ProjectPermission[] = ['project.read', 'project.update'];
 
 const roleCode = z
   .string()

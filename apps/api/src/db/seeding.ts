@@ -2,6 +2,7 @@ import { emailSchema, passwordSchema } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
 import { hashPassword } from '../auth/password';
 import type { PrismaClient } from '../generated/prisma/client';
+import { syncProjectCalendar } from '../projects/project-calendar';
 
 export interface SeedAdminInput {
   email?: string;
@@ -46,23 +47,27 @@ export async function seedDevData(prisma: PrismaClient): Promise<{ projectCode: 
   const existing = await prisma.project.findUnique({ where: { code: DEV_PROJECT_CODE }, select: { id: true } });
   if (existing) return { projectCode: DEV_PROJECT_CODE, created: false };
 
-  await prisma.project.create({
-    data: {
-      code: DEV_PROJECT_CODE,
-      activityName: 'Kegiatan Contoh',
-      subActivityName: 'Sub Kegiatan Contoh',
-      projectName: 'Proyek Development (data contoh)',
-      location: 'Lokasi Contoh',
-      fiscalYear: 2026,
-      contractorName: 'PT Kontraktor Contoh',
-      consultantName: 'CV Konsultan Contoh',
-      contractNumber: 'DEV/KONTRAK/001',
-      contractDate: new Date('2026-05-20'),
-      spmkNumber: 'DEV/SPMK/001',
-      spmkDate: new Date('2026-05-25'),
-      startDate: new Date('2026-05-26'),
-      durationDays: 180,
-    },
+  await prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({
+      data: {
+        code: DEV_PROJECT_CODE,
+        activityName: 'Kegiatan Contoh',
+        subActivityName: 'Sub Kegiatan Contoh',
+        projectName: 'Proyek Development (data contoh)',
+        location: 'Lokasi Contoh',
+        fiscalYear: 2026,
+        contractorName: 'PT Kontraktor Contoh',
+        consultantName: 'CV Konsultan Contoh',
+        contractNumber: 'DEV/KONTRAK/001',
+        contractDate: new Date('2026-05-20'),
+        contractValue: '1250000000.00',
+        spmkNumber: 'DEV/SPMK/001',
+        spmkDate: new Date('2026-05-25'),
+        startDate: new Date('2026-05-26'),
+        durationDays: 180,
+      },
+    });
+    await syncProjectCalendar(tx, project.id, '2026-05-26', 180);
   });
   return { projectCode: DEV_PROJECT_CODE, created: true };
 }

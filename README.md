@@ -85,7 +85,9 @@ Seed hanya membuat akun bila email belum ada. Akun yang sudah ada tidak diubah, 
 | URL | Fungsi |
 |---|---|
 | http://localhost:3000/login | login |
-| http://localhost:3000/ | proyek yang dapat diakses (super admin: semua) |
+| http://localhost:3000/ | proyek yang dapat dibuka, cari & pagination (super admin: semua); tombol **Proyek baru** |
+| http://localhost:3000/projects/new | wizard proyek: identitas → kontrak → SPMK, dengan pratinjau tanggal selesai/minggu/periode |
+| http://localhost:3000/projects/:id | tab Informasi (ubah identitas, ubah jadwal, tutup/buka kembali), Minggu & Periode, Tim |
 | http://localhost:3000/profile | ganti password (login ulang setelahnya) |
 | http://localhost:3000/admin/users | Pengguna: buat, cari, ubah, aktif/nonaktif; tombol **Akses** per user |
 | http://localhost:3000/admin/users/:id | role administrasi + proyek yang dapat diakses user |
@@ -102,6 +104,17 @@ Langkah singkat:
 6. Login sebagai user tersebut: hanya proyek dan menu sesuai permission yang tampil.
 
 Model lengkap: `docs/PERMISSIONS.md`.
+
+### Mencoba Project Master (Milestone 3)
+
+1. Login sebagai super admin (atau user dengan role administrasi yang memiliki `projects.create`).
+2. **Proyek baru** → isi 3 langkah → Simpan. Anda otomatis menjadi MANAGER proyek tersebut.
+3. Tab **Minggu & Periode**: minggu 7 hari sejak tanggal mulai, dikelompokkan per periode B.n; minggu/periode terakhir yang pendek ditandai.
+4. **Ubah jadwal** (alasan wajib): minggu/periode dibentuk ulang; riwayat ada di `audit_logs` (`CHANGE_PROJECT_SCHEDULE`).
+5. **Tutup proyek** (alasan wajib): identitas/jadwal terkunci, data tetap terbaca; **Buka kembali** membuka kuncinya.
+6. Tab **Tim**: nama dan role anggota; kelola anggota lewat Manajemen akses → Akses proyek.
+
+Proyek yang sudah ada sebelum M3 mendapat minggu/periode dari migration `20261025090000_project_master`; nilai kontraknya kosong sampai diisi lewat **Ubah identitas**.
 
 ### Volume MySQL lama
 
@@ -134,4 +147,4 @@ Jangan mengedit migration yang sudah diterapkan.
 
 ## Status
 
-Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), dan Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit) selesai. Belum ada fitur bisnis proyek (RAB, progres, laporan). Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".
+Milestone 0 (tooling), Milestone 1 (MySQL + Prisma, base schema, seed), Milestone 2 (login/session, user management, role & permission dinamis, akses proyek, audit), dan Milestone 3 (Project Master: proyek, status, jadwal, minggu & periode 4 minggu, tim) selesai. Belum ada RAB, progres, atau laporan. Keputusan yang masih terbuka tercatat di `docs/DECISIONS.md` bagian "Keputusan Terbuka".

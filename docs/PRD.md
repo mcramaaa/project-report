@@ -38,6 +38,7 @@ Role proyek bawaan (role sistem, permission dapat diatur):
 - semua fungsi reviewer
 - aktivasi baseline
 - reopen laporan final dengan alasan
+- mengubah identitas, jadwal, dan status proyek (`project.update`)
 - pengelolaan Addendum
 - preview/presentasi
 
@@ -72,6 +73,13 @@ Data minimum:
 - tanggal mulai
 - masa pelaksanaan hari kalender
 - tanggal selesai rencana
+- nilai kontrak
+
+Tanggal selesai rencana = tanggal mulai + masa pelaksanaan − 1 (hari mulai dihitung), dihitung dan tidak disimpan (D-036).
+
+Status proyek: `ACTIVE` atau `CLOSED`. Proyek baru `ACTIVE`; tutup/buka kembali wajib alasan dan tercatat di audit. Proyek `CLOSED` tidak dapat diubah identitas maupun jadwalnya, tetapi tetap dapat dibaca. Proyek tidak dihapus.
+
+Perubahan tanggal mulai/durasi wajib alasan dan membentuk ulang minggu/periode dalam satu transaksi; batasannya setelah ada data terkait di D-038.
 
 ## 4. Baseline dan Versi RAB
 
@@ -223,6 +231,8 @@ M2: 2 Juni - 8 Juni
 M3: 9 Juni - 15 Juni
 ```
 
+Minggu terakhir berakhir pada tanggal selesai rencana dan boleh kurang dari 7 hari (D-037).
+
 ## 13. Input Progres Mingguan
 
 Dua mode UI:
@@ -371,7 +381,7 @@ B2 = M5-M8
 B3 = M9-M12
 ```
 
-Periode terakhir dapat kurang dari 28 hari.
+Periode terakhir dapat kurang dari 28 hari dan berakhir pada tanggal selesai rencana.
 
 Tidak ada input progres baru pada laporan periode ini. Data berasal dari minggu-minggu pembentuknya.
 

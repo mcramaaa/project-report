@@ -244,7 +244,7 @@ Disetujui 2026-10-25, menggantikan bagian D-026 yang bertentangan.
 - **Super admin** = `users.is_system_admin` (akun pertama dari seed `.env`). Memiliki seluruh permission secara implisit, global maupun di semua proyek, tanpa perlu penugasan. Aturan domain tetap berlaku untuknya (mis. reviewer tidak memfinalisasi input sendiri). Proteksi super admin aktif terakhir tetap (D-029).
 - **Permission** didefinisikan di kode (`packages/shared`, `PERMISSIONS`) karena backend yang menegakkannya; database hanya menyimpan kode permission per role. Setiap permission memiliki scope `GLOBAL` atau `PROJECT`. Katalog hanya memuat permission yang sudah ditegakkan; permission baru ditambahkan per milestone.
 - **Role** adalah data (`roles`): kode, nama, deskripsi, scope (`PROJECT` / `GLOBAL`), aktif, sistem. Permission role harus sesuai scope role. Role nonaktif tidak memberi permission. Role tidak dihapus.
-- **Role sistem bawaan**: FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah. Default permission: `project.read`.
+- **Role sistem bawaan**: FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah. Default permission: `project.read` (MANAGER juga `project.update`, D-039).
 - **Penugasan proyek**: `project_users.role_id` → role scope `PROJECT`, satu role per user per proyek (unique `project_id, user_id` tetap).
 - **Penugasan administrasi**: `user_global_roles` → role scope `GLOBAL`, tanpa proyek, boleh lebih dari satu per user. Tidak ada penugasan proyek "semua proyek"; akses ke semua proyek hanya milik super admin.
 - **Delegasi** lewat permission global: `users.read`, `users.manage`, `roles.read`, `roles.manage`, `assignments.read`, `assignments.manage`.
@@ -253,6 +253,60 @@ Disetujui 2026-10-25, menggantikan bagian D-026 yang bertentangan.
   - pemegang delegasi tidak boleh menambah, mengubah, atau mencabut akses proyeknya sendiri
   - risiko yang diterima: pemegang `roles.manage` dapat mengubah permission role proyek yang juga ia pegang; semua perubahan diaudit
 - Permission dibaca dari database setiap request; perubahan role, permission, atau penugasan berlaku pada request berikutnya.
+
+## D-036 Status Proyek dan Tanggal Selesai Rencana (OD-007)
+
+Disetujui 2026-10-25.
+
+- `projects.status`: `ACTIVE` | `CLOSED`. Proyek baru `ACTIVE`. Tidak ada `ARCHIVED` dan proyek tidak dihapus.
+- Transisi `ACTIVE → CLOSED` (tutup) dan `CLOSED → ACTIVE` (buka kembali) wajib alasan dan diaudit (`CLOSE_PROJECT`, `REOPEN_PROJECT`).
+- `CLOSED` menolak perubahan identitas dan jadwal (`409`). Membaca data dan, kelak, mengekspor laporan final tetap boleh. Status proyek tidak mengubah status atau snapshot laporan.
+- Tanggal selesai rencana inklusif: `tanggal mulai + masa pelaksanaan − 1` (hari mulai adalah hari ke-1). Dihitung oleh fungsi murni `packages/calc` dan tidak disimpan sebagai kolom proyek. Tanggal adalah tanggal kalender (`YYYY-MM-DD`) tanpa timezone.
+
+## D-037 Minggu dan Periode Laporan Proyek
+
+Disetujui 2026-10-25.
+
+- Minggu ke-n: `start + 7(n−1)` sampai `start + 7n − 1`, dipotong pada tanggal selesai. Minggu terakhir boleh kurang dari 7 hari. Jumlah minggu = `ceil(durasi / 7)`.
+- Periode ke-k (B.k) = minggu `4k−3` s.d. `4k`, dipotong pada tanggal selesai. Periode terakhir boleh kurang dari 28 hari.
+- Perhitungan ada di `packages/calc` (`plannedFinishDate`, `projectWeeks`, `reportPeriods`); API dan database memakai hasil yang sama.
+- Disimpan sebagai baris `weeks` dan `report_periods` karena data mingguan, laporan, dan snapshot kelak menunjuk ke barisnya (foreign key) dan batas minggu lama tidak boleh ikut berubah otomatis setelah ada data (lihat D-038). Tanggal mulai/selesai baris disimpan dengan alasan yang sama.
+- Tidak disimpan karena mudah dihitung: jumlah hari, nomor minggu pertama/terakhir periode. Keanggotaan minggu dalam periode disimpan sebagai `weeks.report_period_id` (satu minggu tepat satu periode), menggantikan tabel `report_period_weeks`.
+- Status laporan minggu/periode belum dibuat; menunggu OD-005.
+- Foreign key ke `weeks` dan `report_periods` memakai `RESTRICT`, bukan cascade.
+
+## D-038 Perubahan Tanggal Mulai dan Durasi
+
+Disetujui 2026-10-25.
+
+Milestone 3:
+
+- Selama proyek `ACTIVE` dan belum ada data yang bergantung pada minggu/periode, tanggal mulai dan durasi boleh diubah.
+- Wajib alasan dan audit (`CHANGE_PROJECT_SCHEDULE`, nilai lama & baru), dalam transaksi yang sama dengan pembaruan minggu/periode.
+- Nomor minggu/periode yang sama mempertahankan ID baris; hanya tanggalnya yang diperbarui. Minggu/periode baru ditambahkan di akhir.
+- Baris di akhir yang tidak lagi tercakup dihapus hanya bila tidak memiliki data terkait; foreign key `RESTRICT` menolak penghapusan bila ada data, dan perubahan dibatalkan (`409`).
+
+Batasan untuk milestone berikutnya (belum selesai hanya karena regenerasi aman di M3):
+
+- Tanggal mulai dikunci setelah ada data terkait.
+- Perpanjangan durasi tidak otomatis boleh mengubah semua minggu atau periode lama.
+- Perubahan batas minggu/periode terakhir yang sudah memiliki data atau laporan final memerlukan kebijakan khusus sebelum diimplementasikan.
+- Snapshot final selalu tetap.
+
+Milestone yang pertama kali membuat data bergantung minggu/periode (M6/M9/M11) wajib menambahkan pemeriksaan ini sebelum mengizinkan perubahan jadwal.
+
+## D-039 Permission dan Data Project Master
+
+Disetujui 2026-10-25.
+
+- `projects.create` (GLOBAL): membuat proyek. Pembuat otomatis mendapat membership MANAGER di proyek itu (juga super admin).
+- `project.update` (PROJECT): mengubah identitas, jadwal, dan status proyek. Default role sistem MANAGER: `project.read` + `project.update`; role sistem lain: `project.read`. Migration menambahkan `project.update` ke MANAGER yang sudah ada.
+- Role MANAGER dapat diubah permission-nya. Bila MANAGER tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak (`409`) dengan pesan konfigurasi. Permission role tidak diubah otomatis dan tidak ada bypass.
+- Pembuatan proyek, membership MANAGER, minggu/periode, dan audit dalam satu transaksi.
+- Nilai kontrak `DECIMAL(20,2)`, di API berupa decimal string (`"1250000000.00"`). Proyek sebelum M3 dapat bernilai null sampai diisi.
+- Validasi: tanggal kalender valid, durasi 1–3650 hari, tahun anggaran 2000–2100. Tidak ada aturan urutan tanggal kontrak/SPMK/mulai.
+- Tab tim proyek baca-saja: nama dan role, tanpa email, memerlukan `project.read`. Pengelolaan anggota memakai halaman Akses proyek yang sudah ada.
+- Daftar proyek (`GET /projects`, `GET /admin/projects`) memakai pencarian dan pagination.
 
 ## Keputusan Terbuka
 
@@ -294,9 +348,7 @@ Diputuskan sebelum: Milestone 6.
 
 ### OD-007 Status proyek dan tanggal selesai rencana
 
-`projects.status` tercantum di `docs/DATABASE.md` tanpa daftar nilai. `planned_finish_date` adalah nilai turunan (start date + durasi) sehingga belum jelas apakah disimpan atau dihitung. Base schema Milestone 1 belum membuat kedua kolom ini.
-
-Diputuskan sebelum: Milestone 3.
+Sudah diputuskan: lihat D-036, D-037, D-038.
 
 ### OD-008 Izin role proyek untuk fitur mendatang
 

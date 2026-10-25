@@ -1,8 +1,8 @@
 'use client';
 
-import type { AdminProjectDto, RoleDto, UserAccessDto } from '@laporan-proyek/shared';
+import type { AdminProjectDto, Paginated, RoleDto, UserAccessDto } from '@laporan-proyek/shared';
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, EmptyState, Loading, PageTitle, Select } from '@/components/ui';
+import { Alert, Badge, Button, EmptyState, Field, Loading, PageTitle, Select } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useProjectRoles } from '@/lib/use-project-roles';
 
@@ -242,29 +242,47 @@ function GrantProjectAccess({
   disabled: boolean;
   onGrant: (project: AdminProjectDto, role: RoleDto) => Promise<void>;
 }) {
-  const [projects, setProjects] = useState<AdminProjectDto[]>();
+  const [projects, setProjects] = useState<Paginated<AdminProjectDto>>();
+  const [search, setSearch] = useState('');
   const [projectId, setProjectId] = useState('');
   const [roleId, setRoleId] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    api<AdminProjectDto[]>('GET', '/admin/projects').then(
-      (all) => !cancelled && setProjects(all),
-      () => !cancelled && setProjects([]),
+    api<Paginated<AdminProjectDto>>('GET', `/admin/projects?${new URLSearchParams({ search, pageSize: '50' })}`).then(
+      (page) => !cancelled && setProjects(page),
+      () => !cancelled && setProjects({ items: [], total: 0, page: 1, pageSize: 50 }),
     );
     return () => {
       cancelled = true;
     };
-  }, []);
-  const options = projects?.filter((p) => !assigned.includes(p.id)) ?? [];
+  }, [search]);
+  const options = projects?.items.filter((p) => !assigned.includes(p.id)) ?? [];
   const project = options.find((p) => p.id === projectId);
   const role = roles.find((r) => r.id === roleId);
   if (!projects) return <Loading label="Memuat proyek…" />;
-  if (options.length === 0) return null;
 
   return (
     <div className="panel form-panel space-y-3">
       <h3 className="font-semibold">Tambah akses proyek</h3>
+      <form
+        role="search"
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setSearch(String(new FormData(e.currentTarget).get('projectSearch') ?? '').trim());
+          setProjectId('');
+        }}
+      >
+        <div className="w-full max-w-xs">
+          <Field id="projectSearch" name="projectSearch" label="Cari kode atau nama proyek" defaultValue={search} />
+        </div>
+        <Button type="submit" variant="secondary">
+          Cari
+        </Button>
+      </form>
+      {options.length === 0 && <p className="text-sm text-slate-500">Tidak ada proyek yang cocok atau semuanya sudah dapat diakses user ini.</p>}
+      {projects.total > projects.items.length && <p className="text-sm text-slate-500">Menampilkan {projects.items.length} dari {projects.total} proyek; persempit pencarian.</p>}
       <div className="flex flex-wrap items-end gap-2">
         <div>
           <label htmlFor="grant-project" className="field-label">

@@ -29,7 +29,9 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `roles.manage` | GLOBAL | Role & permission | buat role proyek, atur permission role proyek |
 | `assignments.read` | GLOBAL | Akses proyek | lihat proyek (metadata minimum), anggota, akses per user |
 | `assignments.manage` | GLOBAL | Akses proyek | tambah/ubah role/cabut anggota proyek, kecuali diri sendiri |
-| `project.read` | PROJECT | Proyek | baca identitas proyek |
+| `projects.create` | GLOBAL | Proyek | membuat proyek; pembuat menjadi MANAGER (D-039) |
+| `project.read` | PROJECT | Proyek | baca identitas, minggu, periode, tim proyek |
+| `project.update` | PROJECT | Proyek | ubah identitas, jadwal, tutup/buka kembali proyek |
 
 Rencana (ditambahkan saat milestone terkait, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `baseline.activate`, `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
 
@@ -37,7 +39,14 @@ Rencana (ditambahkan saat milestone terkait, default role sistem dikonfirmasi le
 
 ## 3. Role Sistem Bawaan
 
-FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah. Default permission: `project.read`.
+FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah.
+
+| Role | Default permission |
+|---|---|
+| FILLER, REVIEWER, ADMIN | `project.read` |
+| MANAGER | `project.read`, `project.update` |
+
+Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
 
 Role tambahan (proyek atau administrasi) dapat dibuat. Role tidak dihapus; nonaktifkan bila tidak dipakai.
 
@@ -72,7 +81,9 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `GET /admin/projects/:id/member-candidates` | `assignments.manage` (metadata minimum: id, nama, email user aktif) |
 | `POST/PATCH/DELETE /admin/projects/:id/members` | `assignments.manage` (bukan diri sendiri) |
 | `GET /projects` | login; hanya proyek dengan `project.read` (konsisten dengan detail); super admin melihat semua proyek |
-| `GET /projects/:id` | `project.read` di proyek itu, atau super admin |
+| `POST /projects` | `projects.create` |
+| `GET /projects/:id`, `/weeks`, `/report-periods`, `/team` | `project.read` di proyek itu, atau super admin |
+| `PATCH /projects/:id`, `PUT /schedule`, `POST /close`, `POST /reopen` | `project.update` di proyek itu, atau super admin |
 
 ## 6. Respons Penolakan
 
@@ -99,6 +110,10 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `ADD_PROJECT_MEMBER` | akses proyek diberikan/diaktifkan ulang | user, role id & kode |
 | `CHANGE_PROJECT_MEMBER_ROLE` | role proyek berubah | role lama & baru |
 | `REVOKE_PROJECT_MEMBER` | akses proyek dicabut | user, role |
+| `CREATE_PROJECT` | proyek dibuat | identitas, jadwal, tanggal selesai, jumlah minggu/periode, MANAGER pembuat |
+| `UPDATE_PROJECT` | identitas berubah | field yang berubah, lama & baru |
+| `CHANGE_PROJECT_SCHEDULE` | tanggal mulai/durasi berubah | mulai, durasi, tanggal selesai, jumlah minggu/periode lama & baru |
+| `CLOSE_PROJECT` / `REOPEN_PROJECT` | status proyek berubah | status lama & baru (alasan wajib) |
 | `CHANGE_PASSWORD` | password diganti | tidak ada nilai |
 | `REVOKE_SESSIONS` | session dicabut karena nonaktivasi/ganti password | jumlah session, penyebab |
 

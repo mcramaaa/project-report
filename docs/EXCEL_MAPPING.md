@@ -110,7 +110,7 @@ Temuan desain:
 
 Aplikasi:
 - `report_periods`
-- `report_period_weeks`
+- `weeks.report_period_id` (D-037)
 
 Tidak ada progress input baru.
 

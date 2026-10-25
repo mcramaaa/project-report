@@ -43,11 +43,19 @@ Gunakan ini sebagai checklist saat vibe coding.
 
 ## A. Project Setup
 
-- [ ] project dapat dibuat
-- [ ] tanggal selesai rencana dihitung dari start date + duration
-- [ ] weeks dibuat sebagai blok 7 hari
-- [ ] report periods dibuat sebagai blok 4 minggu
-- [ ] periode terakhir dapat kurang dari 28 hari
+- [x] project dapat dibuat (wizard identitas, kontrak, SPMK)
+- [x] tanggal selesai rencana dihitung dari start date + duration − 1 (inklusif)
+- [x] weeks dibuat sebagai blok 7 hari; minggu terakhir dipotong pada tanggal selesai
+- [x] report periods dibuat sebagai blok 4 minggu
+- [x] periode terakhir dapat kurang dari 28 hari
+- [x] durasi 1, 7, 8, 28, 29 hari, pergantian bulan/tahun, dan tahun kabisat
+- [x] pembuat proyek menjadi MANAGER; pembuatan, membership, minggu/periode, dan audit atomik
+- [x] pembuatan ditolak bila role MANAGER tidak memiliki `project.read`/`project.update`
+- [x] perubahan jadwal wajib alasan, mempertahankan ID minggu/periode bernomor sama, dan diaudit
+- [x] proyek CLOSED menolak perubahan identitas dan jadwal; tetap dapat dibaca
+- [x] tutup/buka kembali wajib alasan dan diaudit
+- [x] daftar proyek dengan pencarian dan pagination (user dan administrasi)
+- [x] tim proyek tanpa email, memerlukan `project.read`
 
 ## B. RAB Versioning
 

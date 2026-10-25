@@ -1,5 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AddMemberInput, AdminProjectDto, MemberCandidateDto, ProjectMemberDto, ProjectMembersResponse } from '@laporan-proyek/shared';
+import type {
+  AddMemberInput,
+  AdminProjectDto,
+  ListAdminProjectsQuery,
+  MemberCandidateDto,
+  Paginated,
+  ProjectMemberDto,
+  ProjectMembersResponse,
+} from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
@@ -27,14 +35,13 @@ async function findAssignableProjectRole(tx: Prisma.TransactionClient, roleId: s
 export class AdminProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // shortcut: capped at 100 rows with search instead of pagination; paginate when project count grows (M3).
-  listProjects(search?: string): Promise<AdminProjectDto[]> {
-    return this.prisma.project.findMany({
-      where: search ? { OR: [{ code: { contains: search } }, { projectName: { contains: search } }] } : {},
-      select: PROJECT_META_SELECT,
-      orderBy: { code: 'asc' },
-      take: 100,
-    });
+  async listProjects(query: ListAdminProjectsQuery): Promise<Paginated<AdminProjectDto>> {
+    const where: Prisma.ProjectWhereInput = query.search ? { OR: [{ code: { contains: query.search } }, { projectName: { contains: query.search } }] } : {};
+    const [total, items] = await this.prisma.$transaction([
+      this.prisma.project.count({ where }),
+      this.prisma.project.findMany({ where, select: PROJECT_META_SELECT, orderBy: { code: 'asc' }, skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
+    ]);
+    return { items, total, page: query.page, pageSize: query.pageSize };
   }
 
   async listMembers(projectId: string): Promise<ProjectMembersResponse> {
