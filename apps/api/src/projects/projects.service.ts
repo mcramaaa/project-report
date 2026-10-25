@@ -9,10 +9,14 @@ const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Projects with an active membership; a super admin sees every project (D-035). */
+  /**
+   * Projects the user may open: same rule as ProjectPermissionGuard for project.read
+   * (active membership, active role holding project.read); a super admin sees every project (D-035).
+   */
   async listMine(user: AuthUser): Promise<MyProjectDto[]> {
+    const readable = { userId: user.id, revokedAt: null, role: { isActive: true, permissions: { some: { permissionCode: 'project.read' } } } };
     const projects = await this.prisma.project.findMany({
-      where: user.isSystemAdmin ? {} : { members: { some: { userId: user.id, revokedAt: null } } },
+      where: user.isSystemAdmin ? {} : { members: { some: readable } },
       select: {
         id: true,
         code: true,

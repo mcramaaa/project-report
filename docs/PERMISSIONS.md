@@ -69,8 +69,9 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `GET /admin/users/:id/access` | `assignments.read` |
 | `POST/DELETE /admin/users/:id/global-roles` | super admin |
 | `GET /admin/projects`, `GET /admin/projects/:id/members` | `assignments.read` |
+| `GET /admin/projects/:id/member-candidates` | `assignments.manage` (metadata minimum: id, nama, email user aktif) |
 | `POST/PATCH/DELETE /admin/projects/:id/members` | `assignments.manage` (bukan diri sendiri) |
-| `GET /projects` | login; super admin melihat semua proyek |
+| `GET /projects` | login; hanya proyek dengan `project.read` (konsisten dengan detail); super admin melihat semua proyek |
 | `GET /projects/:id` | `project.read` di proyek itu, atau super admin |
 
 ## 6. Respons Penolakan

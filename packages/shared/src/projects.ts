@@ -43,6 +43,13 @@ export interface AdminProjectDto {
   projectName: string;
 }
 
+/** Active user that can be added to a project; minimum metadata for assignments.manage. */
+export interface MemberCandidateDto {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface ProjectMemberDto {
   userId: string;
   name: string;

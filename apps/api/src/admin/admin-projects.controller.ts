@@ -30,6 +30,12 @@ export class AdminProjectsController {
     return this.projects.listMembers(projectId);
   }
 
+  @Get(':projectId/member-candidates')
+  @RequirePermission('assignments.manage')
+  candidates(@CurrentAuth() auth: AuthContext, @Param('projectId', uuid) projectId: string, @Query('search') search?: string) {
+    return this.projects.listCandidates(auth.user, projectId, typeof search === 'string' ? search.trim().slice(0, 100) : '');
+  }
+
   @Post(':projectId/members')
   @RequirePermission('assignments.manage')
   @HttpCode(204)

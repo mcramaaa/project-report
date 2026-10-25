@@ -30,7 +30,7 @@ GET /projects              -> [{ id, code, projectName, role: { id, code, name }
 GET /projects/:projectId   -> identitas proyek (permission project.read)
 ```
 
-Super admin melihat semua proyek (`role: null` bila tanpa membership). User lain tanpa membership aktif: `404` (D-033). Create/update proyek dikerjakan di Milestone 3.
+Super admin melihat semua proyek (`role: null` bila tanpa membership). User lain hanya melihat proyek yang detailnya dapat ia buka: membership aktif dengan role aktif yang memiliki `project.read`. Tanpa membership aktif: `404` (D-033). Create/update proyek dikerjakan di Milestone 3.
 
 ## 3. Manajemen Akses
 
@@ -76,6 +76,7 @@ PUT   /admin/roles/:roleId/permissions   { permissionCodes }
 ```text
 GET    /admin/projects?search=                       -> [{ id, code, projectName }]
 GET    /admin/projects/:projectId/members            -> { project, members: [{ userId, name, email, isActive, role, createdAt }] }
+GET    /admin/projects/:projectId/member-candidates?search=  -> [{ id, name, email }]
 POST   /admin/projects/:projectId/members            { userId, roleId }
 PATCH  /admin/projects/:projectId/members/:userId    { roleId }
 DELETE /admin/projects/:projectId/members/:userId    { reason? }
@@ -84,6 +85,7 @@ DELETE /admin/projects/:projectId/members/:userId    { reason? }
 - hanya metadata minimum; `role` = `{ id, code, name, isActive }`
 - user harus aktif; role harus scope PROJECT dan aktif; membership aktif ganda: `409`
 - pemegang delegasi tidak boleh mengubah akses dirinya sendiri: `403`
+- `member-candidates`: user aktif yang belum menjadi anggota aktif, maks. 20, cari nama/email; tidak memuat diri sendiri bagi pemegang delegasi; tidak membutuhkan `users.read`
 - DELETE mencabut membership (`revoked_at`), tidak menghapus user atau histori; menambah ulang mengaktifkan baris yang sama
 
 ## 4. Documents

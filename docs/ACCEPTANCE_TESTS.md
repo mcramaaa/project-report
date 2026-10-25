@@ -38,6 +38,8 @@ Gunakan ini sebagai checklist saat vibe coding.
 - [x] pencabutan role administrasi berlaku pada request berikutnya
 - [x] halaman akses user menampilkan role administrasi dan proyek yang dapat diakses
 - [x] migration mempertahankan role membership yang sudah ada
+- [x] daftar proyek hanya memuat proyek yang detailnya dapat dibuka (role aktif + `project.read`)
+- [x] pemegang `assignments.manage` dapat mencari calon anggota tanpa `users.read`
 
 ## A. Project Setup
 

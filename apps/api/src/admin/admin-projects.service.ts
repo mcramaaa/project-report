@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AddMemberInput, AdminProjectDto, ProjectMemberDto, ProjectMembersResponse } from '@laporan-proyek/shared';
+import type { AddMemberInput, AdminProjectDto, MemberCandidateDto, ProjectMemberDto, ProjectMembersResponse } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
@@ -53,6 +53,25 @@ export class AdminProjectsService {
       createdAt: row.createdAt.toISOString(),
     }));
     return { project, members };
+  }
+
+  /**
+   * Member search for assignments.manage without users.read: active users that are not active
+   * members, excluding the delegate itself (it may not add itself), capped at 20.
+   */
+  async listCandidates(actor: AuthUser, projectId: string, search: string): Promise<MemberCandidateDto[]> {
+    await this.findProject(this.prisma, projectId);
+    return this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        memberships: { none: { projectId, revokedAt: null } },
+        ...(actor.isSystemAdmin ? {} : { id: { not: actor.id } }),
+        ...(search ? { OR: [{ name: { contains: search } }, { email: { contains: search } }] } : {}),
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+      take: 20,
+    });
   }
 
   async addMember(actor: AuthUser, projectId: string, input: AddMemberInput): Promise<void> {

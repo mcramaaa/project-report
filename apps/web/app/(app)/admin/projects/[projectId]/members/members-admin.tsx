@@ -1,6 +1,6 @@
 'use client';
 
-import type { Paginated, ProjectMemberDto, ProjectMembersResponse, RoleDto, UserDto } from '@laporan-proyek/shared';
+import type { MemberCandidateDto, ProjectMembersResponse, RoleDto } from '@laporan-proyek/shared';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, EmptyState, Field, Loading, PageTitle, Select } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -55,9 +55,8 @@ export function MembersAdmin({ projectId, canManage, selfId }: { projectId: stri
 
       {canManage && roles && (
         <AddMemberForm
-          members={data.members}
+          projectId={projectId}
           roles={roles}
-          selfId={selfId}
           onAdd={(user, role) =>
             mutate(user.id, () => api('POST', base, { userId: user.id, roleId: role.id }), `${user.name} ditambahkan sebagai ${role.name}.`)
           }
@@ -145,32 +144,27 @@ export function MembersAdmin({ projectId, canManage, selfId }: { projectId: stri
 }
 
 function AddMemberForm({
-  members,
+  projectId,
   roles,
-  selfId,
   onAdd,
 }: {
-  members: ProjectMemberDto[];
+  projectId: string;
   roles: RoleDto[];
-  selfId?: string;
-  onAdd: (user: UserDto, role: RoleDto) => Promise<void>;
+  onAdd: (user: MemberCandidateDto, role: RoleDto) => Promise<void>;
 }) {
-  const [results, setResults] = useState<UserDto[]>();
+  const [results, setResults] = useState<MemberCandidateDto[]>();
   const [searchError, setSearchError] = useState<string>();
   const [selected, setSelected] = useState('');
   const [roleId, setRoleId] = useState('');
   const [confirmed, setConfirmed] = useState(false);
-  const memberIds = new Set(members.map((m) => m.userId));
-  const candidates = results?.filter((u) => !memberIds.has(u.id) && u.id !== selfId) ?? [];
+  const candidates = results ?? [];
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const term = String(new FormData(event.currentTarget).get('userSearch') ?? '').trim();
-    const params = new URLSearchParams({ active: 'true', pageSize: '20' });
-    if (term) params.set('search', term);
+    const params = new URLSearchParams({ search: term });
     try {
-      const page = await api<Paginated<UserDto>>('GET', `/admin/users?${params}`);
-      setResults(page.items);
+      setResults(await api<MemberCandidateDto[]>('GET', `/admin/projects/${encodeURIComponent(projectId)}/member-candidates?${params}`));
       setSelected('');
       setSearchError(undefined);
     } catch (err) {

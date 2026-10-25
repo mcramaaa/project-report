@@ -92,14 +92,20 @@ describe('roles', () => {
     const c = await loggedIn('u@example.com');
     expect((await c.get(`/projects/${project.id}`)).status).toBe(200);
 
+    expect((await c.get('/projects')).body).toHaveLength(1);
+
+    // The project list follows the same rule as the detail (regression): no project.read -> not listed.
     await admin.request('PUT', `/admin/roles/${custom.body.id}/permissions`, { permissionCodes: [] });
     expect((await c.get(`/projects/${project.id}`)).status).toBe(403);
+    expect((await c.get('/projects')).body).toEqual([]);
 
     await admin.request('PUT', `/admin/roles/${custom.body.id}/permissions`, { permissionCodes: ['project.read'] });
     expect((await c.get(`/projects/${project.id}`)).status).toBe(200);
+    expect((await c.get('/projects')).body).toHaveLength(1);
 
     await admin.patch(`/admin/roles/${custom.body.id}`, { isActive: false });
     expect((await c.get(`/projects/${project.id}`)).status).toBe(403);
+    expect((await c.get('/projects')).body).toEqual([]);
     const other = await createUser(t.prisma, { email: 'v@example.com' });
     expect((await admin.post(`/admin/projects/${project.id}/members`, { userId: other.id, roleId: custom.body.id })).status).toBe(400);
   });
@@ -161,6 +167,25 @@ describe('delegated administration', () => {
     await admin.post(`/admin/projects/${project.id}/members`, { userId: user.id, roleId: filler });
     expect((await d.patch(`/admin/projects/${project.id}/members/${user.id}`, { roleId: manager })).status).toBe(403);
     expect((await d.delete(`/admin/projects/${project.id}/members/${user.id}`)).status).toBe(403);
+  });
+
+  it('assignments.manage delegate searches member candidates without users.read (regression)', async () => {
+    const { client: d } = await delegate('akses@example.com', ['assignments.read', 'assignments.manage']);
+    const candidate = await createUser(t.prisma, { email: 'calon@example.com', name: 'Calon Anggota' });
+    const member = await createUser(t.prisma, { email: 'anggota@example.com', name: 'Calon Sudah Anggota' });
+    await createUser(t.prisma, { email: 'nonaktif@example.com', name: 'Calon Nonaktif', isActive: false });
+    await admin.post(`/admin/projects/${project.id}/members`, { userId: member.id, roleId: await roleId(t.prisma, 'FILLER') });
+
+    expect((await d.get('/admin/users')).status).toBe(403);
+    const found = await d.get(`/admin/projects/${project.id}/member-candidates?search=calon`);
+    expect(found.status).toBe(200);
+    expect(found.body).toEqual([{ id: candidate.id, name: 'Calon Anggota', email: 'calon@example.com' }]);
+    // The delegate itself is never offered (it may not add itself).
+    expect((await d.get(`/admin/projects/${project.id}/member-candidates?search=akses`)).body).toEqual([]);
+    expect((await d.get('/admin/projects/0192f0f0-0000-7000-8000-000000000000/member-candidates')).status).toBe(404);
+
+    const { client: readOnly } = await delegate('baca@example.com', ['assignments.read']);
+    expect((await readOnly.get(`/admin/projects/${project.id}/member-candidates`)).status).toBe(403);
   });
 
   it('revoking or deactivating the administration role removes the delegation on the next request', async () => {
