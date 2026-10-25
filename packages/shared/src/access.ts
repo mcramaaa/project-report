@@ -56,6 +56,23 @@ export const PERMISSIONS = [
   { code: 'rab.read', scope: 'PROJECT', module: 'RAB', name: 'Lihat RAB', description: 'Melihat versi RAB, isi, dan perbandingan antarversi.' },
   { code: 'rab.edit', scope: 'PROJECT', module: 'RAB', name: 'Kelola draft RAB', description: 'Membuat, mengubah, dan membatalkan draft RAB.' },
   { code: 'rab.approve', scope: 'PROJECT', module: 'RAB', name: 'Approve RAB', description: 'Menyetujui draft RAB; versi approved terkunci.' },
+  { code: 'document.read', scope: 'PROJECT', module: 'Dokumen', name: 'Lihat dokumen', description: 'Melihat dan mengunduh dokumen proyek.' },
+  { code: 'document.upload', scope: 'PROJECT', module: 'Dokumen', name: 'Upload dokumen', description: 'Mengunggah dokumen proyek (.xlsx).' },
+  {
+    code: 'rabImport.review',
+    scope: 'PROJECT',
+    module: 'Impor RAB',
+    name: 'Review impor RAB',
+    description: 'Membuat dan mengulang run impor, serta mencatat keputusan pemetaan dan harga.',
+  },
+  {
+    code: 'rabImport.approve',
+    scope: 'PROJECT',
+    module: 'Impor RAB',
+    name: 'Approve impor RAB',
+    description: 'Menyetujui/menolak impor: membuat daftar harga dan analisa resmi serta RAB versi draft.',
+  },
+  { code: 'ahsp.read', scope: 'PROJECT', module: 'AHSP', name: 'Lihat analisa', description: 'Melihat daftar analisa gabungan, komponen, dan daftar harga.' },
 ] as const satisfies readonly { code: string; scope: PermissionScope; module: string; name: string; description: string }[];
 
 export type PermissionCode = (typeof PERMISSIONS)[number]['code'];
@@ -74,10 +91,10 @@ export const SYSTEM_PROJECT_ROLES = [
   { code: 'ADMIN', name: 'Admin Proyek', description: 'Upload dokumen dan review ekstraksi AI.' },
 ] as const;
 export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
-  FILLER: ['project.read', 'rab.read'],
-  REVIEWER: ['project.read', 'rab.read'],
-  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve'],
-  ADMIN: ['project.read', 'rab.read', 'rab.edit'],
+  FILLER: ['project.read', 'rab.read', 'ahsp.read'],
+  REVIEWER: ['project.read', 'rab.read', 'ahsp.read'],
+  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
+  ADMIN: ['project.read', 'rab.read', 'rab.edit', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review'],
 };
 
 /** Permissions the MANAGER role must hold for project creation to hand the creator a usable project (D-039). */

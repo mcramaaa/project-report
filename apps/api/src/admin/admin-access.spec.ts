@@ -54,10 +54,10 @@ describe('roles', () => {
     const res = await admin.get('/admin/roles?scope=PROJECT');
     expect(res.body.map((r: { code: string; isSystem: boolean; permissionCodes: string[] }) => [r.code, r.isSystem, r.permissionCodes])).toEqual(
       expect.arrayContaining([
-        ['FILLER', true, ['project.read', 'rab.read']],
-        ['REVIEWER', true, ['project.read', 'rab.read']],
-        ['MANAGER', true, ['project.read', 'project.update', 'rab.approve', 'rab.edit', 'rab.read']],
-        ['ADMIN', true, ['project.read', 'rab.edit', 'rab.read']],
+        ['FILLER', true, ['ahsp.read', 'project.read', 'rab.read']],
+        ['REVIEWER', true, ['ahsp.read', 'project.read', 'rab.read']],
+        ['MANAGER', true, ['ahsp.read', 'document.read', 'document.upload', 'project.read', 'project.update', 'rab.approve', 'rab.edit', 'rab.read', 'rabImport.approve', 'rabImport.review']],
+        ['ADMIN', true, ['ahsp.read', 'document.read', 'document.upload', 'project.read', 'rab.edit', 'rab.read', 'rabImport.review']],
       ]),
     );
   });
@@ -81,7 +81,7 @@ describe('roles', () => {
     const filler = await roleId(t.prisma, 'FILLER');
     expect((await admin.request('PUT', `/admin/roles/${filler}/permissions`, { permissionCodes: ['project.delete'] })).status).toBe(400);
     expect((await admin.request('PUT', `/admin/roles/${filler}/permissions`, { permissionCodes: ['users.manage'] })).status).toBe(400);
-    expect((await t.prisma.rolePermission.findMany({ where: { roleId: filler } })).map((p) => p.permissionCode).sort()).toEqual(['project.read', 'rab.read']);
+    expect((await t.prisma.rolePermission.findMany({ where: { roleId: filler } })).map((p) => p.permissionCode).sort()).toEqual(['ahsp.read', 'project.read', 'rab.read']);
   });
 
   it('permission and role-status changes apply on the next request', async () => {

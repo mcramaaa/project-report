@@ -134,6 +134,8 @@
 - `packages/calc/eslint.config.js`
 - `packages/calc/package.json`
 - `packages/calc/README.md`
+- `packages/calc/src/ahsp.ts`
+- `packages/calc/src/ahsp.test.ts`
 - `packages/calc/src/decimal.ts`
 - `packages/calc/src/decimal.test.ts`
 - `packages/calc/src/index.ts`
@@ -165,6 +167,7 @@
 - `prisma/migrations/20261025090000_project_master/migration.sql`
 - `prisma/migrations/20261025110000_rab_versions/migration.sql`
 - `prisma/migrations/20261025130000_rab_exact_amounts/migration.sql`
+- `prisma/migrations/20261025150000_rab_import_ahsp/migration.sql`
 - `prisma/migrations/migration_lock.toml`
 - `prisma/README.md`
 - `prisma/schema.prisma`

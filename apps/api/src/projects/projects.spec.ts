@@ -165,8 +165,19 @@ describe('update identity', () => {
     const filler = await loggedIn('filler@example.com');
     expect((await filler.patch(`/projects/${project.id}`, { location: 'X' })).status).toBe(403);
     // UI hint only: the caller's project permissions in this project.
-    expect((await filler.get(`/projects/${project.id}`)).body.permissions).toEqual(['project.read', 'rab.read']);
-    expect((await admin.get(`/projects/${project.id}`)).body.permissions).toEqual(['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve']);
+    expect((await filler.get(`/projects/${project.id}`)).body.permissions).toEqual(['ahsp.read', 'project.read', 'rab.read']);
+    expect((await admin.get(`/projects/${project.id}`)).body.permissions).toEqual([
+      'project.read',
+      'project.update',
+      'rab.read',
+      'rab.edit',
+      'rab.approve',
+      'document.read',
+      'document.upload',
+      'rabImport.review',
+      'rabImport.approve',
+      'ahsp.read',
+    ]);
     const outsider = await createUser(t.prisma, { email: 'luar@example.com' });
     expect(outsider).toBeTruthy();
     expect((await (await loggedIn('luar@example.com')).patch(`/projects/${project.id}`, { location: 'X' })).status).toBe(404);

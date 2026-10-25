@@ -26,16 +26,23 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   sessions             AuthSession[]
-  memberships          ProjectUser[]    @relation("MembershipUser")
-  createdMemberships   ProjectUser[]    @relation("MembershipCreatedBy")
-  revokedMemberships   ProjectUser[]    @relation("MembershipRevokedBy")
-  globalRoles          UserGlobalRole[] @relation("GlobalRoleUser")
-  createdGlobalRoles   UserGlobalRole[] @relation("GlobalRoleCreatedBy")
-  revokedGlobalRoles   UserGlobalRole[] @relation("GlobalRoleRevokedBy")
+  memberships          ProjectUser[]       @relation("MembershipUser")
+  createdMemberships   ProjectUser[]       @relation("MembershipCreatedBy")
+  revokedMemberships   ProjectUser[]       @relation("MembershipRevokedBy")
+  globalRoles          UserGlobalRole[]    @relation("GlobalRoleUser")
+  createdGlobalRoles   UserGlobalRole[]    @relation("GlobalRoleCreatedBy")
+  revokedGlobalRoles   UserGlobalRole[]    @relation("GlobalRoleRevokedBy")
   auditLogs            AuditLog[]
-  createdRabVersions   RabVersion[]     @relation("RabVersionCreatedBy")
-  approvedRabVersions  RabVersion[]     @relation("RabVersionApprovedBy")
-  discardedRabVersions RabVersion[]     @relation("RabVersionDiscardedBy")
+  createdRabVersions   RabVersion[]        @relation("RabVersionCreatedBy")
+  approvedRabVersions  RabVersion[]        @relation("RabVersionApprovedBy")
+  discardedRabVersions RabVersion[]        @relation("RabVersionDiscardedBy")
+  uploadedDocuments    ProjectDocument[]
+  createdImports       RabImport[]         @relation("ImportCreatedBy")
+  approvedImports      RabImport[]         @relation("ImportApprovedBy")
+  rejectedImports      RabImport[]         @relation("ImportRejectedBy")
+  importDecisions      RabImportDecision[]
+  createdPriceLists    PriceList[]
+  priceDecisions       RabVersionItem[]    @relation("ItemPriceDecidedBy")
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -87,6 +94,10 @@ model Project {
   reportPeriods ReportPeriod[]
   rabVersions   RabVersion[]
   workItems     WorkItem[]
+  documents     ProjectDocument[]
+  rabImports    RabImport[]
+  priceLists    PriceList[]
+  analyses      AhspAnalysis[]
 
   @@map("projects")
 }
@@ -285,6 +296,7 @@ model RabVersion {
   approvedByUser  User?            @relation("RabVersionApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
   discardedByUser User?            @relation("RabVersionDiscardedBy", fields: [discardedBy], references: [id], onDelete: Restrict)
   items           RabVersionItem[]
+  sourceImports   RabImport[]
 
   @@index([projectId, status])
   @@map("rab_versions")
@@ -306,37 +318,309 @@ model WorkItem {
 }
 
 model RabVersionItem {
-  id                    String     @id @default(uuid(7)) @db.Char(36)
-  rabVersionId          String     @map("rab_version_id") @db.Char(36)
+  id                    String         @id @default(uuid(7)) @db.Char(36)
+  rabVersionId          String         @map("rab_version_id") @db.Char(36)
   /// ITEM rows only.
-  workItemId            String?    @map("work_item_id") @db.Char(36)
-  parentItemId          String?    @map("parent_item_id") @db.Char(36)
-  sortOrder             Int        @map("sort_order") @db.UnsignedInt
-  rowType               RabRowType @map("row_type")
-  displayNumber         String?    @map("display_number") @db.VarChar(30)
-  description           String     @db.VarChar(1000)
+  workItemId            String?        @map("work_item_id") @db.Char(36)
+  parentItemId          String?        @map("parent_item_id") @db.Char(36)
+  sortOrder             Int            @map("sort_order") @db.UnsignedInt
+  rowType               RabRowType     @map("row_type")
+  displayNumber         String?        @map("display_number") @db.VarChar(30)
+  description           String         @db.VarChar(1000)
   /// 12 decimals: office workbooks use long volumes to balance MC-0 totals (D-043).
-  volume                Decimal?   @db.Decimal(30, 12)
-  unit                  String?    @db.VarChar(30)
+  volume                Decimal?       @db.Decimal(30, 12)
+  unit                  String?        @db.VarChar(30)
   /// Free-text "no analisa" until AHSP (M7).
-  analysisCode          String?    @map("analysis_code") @db.VarChar(50)
-  unitPrice             Decimal?   @map("unit_price") @db.Decimal(20, 2)
-  taxPercent            Decimal?   @map("tax_percent") @db.Decimal(5, 2)
+  analysisCode          String?        @map("analysis_code") @db.VarChar(50)
+  unitPrice             Decimal?       @map("unit_price") @db.Decimal(20, 2)
+  taxPercent            Decimal?       @map("tax_percent") @db.Decimal(5, 2)
   /// Exact snapshot at approval (D-043); weights are derived from subtotals.
-  unitPriceWithTax      Decimal?   @map("unit_price_with_tax") @db.Decimal(26, 6)
-  subtotal              Decimal?   @db.Decimal(48, 18)
-  previousVersionItemId String?    @map("previous_version_item_id") @db.Char(36)
-  createdAt             DateTime   @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt             DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+  unitPriceWithTax      Decimal?       @map("unit_price_with_tax") @db.Decimal(26, 6)
+  subtotal              Decimal?       @db.Decimal(48, 18)
+  previousVersionItemId String?        @map("previous_version_item_id") @db.Char(36)
+  /// Linked analysis version (D-049/D-051); approved RAB keeps pointing at the version used then.
+  analysisVersionId     String?        @map("analysis_version_id") @db.Char(36)
+  priceSource           RabPriceSource @default(MANUAL) @map("price_source")
+  sourceUnitPrice       Decimal?       @map("source_unit_price") @db.Decimal(40, 12)
+  analysisUnitPrice     Decimal?       @map("analysis_unit_price") @db.Decimal(40, 12)
+  priceNote             String?        @map("price_note") @db.Text
+  priceDecidedBy        String?        @map("price_decided_by") @db.Char(36)
+  priceDecidedAt        DateTime?      @map("price_decided_at") @db.DateTime(3)
+  /// Document/sheet/row of the imported source row.
+  sourceLocator         Json?          @map("source_locator")
+  createdAt             DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt             DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
 
-  rabVersion          RabVersion       @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
-  workItem            WorkItem?        @relation(fields: [workItemId], references: [id], onDelete: Restrict)
-  parent              RabVersionItem?  @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
-  children            RabVersionItem[] @relation("RabItemTree")
-  previousVersionItem RabVersionItem?  @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
-  copies              RabVersionItem[] @relation("RabItemCopy")
+  analysisVersion     AhspAnalysisVersion? @relation(fields: [analysisVersionId], references: [id], onDelete: Restrict)
+  priceDecidedByUser  User?                @relation("ItemPriceDecidedBy", fields: [priceDecidedBy], references: [id], onDelete: Restrict)
+  rabVersion          RabVersion           @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  workItem            WorkItem?            @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  parent              RabVersionItem?      @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
+  children            RabVersionItem[]     @relation("RabItemTree")
+  previousVersionItem RabVersionItem?      @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
+  copies              RabVersionItem[]     @relation("RabItemCopy")
 
   @@unique([rabVersionId, workItemId])
   @@index([rabVersionId, parentItemId, sortOrder])
+  @@index([analysisVersionId])
   @@map("rab_version_items")
+}
+
+/// How an item's unit price was set (D-051).
+enum RabPriceSource {
+  MANUAL
+  ANALYSIS
+  SOURCE_OVERRIDE
+  DIRECT
+}
+
+/// Original uploaded file; stored on disk under storage/projects/<project>/documents (D-049).
+model ProjectDocument {
+  id               String   @id @default(uuid(7)) @db.Char(36)
+  projectId        String   @map("project_id") @db.Char(36)
+  originalFilename String   @map("original_filename") @db.VarChar(255)
+  storedFilename   String   @unique @map("stored_filename") @db.VarChar(80)
+  mimeType         String   @map("mime_type") @db.VarChar(120)
+  fileSize         Int      @map("file_size") @db.UnsignedInt
+  sha256           String   @db.Char(64)
+  uploadedBy       String   @map("uploaded_by") @db.Char(36)
+  uploadedAt       DateTime @default(now()) @map("uploaded_at") @db.DateTime(3)
+
+  project  Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  uploader User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  imports  RabImportDocument[]
+
+  @@index([projectId])
+  @@index([sha256])
+  @@map("project_documents")
+}
+
+enum RabImportStatus {
+  UPLOADED
+  PROCESSING
+  NEEDS_REVIEW
+  APPROVED
+  REJECTED
+  FAILED
+}
+
+/// One import run of a document package into one target RAB version (D-048).
+model RabImport {
+  id                String          @id @default(uuid(7)) @db.Char(36)
+  projectId         String          @map("project_id") @db.Char(36)
+  targetVersionType RabVersionType  @map("target_version_type")
+  status            RabImportStatus @default(UPLOADED)
+  attemptNumber     Int             @default(1) @map("attempt_number") @db.UnsignedSmallInt
+  previousImportId  String?         @map("previous_import_id") @db.Char(36)
+  guideVersion      String          @map("guide_version") @db.VarChar(40)
+  parserVersion     String          @map("parser_version") @db.VarChar(40)
+  /// Structured draft validated by the shared zod schema.
+  draft             Json?
+  errorMessage      String?         @map("error_message") @db.Text
+  createdBy         String          @map("created_by") @db.Char(36)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+  processedAt       DateTime?       @map("processed_at") @db.DateTime(3)
+  approvedBy        String?         @map("approved_by") @db.Char(36)
+  approvedAt        DateTime?       @map("approved_at") @db.DateTime(3)
+  rejectedBy        String?         @map("rejected_by") @db.Char(36)
+  rejectedAt        DateTime?       @map("rejected_at") @db.DateTime(3)
+  rejectReason      String?         @map("reject_reason") @db.Text
+  rabVersionId      String?         @map("rab_version_id") @db.Char(36)
+  priceListId       String?         @unique @map("price_list_id") @db.Char(36)
+
+  project          Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  previousImport   RabImport?            @relation("ImportRetry", fields: [previousImportId], references: [id], onDelete: Restrict)
+  retries          RabImport[]           @relation("ImportRetry")
+  creator          User                  @relation("ImportCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approver         User?                 @relation("ImportApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  rejecter         User?                 @relation("ImportRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict)
+  rabVersion       RabVersion?           @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  priceList        PriceList?            @relation("ImportPriceList", fields: [priceListId], references: [id], onDelete: Restrict)
+  documents        RabImportDocument[]
+  decisions        RabImportDecision[]
+  aiRuns           AiRun[]
+  analysisVersions AhspAnalysisVersion[]
+
+  @@index([projectId, status])
+  @@map("rab_imports")
+}
+
+model RabImportDocument {
+  importId   String @map("import_id") @db.Char(36)
+  documentId String @map("document_id") @db.Char(36)
+
+  import   RabImport       @relation(fields: [importId], references: [id], onDelete: Restrict)
+  document ProjectDocument @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@id([importId, documentId])
+  @@index([documentId])
+  @@map("rab_import_documents")
+}
+
+enum RabImportDecisionKind {
+  ANALYSIS_LINK
+  PRICE_CHOICE
+  DIRECT_PRICE
+  WORK_ITEM_MATCH
+}
+
+/// Reviewer decisions, append-only; the latest per row and kind applies.
+model RabImportDecision {
+  id        String                @id @default(uuid(7)) @db.Char(36)
+  importId  String                @map("import_id") @db.Char(36)
+  rowKey    String                @map("row_key") @db.VarChar(100)
+  kind      RabImportDecisionKind
+  value     Json
+  reason    String?               @db.Text
+  decidedBy String                @map("decided_by") @db.Char(36)
+  decidedAt DateTime              @default(now()) @map("decided_at") @db.DateTime(3)
+
+  import  RabImport @relation(fields: [importId], references: [id], onDelete: Restrict)
+  decider User      @relation(fields: [decidedBy], references: [id], onDelete: Restrict)
+
+  @@index([importId, rowKey, kind])
+  @@map("rab_import_decisions")
+}
+
+enum AiRunStatus {
+  SUCCEEDED
+  FAILED
+}
+
+/// Every model call (D-052): actual model, attempt, instruction version. Never contains the API key.
+model AiRun {
+  id                 String      @id @default(uuid(7)) @db.Char(36)
+  importId           String      @map("import_id") @db.Char(36)
+  purpose            String      @db.VarChar(60)
+  instructionVersion String      @map("instruction_version") @db.VarChar(40)
+  model              String      @db.VarChar(120)
+  attempt            Int         @db.UnsignedSmallInt
+  status             AiRunStatus
+  error              String?     @db.Text
+  response           Json?
+  startedAt          DateTime    @map("started_at") @db.DateTime(3)
+  finishedAt         DateTime    @map("finished_at") @db.DateTime(3)
+
+  import RabImport @relation(fields: [importId], references: [id], onDelete: Restrict)
+
+  @@index([importId])
+  @@map("ai_runs")
+}
+
+/// Versioned per-project price list created by an approved import (D-050).
+model PriceList {
+  id            String   @id @default(uuid(7)) @db.Char(36)
+  projectId     String   @map("project_id") @db.Char(36)
+  versionNumber Int      @map("version_number") @db.UnsignedSmallInt
+  location      String?  @db.VarChar(255)
+  period        String?  @db.VarChar(100)
+  createdBy     String   @map("created_by") @db.Char(36)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  project          Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  creator          User                  @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  sourceImport     RabImport?            @relation("ImportPriceList")
+  items            PriceItem[]
+  analysisVersions AhspAnalysisVersion[]
+
+  @@unique([projectId, versionNumber])
+  @@map("price_lists")
+}
+
+model PriceItem {
+  id            String  @id @default(uuid(7)) @db.Char(36)
+  priceListId   String  @map("price_list_id") @db.Char(36)
+  name          String  @db.VarChar(500)
+  unit          String? @db.VarChar(30)
+  price         Decimal @db.Decimal(40, 12)
+  sourceLocator Json    @map("source_locator")
+
+  priceList  PriceList       @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  components AhspComponent[]
+
+  @@index([priceListId])
+  @@map("price_items")
+}
+
+/// Identity in the single combined analysis list per project (D-045); the code is not an identity.
+model AhspAnalysis {
+  id        String   @id @default(uuid(7)) @db.Char(36)
+  projectId String   @map("project_id") @db.Char(36)
+  code      String?  @db.VarChar(50)
+  name      String   @db.VarChar(1000)
+  unit      String?  @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  project  Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  versions AhspAnalysisVersion[]
+
+  @@index([projectId, code])
+  @@map("ahsp_analyses")
+}
+
+enum AhspComponentCategory {
+  LABOR
+  MATERIAL
+  EQUIPMENT
+}
+
+enum AhspSubPriceBasis {
+  EXACT
+  ROUNDED
+}
+
+/// Immutable once created; RAB items point at a version (D-050, D-051).
+model AhspAnalysisVersion {
+  id              String   @id @default(uuid(7)) @db.Char(36)
+  analysisId      String   @map("analysis_id") @db.Char(36)
+  versionNumber   Int      @map("version_number") @db.UnsignedSmallInt
+  priceListId     String   @map("price_list_id") @db.Char(36)
+  sourceImportId  String   @map("source_import_id") @db.Char(36)
+  /// Source snapshot: the original analysis name is never replaced by the recap name.
+  code            String?  @db.VarChar(50)
+  name            String   @db.VarChar(1000)
+  unit            String?  @db.VarChar(30)
+  discipline      String?  @db.VarChar(60)
+  overheadPercent Decimal? @map("overhead_percent") @db.Decimal(9, 4)
+  roundingScale   Int?     @map("rounding_scale") @db.TinyInt
+  directCost      Decimal  @map("direct_cost") @db.Decimal(50, 24)
+  overheadAmount  Decimal  @map("overhead_amount") @db.Decimal(50, 24)
+  priceExact      Decimal  @map("price_exact") @db.Decimal(50, 24)
+  price           Decimal  @db.Decimal(40, 12)
+  sourceLocator   Json     @map("source_locator")
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  analysis     AhspAnalysis     @relation(fields: [analysisId], references: [id], onDelete: Restrict)
+  priceList    PriceList        @relation(fields: [priceListId], references: [id], onDelete: Restrict)
+  sourceImport RabImport        @relation(fields: [sourceImportId], references: [id], onDelete: Restrict)
+  components   AhspComponent[]  @relation("ComponentOf")
+  usedAsSub    AhspComponent[]  @relation("SubAnalysis")
+  rabItems     RabVersionItem[]
+
+  @@unique([analysisId, versionNumber])
+  @@map("ahsp_analysis_versions")
+}
+
+model AhspComponent {
+  id                   String                @id @default(uuid(7)) @db.Char(36)
+  analysisVersionId    String                @map("analysis_version_id") @db.Char(36)
+  sortOrder            Int                   @map("sort_order") @db.UnsignedSmallInt
+  category             AhspComponentCategory
+  description          String                @db.VarChar(1000)
+  unit                 String?               @db.VarChar(30)
+  coefficient          Decimal               @db.Decimal(30, 12)
+  priceItemId          String?               @map("price_item_id") @db.Char(36)
+  subAnalysisVersionId String?               @map("sub_analysis_version_id") @db.Char(36)
+  subPriceBasis        AhspSubPriceBasis?    @map("sub_price_basis")
+  unitPrice            Decimal               @map("unit_price") @db.Decimal(40, 12)
+  amount               Decimal               @db.Decimal(65, 24)
+  sourceLocator        Json                  @map("source_locator")
+
+  analysisVersion    AhspAnalysisVersion  @relation("ComponentOf", fields: [analysisVersionId], references: [id], onDelete: Restrict)
+  priceItem          PriceItem?           @relation(fields: [priceItemId], references: [id], onDelete: Restrict)
+  subAnalysisVersion AhspAnalysisVersion? @relation("SubAnalysis", fields: [subAnalysisVersionId], references: [id], onDelete: Restrict)
+
+  @@index([analysisVersionId, sortOrder])
+  @@map("ahsp_components")
 }
