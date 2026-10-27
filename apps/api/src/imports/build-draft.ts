@@ -17,7 +17,7 @@ import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
 import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
-export const PARSER_VERSION = 'rab-parser@2'; // @2: item/total reconciliation, unused overhead (D-063)
+export const PARSER_VERSION = 'rab-parser@4'; // @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069)
 
 export interface DraftSource {
   model: WorkbookModel;
@@ -42,10 +42,15 @@ export interface PreviousItem {
   code: string;
   description: string;
   groupPath: string;
+  unit: string | null;
+  /** Code of the analysis the item links; null for direct/manual prices. */
+  analysisCode: string | null;
 }
 
 export interface DraftContext {
   targetVersionType: RabVersionType;
+  /** MC number to import (selects the "MC - n" block); 0 / absent for Kontrak (D-069). */
+  targetRevisionNumber?: number;
   /** Analyses of the previous approved RAB version's package, for rule candidates on broken chains (D-057). */
   officialAnalyses: OfficialAnalysis[];
   /** Items of the latest approved RAB version, for work item candidates of non-contract imports. */
@@ -60,6 +65,30 @@ const evidence = (t: TraceResult): EvidenceStep[] =>
 
 export const normalizeText = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 const sameUnit = (a: string | null, b: string | null) => (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
+
+/** D-067: repeated punctuation ("Pas.." → "Pas.") collapses, except between digits ("1..5" stays). */
+export const looseText = (s: string) =>
+  normalizeText(s).replace(/([.,;:])\1+/g, (run: string, c: string, at: number, all: string) =>
+    /\d/.test(all[at - 1] ?? '') && /\d/.test(all[at + run.length] ?? '') ? run : c,
+  );
+
+/** Analysis code of a draft row: NO. ANALISA column, else the text key where its price chain stopped. */
+export const rowAnalysisCode = (r: Pick<DraftRow, 'analysisCode' | 'price'>) =>
+  r.analysisCode ?? (typeof r.price.stoppedAt?.lookupKey === 'string' ? r.price.stoppedAt.lookupKey : null);
+
+/**
+ * Evidence that a draft row is the same permanent work item as a previous item (D-053, D-067): same group path and
+ * description; or a description differing only in repeated punctuation when unit and analysis code also match.
+ * A candidate only, never a decision.
+ */
+export function workItemEvidence(row: Pick<DraftRow, 'groupPath' | 'description' | 'unit' | 'analysisCode' | 'price'>, p: PreviousItem): 'EXACT' | 'PUNCTUATION' | null {
+  if (row.groupPath !== p.groupPath) return null;
+  if (normalizeText(row.description) === normalizeText(p.description)) return 'EXACT';
+  const code = rowAnalysisCode(row);
+  return looseText(row.description) === looseText(p.description) && sameUnit(row.unit, p.unit) && code !== null && p.analysisCode !== null && normalizeText(code) === normalizeText(p.analysisCode)
+    ? 'PUNCTUATION'
+    : null;
+}
 
 interface PendingComponent {
   block: AnalysisBlock['components'][number];
@@ -145,7 +174,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     }
     let sheet;
     try {
-      sheet = readRabSheet(src.model, sheetName, ctx.targetVersionType);
+      sheet = readRabSheet(src.model, sheetName, ctx.targetVersionType, ctx.targetRevisionNumber ?? 0);
     } catch (err) {
       if (err instanceof RabSheetError) throw new DraftInputError(`${src.filename}: ${err.message}`);
       throw err;
@@ -214,9 +243,12 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
         base.analysisCandidates = ruleCandidates(ctx.officialAnalyses, base, lookup ? scalarOf(lookup.key) : r.analysisCode);
       }
       if (ctx.targetVersionType !== 'CONTRACT') {
-        base.workItemCandidates = ctx.previousItems
-          .filter((p) => normalizeText(p.description) === normalizeText(r.description) && p.groupPath === base.groupPath)
-          .map((p) => ({ workItemId: p.workItemId, code: p.code, description: p.description, groupPath: p.groupPath }));
+        base.workItemCandidates = ctx.previousItems.flatMap((p) => {
+          const evidence = workItemEvidence(base, p);
+          if (!evidence) return [];
+          const candidate = { workItemId: p.workItemId, code: p.code, description: p.description, groupPath: p.groupPath, unit: p.unit, analysisCode: p.analysisCode };
+          return [evidence === 'EXACT' ? candidate : { ...candidate, reason: `Uraian hanya beda tanda baca; kelompok, satuan (${p.unit ?? '–'}) dan kode analisa ${p.analysisCode} sama.` }];
+        });
         issues.push({
           code: 'WORK_ITEM_UNDECIDED',
           severity: 'BLOCKING',
@@ -298,6 +330,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     guideVersion: GUIDE_VERSION,
     parserVersion: PARSER_VERSION,
     targetVersionType: ctx.targetVersionType,
+    targetRevisionNumber: ctx.targetRevisionNumber ?? 0,
     sources: sourceInfo,
     rows,
     analyses: draftAnalyses,
@@ -311,6 +344,8 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       subAnalyses: imported.filter((a) => subKeys.has(a.key)).length,
       components: imported.reduce((n, a) => n + a.components.length, 0),
       pricesImported: new Set(imported.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'PRICE_ITEM' ? [c.source.priceKey] : [])))).size,
+      // Every sheet, referenced or not: a source with analyses is never replaced by inheritance (D-058, D-065).
+      analysisBlocksInSources: sources.reduce((n, s) => n + s.model.sheetNames().reduce((m, sheet) => m + countAnalysisBlocks(s.model, sheet), 0), 0),
     },
     issues,
   };

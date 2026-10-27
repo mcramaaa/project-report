@@ -323,15 +323,16 @@ export async function seedSampleRab(prisma: PrismaService, actor: AuthUser, work
     }
   }
 
-  const projects = new ProjectsService(prisma, new AccessService(prisma));
-  const rab = new RabService(prisma);
+  const access = new AccessService(prisma);
+  const projects = new ProjectsService(prisma, access);
+  const rab = new RabService(prisma, access);
   const project = await projects.create(actor, parseSampleProject(workbook, expected.contract.rounded));
 
   const contract = await rab.create(actor, project.id, { versionType: 'CONTRACT', documentNumber: project.contractNumber, documentDate: project.contractDate });
   const contractIds = await insertContractRows(prisma, project.id, contract.version.id, versionRows(rows, pickContract));
   const approvedContract = await rab.approve(actor, project.id, contract.version.id, true);
 
-  const mc0 = await rab.create(actor, project.id, { versionType: 'MC0' });
+  const mc0 = await rab.create(actor, project.id, { versionType: 'MC' });
   await applyMc0(prisma, project.id, mc0.version.id, rows, contractIds);
   const approvedMc0 = await rab.approve(actor, project.id, mc0.version.id, true);
 

@@ -18,3 +18,8 @@ storage/temp/*
 next-env.d.ts
 *.tsbuildinfo
 apps/api/src/generated/
+# graphify: generated graph/cache and local backups (rebuild with `graphify update .`)
+graphify-out/
+graphify-out-backup-*/
+*.bak-graphify
+*.graphify-bak

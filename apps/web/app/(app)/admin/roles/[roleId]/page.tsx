@@ -22,8 +22,8 @@ export default async function RolePage({ params }: { params: Promise<{ roleId: s
   return (
     <>
       <AccessTabs me={me} active="roles" />
-      <Link href="/admin/roles" className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
-        ← Daftar role
+      <Link href="/admin/roles" className="page-back">
+        Daftar role
       </Link>
       <PageTitle subtitle={`${role.code} · ${role.scope === 'PROJECT' ? 'Role proyek' : 'Role administrasi'} · Pengaturan berlaku pada semua user dengan role ini.`}>
         {role.name}

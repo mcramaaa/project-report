@@ -9,29 +9,40 @@ import {
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  latestInDomainOrder,
+  mcNumberError,
+  nextMcNumber,
   rabVersionLabel,
   type CreateRabItemInput,
   type CreateRabVersionInput,
   type RabChangeType,
   type RabCompareDto,
+  type RabHistoryDto,
   type RabIssue,
   type RabRowDto,
+  type RabSnapshotDto,
+  type RabSnapshotPayload,
+  type RabSnapshotSummaryDto,
   type RabTotalsDto,
+  type ReorderRabItemsInput,
   type RabVersionDetailDto,
   type RabVersionSummaryDto,
   type UpdateRabItemInput,
   type UpdateRabVersionInput,
 } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
+import { AccessService } from '../auth/access.service';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
 import { copyAnalysesIntoPackage, ensurePackage } from '../ahsp/package';
 import { PrismaService } from '../prisma/prisma.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
+import { canonicalJson, changedFields, checksumOf, withCorrection } from './provenance';
 
 type Db = Prisma.TransactionClient;
 
@@ -93,7 +104,9 @@ const ITEM_SELECT = {
 type ItemRow = Prisma.RabVersionItemGetPayload<{ select: typeof ITEM_SELECT }>;
 
 const ITEM_ONLY_FIELDS = ['volume', 'unit', 'analysisCode', 'unitPrice', 'taxPercent'] as const;
-const NOT_DRAFT = 'Versi RAB ini sudah tidak berstatus draft dan tidak dapat diubah.';
+const NOT_EDITABLE = 'Versi RAB ini sudah tidak berstatus draft atau koreksi dan tidak dapat diubah.';
+const OPEN_VERSION = 'Masih ada draft atau koreksi RAB; approve atau batalkan lebih dahulu.';
+type EditableVersion = { status: 'DRAFT' | 'REOPENED'; documentNumber: string | null; documentDate: Date | null; previousVersionId: string | null };
 /** Snapshot columns (D-043): integer digits each can hold; larger values would fail or truncate on approval. */
 const LIMITS = { unitPriceWithTax: 20, subtotal: 30, total: 32 } as const;
 const exceeds = (value: string | null, integerDigits: number) =>
@@ -302,12 +315,39 @@ function validate(
   return { errors, warnings };
 }
 
+const SNAPSHOT_SUMMARY = {
+  id: true,
+  sequence: true,
+  approvedAt: true,
+  approvedByUser: USER_REF,
+  totalValue: true,
+  checksum: true,
+  createdAt: true,
+  createdByUser: USER_REF,
+} as const satisfies Prisma.RabVersionSnapshotSelect;
+
+const toSnapshotSummary = (
+  s: Prisma.RabVersionSnapshotGetPayload<{ select: typeof SNAPSHOT_SUMMARY }>,
+): RabSnapshotSummaryDto => ({
+  id: s.id,
+  sequence: s.sequence,
+  approvedAt: s.approvedAt?.toISOString() ?? null,
+  approvedBy: s.approvedByUser,
+  totalValue: num(s.totalValue),
+  checksum: s.checksum,
+  createdAt: s.createdAt.toISOString(),
+  createdBy: s.createdByUser,
+});
+
 const sameDecimal = (a: string | null, b: string | null) =>
   a === null || b === null ? a === b : new Decimal(a).equals(b);
 
 @Injectable()
 export class RabService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly access: AccessService,
+  ) {}
 
   async list(projectId: string): Promise<RabVersionSummaryDto[]> {
     const versions = await this.prisma.rabVersion.findMany({
@@ -331,7 +371,7 @@ export class RabService {
     return this.detail(this.prisma, projectId, versionId);
   }
 
-  /** CONTRACT starts empty; MC0/ADDENDUM copy the latest approved version (D-040). One DRAFT per project. */
+  /** CONTRACT starts empty; each MC copies the latest approved version (D-040, D-069). One DRAFT per project. */
   async create(
     actor: AuthUser,
     projectId: string,
@@ -345,7 +385,7 @@ export class RabService {
   }
 
   /**
-   * Creates a version under the M4 order rules (one DRAFT per project, CONTRACT → MC0 → ADDENDUM n) inside
+   * Creates a version under the order rules (one DRAFT per project, CONTRACT → MC-0 … MC-100, D-069) inside
    * the caller's transaction. Manual creation copies the previous approved version; an approved import
    * fills the rows itself (D-049, D-053) — the only other caller, so there is a single RAB creation path.
    */
@@ -366,31 +406,20 @@ export class RabService {
       where: { projectId, status: { not: 'DISCARDED' } },
       select: { id: true, versionType: true, revisionNumber: true, status: true, approvedAt: true },
     });
-    if (versions.some((v) => v.status === 'DRAFT'))
-      throw new ConflictException(
-        'Masih ada draft RAB; approve atau batalkan draft tersebut lebih dahulu.',
-      );
-    const approved = versions
-      .filter((v) => v.status === 'APPROVED')
-      .sort((a, b) => a.approvedAt!.getTime() - b.approvedAt!.getTime());
-    const latest = approved.at(-1);
+    if (versions.some((v) => v.status === 'DRAFT' || v.status === 'REOPENED'))
+      throw new ConflictException(OPEN_VERSION);
+    // Domain order, not approval time: re-approving a corrected Kontrak must not make it "latest" (D-068).
+    const latest = latestInDomainOrder(versions.filter((v) => v.status === 'APPROVED'));
 
     let revisionNumber = 0;
     if (input.versionType === 'CONTRACT') {
       if (versions.length > 0) throw new ConflictException('RAB Kontrak sudah ada.');
     } else if (!latest) {
-      throw new ConflictException(
-        'RAB Kontrak harus di-approve sebelum membuat MC-0 atau Addendum.',
-      );
-    } else if (input.versionType === 'MC0') {
-      if (versions.some((v) => v.versionType !== 'CONTRACT'))
-        throw new ConflictException('MC-0 hanya dapat dibuat satu kali dan sebelum Addendum.');
+      throw new ConflictException('RAB Kontrak harus di-approve sebelum membuat MC.');
     } else {
-      revisionNumber =
-        Math.max(
-          0,
-          ...versions.filter((v) => v.versionType === 'ADDENDUM').map((v) => v.revisionNumber),
-        ) + 1;
+      revisionNumber = input.revisionNumber ?? nextMcNumber(versions);
+      const invalid = mcNumberError(versions, revisionNumber);
+      if (invalid) throw new ConflictException(invalid);
     }
 
     const version = await tx.rabVersion.create({
@@ -435,7 +464,7 @@ export class RabService {
     input: UpdateRabVersionInput,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      const version = await this.lockDraft(tx, projectId, versionId);
+      const version = await this.lockEditable(tx, actor, projectId, versionId, input.reason);
       const current = {
         documentNumber: version.documentNumber,
         documentDate: version.documentDate ? fromDbDate(version.documentDate) : null,
@@ -465,21 +494,23 @@ export class RabService {
         projectId,
         oldValue: current,
         newValue: next,
+        reason: input.reason,
       });
     });
     return this.get(projectId, versionId);
   }
 
   async addItem(
+    actor: AuthUser,
     projectId: string,
     versionId: string,
     input: CreateRabItemInput,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, projectId, versionId);
+      const version = await this.lockEditable(tx, actor, projectId, versionId, input.reason);
       const parentId = input.parentId ?? null;
       await this.assertValidParent(tx, versionId, input.rowType, parentId);
-      const { rowType, ...fields } = input;
+      const { rowType, reason, ...fields } = input;
       if (rowType !== 'ITEM' && ITEM_ONLY_FIELDS.some((f) => fields[f] != null)) {
         throw new BadRequestException(
           'Hanya baris ITEM yang memiliki volume, satuan, no analisa, harga, dan PPN.',
@@ -487,39 +518,55 @@ export class RabService {
       }
       const workItemId =
         rowType === 'ITEM' ? await this.newWorkItem(tx, projectId, input.description) : null;
-      await tx.rabVersionItem.create({
+      const values = {
+        displayNumber: fields.displayNumber ?? null,
+        description: fields.description,
+        volume: fields.volume ?? null,
+        unit: fields.unit ?? null,
+        analysisCode: fields.analysisCode ?? null,
+        unitPrice: fields.unitPrice ?? null,
+        taxPercent: fields.taxPercent ?? null,
+      };
+      const correcting = version.status === 'REOPENED';
+      const created = await tx.rabVersionItem.create({
         data: {
-          displayNumber: fields.displayNumber,
-          description: fields.description,
-          volume: fields.volume,
-          unit: fields.unit,
-          analysisCode: fields.analysisCode,
-          unitPrice: fields.unitPrice,
-          taxPercent: fields.taxPercent,
+          ...values,
           rabVersionId: versionId,
           parentItemId: parentId,
           rowType,
           workItemId,
           sortOrder: await this.nextSortOrder(tx, versionId, parentId),
+          // A row added during a correction is not from the source document.
+          ...(correcting
+            ? { sourceLocator: withCorrection(null, this.mark(actor, reason, changedFields({}, values))) }
+            : {}),
         },
       });
+      if (correcting)
+        await this.correctionAudit(tx, actor, projectId, versionId, reason, {
+          action: 'CORRECT_RAB_ITEM',
+          oldValue: { itemId: created.id, operation: 'ADD' },
+          newValue: { itemId: created.id, rowType, parentId, ...values },
+        });
     });
     return this.get(projectId, versionId);
   }
 
   async updateItem(
+    actor: AuthUser,
     projectId: string,
     versionId: string,
     itemId: string,
     input: UpdateRabItemInput,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, projectId, versionId);
+      const version = await this.lockEditable(tx, actor, projectId, versionId, input.reason);
       const item = await this.findItem(tx, versionId, itemId);
-      const { parentId, ...fields } = input;
+      const { parentId, reason, ...fields } = input;
+      // D-051/D-068: the price of an analysis-linked item comes from its analysis; correct the analysis source.
       if (item.analysisVersionId && fields.unitPrice !== undefined) {
         throw new ConflictException(
-          'Harga satuan item ini mengikuti analisa; ubah lewat impor/analisa, bukan langsung di RAB.',
+          'Harga satuan item ini mengikuti analisa; koreksi harga dasar/koefisien/overhead pada analisa, bukan langsung di RAB.',
         );
       }
       if (item.rowType !== 'ITEM' && ITEM_ONLY_FIELDS.some((f) => fields[f] != null)) {
@@ -528,10 +575,31 @@ export class RabService {
         );
       }
       const data: Prisma.RabVersionItemUncheckedUpdateInput = { ...fields };
+      const before: Record<string, string | number | null> = {
+        displayNumber: item.displayNumber,
+        description: item.description,
+        volume: num(item.volume),
+        unit: item.unit,
+        analysisCode: item.analysisCode,
+        unitPrice: num(item.unitPrice),
+        taxPercent: num(item.taxPercent),
+        parentId: item.parentItemId,
+      };
+      const after: Record<string, string | number | null | undefined> = { ...fields };
       if (parentId !== undefined && parentId !== item.parentItemId) {
         await this.assertValidParent(tx, versionId, item.rowType, parentId, itemId);
         data.parentItemId = parentId;
         data.sortOrder = await this.nextSortOrder(tx, versionId, parentId);
+        after.parentId = parentId;
+      }
+      const changes = changedFields(before, after);
+      if (version.status === 'REOPENED' && Object.keys(changes).length) {
+        data.sourceLocator = withCorrection(item.sourceLocator, this.mark(actor, reason, changes));
+        await this.correctionAudit(tx, actor, projectId, versionId, reason, {
+          action: 'CORRECT_RAB_ITEM',
+          oldValue: { itemId, ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v[0]])) },
+          newValue: { itemId, ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v[1]])) },
+        });
       }
       await tx.rabVersionItem.update({ where: { id: itemId }, data });
     });
@@ -539,13 +607,19 @@ export class RabService {
   }
 
   async deleteItem(
+    actor: AuthUser,
     projectId: string,
     versionId: string,
     itemId: string,
+    reason?: string,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, projectId, versionId);
+      const version = await this.lockEditable(tx, actor, projectId, versionId, reason);
       const item = await this.findItem(tx, versionId, itemId);
+      if (version.status === 'REOPENED' && (await this.wasApproved(tx, versionId, item.createdAt)))
+        throw new ConflictException(
+          'Baris yang sudah pernah approved tidak dihapus saat koreksi; ubah isinya (misalnya volume) dengan alasan.',
+        );
       if (await tx.rabVersionItem.count({ where: { parentItemId: itemId } }))
         throw new ConflictException('Hapus atau pindahkan sub-baris lebih dahulu.');
       await tx.rabVersionItem.delete({ where: { id: itemId } });
@@ -554,18 +628,26 @@ export class RabService {
         await tx.workItem.deleteMany({
           where: { id: item.workItemId, versionItems: { none: {} } },
         });
+      if (version.status === 'REOPENED')
+        await this.correctionAudit(tx, actor, projectId, versionId, reason, {
+          action: 'CORRECT_RAB_ITEM',
+          oldValue: { itemId, operation: 'DELETE', description: item.description },
+          newValue: { itemId, deleted: true },
+        });
     });
     return this.get(projectId, versionId);
   }
 
   async moveItem(
+    actor: AuthUser,
     projectId: string,
     versionId: string,
     itemId: string,
     direction: 'up' | 'down',
+    reason?: string,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, projectId, versionId);
+      const version = await this.lockEditable(tx, actor, projectId, versionId, reason);
       const item = await this.findItem(tx, versionId, itemId);
       const sibling = await tx.rabVersionItem.findFirst({
         where: {
@@ -585,11 +667,151 @@ export class RabService {
         where: { id: sibling.id },
         data: { sortOrder: item.sortOrder },
       });
+      if (version.status === 'REOPENED')
+        await this.correctionAudit(tx, actor, projectId, versionId, reason, {
+          action: 'CORRECT_RAB_ITEM',
+          oldValue: { itemId, sortOrder: item.sortOrder },
+          newValue: { itemId, sortOrder: sibling.sortOrder, direction },
+        });
     });
     return this.get(projectId, versionId);
   }
 
-  /** Validates, stores per-row and total snapshots, and locks the version (D-040, D-042). */
+  /** Applies a drag reorder to the complete sibling set in one transaction. */
+  async reorderItems(
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    input: ReorderRabItemsInput,
+  ): Promise<RabVersionDetailDto> {
+    await this.prisma.$transaction(async (tx) => {
+      const version = await this.lockEditable(tx, actor, projectId, versionId, input.reason);
+      const siblings = await tx.rabVersionItem.findMany({
+        where: { rabVersionId: versionId, parentItemId: input.parentId },
+        orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
+        select: { id: true, sortOrder: true, sourceLocator: true },
+      });
+      const requested = new Set(input.itemIds);
+      if (requested.size !== siblings.length || siblings.some((item) => !requested.has(item.id)))
+        throw new BadRequestException('Urutan harus berisi semua baris saudara pada tingkat yang sama.');
+
+      const previousOrder = siblings.map((item) => item.id);
+      if (previousOrder.every((id, index) => id === input.itemIds[index])) return;
+
+      // Keep the existing sort slots and only change which sibling occupies each slot.
+      const sortOrders = siblings.map((item) => item.sortOrder);
+      for (const [index, id] of input.itemIds.entries()) {
+        const current = siblings.find((item) => item.id === id)!;
+        const nextOrder = sortOrders[index]!;
+        if (current.sortOrder !== nextOrder) {
+          await tx.rabVersionItem.update({
+            where: { id },
+            data: {
+              sortOrder: nextOrder,
+              ...(version.status === 'REOPENED'
+                ? {
+                    sourceLocator: withCorrection(
+                      current.sourceLocator,
+                      this.mark(actor, input.reason, { sortOrder: [current.sortOrder, nextOrder] }),
+                    ),
+                  }
+                : {}),
+            },
+          });
+        }
+      }
+      if (version.status === 'REOPENED')
+        await this.correctionAudit(tx, actor, projectId, versionId, input.reason, {
+          action: 'CORRECT_RAB_ITEM',
+          oldValue: { parentId: input.parentId, itemIds: previousOrder },
+          newValue: { parentId: input.parentId, itemIds: input.itemIds, operation: 'REORDER' },
+        });
+    });
+    return this.get(projectId, versionId);
+  }
+
+  /**
+   * D-068: APPROVED -> REOPENED on the same version. The approved state is archived first when it has no
+   * snapshot yet (versions approved before D-068), so the archive always holds what was approved.
+   */
+  async reopen(
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    reason: string,
+  ): Promise<RabVersionDetailDto> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockActiveProject(tx, projectId);
+      const versions = await tx.rabVersion.findMany({
+        where: { projectId },
+        select: { id: true, status: true },
+      });
+      const version = versions.find((v) => v.id === versionId);
+      if (!version) throw new NotFoundException('Versi RAB tidak ditemukan.');
+      if (version.status !== 'APPROVED')
+        throw new ConflictException('Hanya versi RAB approved yang dapat dibuka kembali.');
+      if (versions.some((v) => v.status === 'DRAFT' || v.status === 'REOPENED'))
+        throw new ConflictException(OPEN_VERSION);
+      let snapshot = await tx.rabVersionSnapshot.findFirst({
+        where: { rabVersionId: versionId },
+        orderBy: { sequence: 'desc' },
+        select: { sequence: true, checksum: true },
+      });
+      snapshot ??= await this.archive(tx, actor, projectId, versionId);
+      await tx.rabVersion.update({ where: { id: versionId }, data: { status: 'REOPENED' } });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'REOPEN_RAB_VERSION',
+        entityType: 'RAB_VERSION',
+        entityId: versionId,
+        projectId,
+        oldValue: { status: 'APPROVED', snapshotSequence: snapshot.sequence, checksum: snapshot.checksum },
+        newValue: { status: 'REOPENED' },
+        reason,
+      });
+    });
+    return this.get(projectId, versionId);
+  }
+
+  async history(projectId: string, versionId: string): Promise<RabHistoryDto> {
+    await this.findVersion(projectId, versionId);
+    const [snapshots, events] = await Promise.all([
+      this.prisma.rabVersionSnapshot.findMany({
+        where: { rabVersionId: versionId },
+        select: SNAPSHOT_SUMMARY,
+        orderBy: { sequence: 'asc' },
+      }),
+      this.prisma.auditLog.findMany({
+        where: { projectId, entityType: 'RAB_VERSION', entityId: versionId },
+        select: { id: true, action: true, actor: USER_REF, createdAt: true, reason: true, oldValue: true, newValue: true },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    return {
+      snapshots: snapshots.map(toSnapshotSummary),
+      events: events.map((e) => ({ ...e, createdAt: e.createdAt.toISOString() })),
+    };
+  }
+
+  /** Stored payload as archived; never recomputed from live rows (D-068). */
+  async snapshot(projectId: string, versionId: string, snapshotId: string): Promise<RabSnapshotDto> {
+    await this.findVersion(projectId, versionId);
+    const s = await this.prisma.rabVersionSnapshot.findFirst({
+      where: { id: snapshotId, rabVersionId: versionId },
+      select: { ...SNAPSHOT_SUMMARY, payload: true },
+    });
+    if (!s) throw new NotFoundException('Snapshot RAB tidak ditemukan.');
+    return {
+      ...toSnapshotSummary(s),
+      checksumValid: checksumOf(s.payload) === s.checksum,
+      payload: s.payload as unknown as RabSnapshotPayload,
+    };
+  }
+
+  /**
+   * Validates, stores per-row and total snapshots, and locks the version (D-040, D-042). A REOPENED version is
+   * approved again the same way; every approval also appends a full archive snapshot (D-068).
+   */
   async approve(
     actor: AuthUser,
     projectId: string,
@@ -597,7 +819,7 @@ export class RabService {
     acknowledgeWarnings: boolean,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, projectId, versionId);
+      const { status } = await this.lockVersion(tx, projectId, versionId);
       const { rows, totals, issues } = await this.detail(tx, projectId, versionId);
       if (issues.errors.length)
         throw new ConflictException({
@@ -630,18 +852,21 @@ export class RabService {
           approvedAt,
         },
       });
+      const snapshot = await this.archive(tx, actor, projectId, versionId);
       await writeAudit(tx, {
         actorId: actor.id,
         action: 'APPROVE_RAB_VERSION',
         entityType: 'RAB_VERSION',
         entityId: versionId,
         projectId,
-        oldValue: { status: 'DRAFT' },
+        oldValue: { status },
         newValue: {
           status: 'APPROVED',
           ...totals,
           itemCount: rows.filter((r) => r.rowType === 'ITEM').length,
           acknowledgedWarnings: issues.warnings.map((w) => w.message),
+          snapshotSequence: snapshot.sequence,
+          checksum: snapshot.checksum,
         },
       });
     });
@@ -655,7 +880,12 @@ export class RabService {
     reason: string,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, projectId, versionId);
+      const { status } = await this.lockVersion(tx, projectId, versionId);
+      // An approved baseline under correction is history, not a draft to throw away (D-068).
+      if (status === 'REOPENED')
+        throw new ConflictException(
+          'Versi yang sedang dikoreksi sudah pernah approved dan tidak dapat dibatalkan; selesaikan koreksi lalu approve ulang.',
+        );
       await tx.rabVersion.update({
         where: { id: versionId },
         data: {
@@ -793,7 +1023,7 @@ export class RabService {
     const rows = toRows(items, values);
     const summary = toSummary(version, computed, rows.filter((r) => r.rowType === 'ITEM').length);
     let issues: RabVersionDetailDto['issues'] = { errors: [], warnings: [] };
-    if (version.status === 'DRAFT') {
+    if (version.status === 'DRAFT' || version.status === 'REOPENED') {
       const project = await db.project.findUniqueOrThrow({
         where: { id: projectId },
         select: { contractValue: true },
@@ -890,15 +1120,190 @@ export class RabService {
       throw new ConflictException('Proyek sudah ditutup; RAB tidak dapat diubah.');
   }
 
-  private async lockDraft(tx: Db, projectId: string, versionId: string) {
+  /** Project lock first, then the version: the same order for every RAB/package write (D-068). */
+  private async lockVersion(
+    tx: Db,
+    projectId: string,
+    versionId: string,
+  ): Promise<EditableVersion> {
+    // The project row lock serializes every RAB write of the project, so the version needs no own lock.
     await this.lockActiveProject(tx, projectId);
     const version = await tx.rabVersion.findFirst({
       where: { id: versionId, projectId },
-      select: { status: true, documentNumber: true, documentDate: true },
+      select: { status: true, documentNumber: true, documentDate: true, previousVersionId: true },
     });
     if (!version) throw new NotFoundException('Versi RAB tidak ditemukan.');
-    if (version.status !== 'DRAFT') throw new ConflictException(NOT_DRAFT);
+    if (version.status !== 'DRAFT' && version.status !== 'REOPENED') throw new ConflictException(NOT_EDITABLE);
+    return { ...version, status: version.status };
+  }
+
+  /**
+   * Locks a DRAFT or REOPENED version for a change. A REOPENED version also needs the correction right
+   * (`rab.reopen`) and a reason: `rab.edit` alone never reaches an approved baseline (D-068).
+   */
+  async lockEditable(
+    tx: Db,
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    reason: string | undefined,
+  ): Promise<EditableVersion> {
+    const version = await this.lockVersion(tx, projectId, versionId);
+    if (version.status === 'REOPENED') {
+      if (!(await this.access.hasProjectPermission(actor, projectId, 'rab.reopen')))
+        throw new ForbiddenException('Mengubah RAB yang sedang dikoreksi memerlukan izin koreksi RAB (rab.reopen).');
+      if (!reason?.trim()) throw new BadRequestException('Alasan koreksi wajib diisi.');
+    }
     return version;
+  }
+
+  mark(actor: AuthUser, reason: string | undefined, changes: Record<string, [string | number | null, string | number | null]>, kind: 'MANUAL' | 'RECALCULATED' = 'MANUAL') {
+    return { at: new Date().toISOString(), by: actor.name, reason: reason?.trim() || null, kind, changes };
+  }
+
+  /** Every correction is recorded on the RAB version, so its history is one audit query. */
+  correctionAudit(
+    tx: Db,
+    actor: AuthUser,
+    projectId: string,
+    versionId: string,
+    reason: string | undefined,
+    entry: { action: 'CORRECT_RAB_ITEM' | 'CORRECT_RAB_WORK_ITEM' | 'CORRECT_PRICE_ITEM' | 'CORRECT_AHSP_COMPONENT' | 'CORRECT_AHSP_ANALYSIS'; oldValue: Prisma.InputJsonObject; newValue: Prisma.InputJsonObject },
+  ) {
+    return writeAudit(tx, { actorId: actor.id, entityType: 'RAB_VERSION', entityId: versionId, projectId, reason, ...entry });
+  }
+
+  /** Rows present at the last approval are history; rows added during the correction are not. */
+  private async wasApproved(tx: Db, versionId: string, createdAt: Date): Promise<boolean> {
+    const last = await tx.rabVersionSnapshot.findFirst({
+      where: { rabVersionId: versionId },
+      orderBy: { sequence: 'desc' },
+      select: { createdAt: true },
+    });
+    return !last || createdAt <= last.createdAt;
+  }
+
+  /**
+   * Appends the version's current approved state to the archive: identity, every row with its snapshot values,
+   * work items and copy relations, and the package (prices, analyses, components) with provenance (D-068).
+   */
+  private async archive(tx: Db, actor: AuthUser, projectId: string, versionId: string) {
+    const { version, rows, totals } = await this.detail(tx, projectId, versionId);
+    const v = await tx.rabVersion.findUniqueOrThrow({
+      where: { id: versionId },
+      select: { projectId: true, approvedBy: true, approvedAt: true },
+    });
+    const copies = new Map(
+      (
+        await tx.rabVersionItem.findMany({
+          where: { rabVersionId: versionId },
+          select: { id: true, previousVersionItemId: true },
+        })
+      ).map((i) => [i.id, i.previousVersionItemId]),
+    );
+    const priceList = await tx.priceList.findUnique({
+      where: { rabVersionId: versionId },
+      select: {
+        id: true,
+        versionNumber: true,
+        location: true,
+        period: true,
+        items: { orderBy: { id: 'asc' } },
+      },
+    });
+    const analyses = await tx.ahspAnalysisVersion.findMany({
+      where: { analysis: { rabVersionId: versionId } },
+      include: { components: { orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] } },
+      orderBy: { id: 'asc' },
+    });
+    const payload: RabSnapshotPayload = {
+      schema: 1,
+      version: {
+        id: version.id,
+        projectId: v.projectId,
+        versionType: version.versionType,
+        revisionNumber: version.revisionNumber,
+        label: version.label,
+        documentNumber: version.documentNumber,
+        documentDate: version.documentDate,
+        previousVersionId: version.previousVersionId,
+        approvedBy: v.approvedBy,
+        approvedAt: v.approvedAt?.toISOString() ?? null,
+      },
+      totals,
+      rows: rows.map((r) => ({ ...r, previousVersionItemId: copies.get(r.id) ?? null })),
+      package: {
+        priceList: priceList && {
+          id: priceList.id,
+          versionNumber: priceList.versionNumber,
+          location: priceList.location,
+          period: priceList.period,
+        },
+        priceItems: (priceList?.items ?? []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          unit: p.unit,
+          price: num(p.price)!,
+          copiedFromId: p.copiedFromId,
+          sourceLocator: p.sourceLocator,
+        })),
+        analyses: analyses.map((a) => ({
+          id: a.id,
+          analysisId: a.analysisId,
+          versionNumber: a.versionNumber,
+          code: a.code,
+          name: a.name,
+          unit: a.unit,
+          overheadPercent: num(a.overheadPercent),
+          roundingScale: a.roundingScale,
+          directCost: num(a.directCost)!,
+          overheadAmount: num(a.overheadAmount)!,
+          priceExact: num(a.priceExact)!,
+          price: num(a.price)!,
+          copiedFromId: a.copiedFromId,
+          sourceImportId: a.sourceImportId,
+          sourceLocator: a.sourceLocator,
+          components: a.components.map((c) => ({
+            id: c.id,
+            sortOrder: c.sortOrder,
+            category: c.category,
+            description: c.description,
+            unit: c.unit,
+            coefficient: num(c.coefficient)!,
+            unitPrice: num(c.unitPrice)!,
+            amount: num(c.amount)!,
+            priceItemId: c.priceItemId,
+            subAnalysisVersionId: c.subAnalysisVersionId,
+            subPriceBasis: c.subPriceBasis,
+            sourceLocator: c.sourceLocator,
+          })),
+        })),
+      },
+    };
+    // Stored as parsed canonical JSON: no undefined, and the checksum covers exactly what is stored.
+    const stored = JSON.parse(canonicalJson(payload)) as Prisma.InputJsonObject;
+    const last = await tx.rabVersionSnapshot.aggregate({
+      where: { rabVersionId: versionId },
+      _max: { sequence: true },
+    });
+    return tx.rabVersionSnapshot.create({
+      data: {
+        rabVersionId: versionId,
+        sequence: (last._max.sequence ?? 0) + 1,
+        approvedBy: v.approvedBy,
+        approvedAt: v.approvedAt,
+        totalValue: totals.value,
+        payload: stored,
+        checksum: checksumOf(stored),
+        createdBy: actor.id,
+      },
+      select: { sequence: true, checksum: true },
+    });
+  }
+
+  private async findVersion(projectId: string, versionId: string): Promise<void> {
+    if (!(await this.prisma.rabVersion.findFirst({ where: { id: versionId, projectId }, select: { id: true } })))
+      throw new NotFoundException('Versi RAB tidak ditemukan.');
   }
 
   private async findItem(tx: Db, versionId: string, itemId: string) {
@@ -911,6 +1316,15 @@ export class RabService {
         sortOrder: true,
         workItemId: true,
         analysisVersionId: true,
+        displayNumber: true,
+        description: true,
+        volume: true,
+        unit: true,
+        analysisCode: true,
+        unitPrice: true,
+        taxPercent: true,
+        sourceLocator: true,
+        createdAt: true,
       },
     });
     if (!item) throw new NotFoundException('Baris RAB tidak ditemukan.');

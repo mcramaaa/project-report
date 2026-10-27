@@ -34,7 +34,9 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `project.update` | PROJECT | Proyek | ubah identitas, jadwal, tutup/buka kembali proyek |
 | `rab.read` | PROJECT | RAB | lihat versi RAB, grid, perbandingan (D-041) |
 | `rab.edit` | PROJECT | RAB | buat/ubah/discard draft RAB |
-| `rab.approve` | PROJECT | RAB | approve draft RAB |
+| `rab.approve` | PROJECT | RAB | approve draft RAB dan approve ulang versi REOPENED |
+| `rab.reopen` | PROJECT | RAB | buka kembali versi approved (alasan, snapshot) dan ubah baris selama REOPENED (D-068) |
+| `ahsp.edit` | PROJECT | AHSP | koreksi harga dasar, koefisien, harga komponen manual, overhead, pembulatan pada paket DRAFT/REOPENED (D-068) |
 | `document.read` | PROJECT | Dokumen | lihat & unduh dokumen proyek (D-049) |
 | `document.upload` | PROJECT | Dokumen | upload dokumen |
 | `rabImport.review` | PROJECT | Impor RAB | buat run impor, retry, catat keputusan reviewer |
@@ -47,13 +49,14 @@ Rencana (ditambahkan saat milestone terkait; `rab.*` sudah ditambahkan di M4, de
 
 ## 3. Role Sistem Bawaan
 
-FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah.
+FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2), RAB_EDITOR (D-068, ditambahkan migration `20261026120000_rab_reopen_corrections`; role lama tidak mendapat `rab.reopen`/`ahsp.edit`). Kode, scope, dan status aktif terkunci; nama, deskripsi, dan permission dapat diubah.
 
 | Role | Default permission |
 |---|---|
 | FILLER, REVIEWER | `project.read`, `rab.read`, `ahsp.read` |
 | ADMIN | `project.read`, `rab.read`, `rab.edit`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review` |
 | MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve` |
+| RAB_EDITOR (Editor RAB) | `project.read`, `rab.read`, `rab.edit`, `rab.approve`, `rab.reopen`, `ahsp.read`, `ahsp.edit`, `document.read` |
 
 Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
 
@@ -96,6 +99,11 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `GET /projects/:id/rab-versions…` (daftar, detail, compare) | `rab.read` |
 | `POST/PATCH/DELETE /projects/:id/rab-versions…` (draft, baris, discard) | `rab.edit` |
 | `POST /projects/:id/rab-versions/:vid/approve` | `rab.approve` |
+| `POST /projects/:id/rab-versions/:vid/reopen` | `rab.reopen` |
+| `GET /projects/:id/rab-versions/:vid/history`, `…/snapshots/:sid` | `rab.read` **dan** `ahsp.read` (payload memuat paket analisa dan detail before/after) |
+| `POST /projects/:id/rab-versions/:vid/items/:itemId/work-item` | `rab.edit` |
+| `PATCH /projects/:id/rab-versions/:vid/price-items/:pid`, `…/components/:cid`, `…/analysis-versions/:avid` | `ahsp.edit` |
+| Perubahan apa pun pada versi REOPENED (endpoint di atas maupun endpoint draft lama) | izin endpoint **dan** `rab.reopen`, plus alasan (D-068) |
 | `GET /projects/:id/documents…` / `POST /projects/:id/documents` | `document.read` / `document.upload` |
 | `GET /projects/:id/rab-imports…` | `rabImport.review` atau `rabImport.approve` |
 | `POST /projects/:id/rab-imports`, `…/decisions`, `…/retry` | `rabImport.review` |
@@ -136,6 +144,8 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |
 | `CREATE_RAB_IMPORT` / `RETRY_RAB_IMPORT` | run impor dibuat / diulang | versi tujuan, dokumen, run sebelumnya |
 | `DECIDE_RAB_IMPORT_ROW` | keputusan reviewer | baris, jenis, nilai, alasan |
+| `CONFIRM_RAB_IMPORT_PROPOSALS` | reviewer mengonfirmasi usulan review paket (D-065, `rabImport.review`) | versi dasar, jumlah baris/pekerjaan/analisa, baris |
+| `DELETE_RAB_IMPORT` | reviewer menghapus run belum digunakan dari daftar (D-066, `rabImport.review`) | status asal, waktu penghapusan; draft dan dokumen dipertahankan |
 | `APPROVE_RAB_IMPORT` / `REJECT_RAB_IMPORT` | impor di-approve / ditolak | versi RAB & daftar harga hasil, jumlah analisa/komponen; alasan |
 | `DISCARD_RAB_VERSION` | draft dibatalkan | status lama & baru (alasan wajib) |
 | `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |

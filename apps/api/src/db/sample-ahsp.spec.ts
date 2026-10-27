@@ -48,9 +48,9 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages pe
     expect(report.contract).toMatchObject({ ...full, status: 'APPROVED', copiedFrom: {} });
     // Workbook 04 has no analyses: MC-0 inherits the Kontrak package by copy (D-058).
     expect(report.mc0).toMatchObject({ ...full, status: 'APPROVED', copiedFrom: { Kontrak: 110 } });
-    expect(report.addendum).toMatchObject({ ...full, status: 'DRAFT', copiedFrom: { 'MC-0': 110 }, realCost: '5121250896.53' });
+    expect(report.mc1).toMatchObject({ ...full, status: 'DRAFT', copiedFrom: { 'MC-0': 110 }, realCost: '5121250896.53' });
     // No id is shared between packages.
-    const ids = await Promise.all([report.contract, report.mc0, report.addendum].map(async (p) => (await t.prisma.ahspAnalysisVersion.findMany({ where: { analysis: { rabVersionId: p.rabVersionId } }, select: { id: true } })).map((v) => v.id)));
+    const ids = await Promise.all([report.contract, report.mc0, report.mc1].map(async (p) => (await t.prisma.ahspAnalysisVersion.findMany({ where: { analysis: { rabVersionId: p.rabVersionId } }, select: { id: true } })).map((v) => v.id)));
     expect(new Set(ids.flat()).size).toBe(330);
     expect(await t.prisma.priceList.count()).toBe(3);
     const counts = async () => ({
@@ -66,7 +66,7 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages pe
     const before = await counts();
     const again = await seedAhspSample(services, actor, files);
     expect(again.steps).toEqual(['proyek sudah ada']);
-    expect(again.addendum.rabVersionId).toBe(report.addendum.rabVersionId);
+    expect(again.mc1.rabVersionId).toBe(report.mc1.rabVersionId);
     expect(await counts()).toEqual(before);
     expect(await t.prisma.project.findUnique({ where: { code: AHSP_SAMPLE_CODE } })).not.toBeNull();
   }, 240_000);
@@ -80,7 +80,7 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages pe
           if (prop === 'approve') {
             return async (...args: Parameters<RabImportsService['approve']>) => {
               const run = await t.prisma.rabImport.findUniqueOrThrow({ where: { id: args[2] } });
-              if (run.targetVersionType === 'MC0' && failOnce) {
+              if (run.targetVersionType === 'MC' && failOnce) {
                 failOnce = false;
                 throw new Error('simulated crash before MC-0 approval');
               }
@@ -93,13 +93,13 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages pe
       }),
     };
     await expect(seedAhspSample(flaky, actor, files)).rejects.toThrow('simulated crash');
-    const mc0 = await t.prisma.rabImport.findFirstOrThrow({ where: { targetVersionType: 'MC0' } });
+    const mc0 = await t.prisma.rabImport.findFirstOrThrow({ where: { targetVersionType: 'MC' } });
     expect(mc0.status).toBe('NEEDS_REVIEW'); // decisions recorded, nothing approved
-    expect(await t.prisma.rabVersion.count({ where: { versionType: 'MC0' } })).toBe(0);
+    expect(await t.prisma.rabVersion.count({ where: { versionType: 'MC' } })).toBe(0);
 
     const report = await seedAhspSample(services, actor, files);
     expect(report.steps).toEqual(['proyek sudah ada', 'impor MC-0 di-approve', 'RAB MC-0 di-approve (M4)', 'Addendum 1 dibuat dari MC-0 (DRAFT, salinan paket)']);
-    expect(await t.prisma.rabImport.count({ where: { targetVersionType: 'MC0' } })).toBe(1);
+    expect(await t.prisma.rabImport.count({ where: { targetVersionType: 'MC' } })).toBe(1);
     expect(await t.prisma.rabImportDecision.count({ where: { importId: mc0.id } })).toBe(832);
     expect(report.mc0.realCost).toBe('5121250896.53');
   }, 240_000);

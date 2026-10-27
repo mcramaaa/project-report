@@ -146,13 +146,15 @@ Satu run impor paket ke satu versi RAB tujuan.
 
 - id
 - project_id → projects
-- target_version_type — CONTRACT | MC0 | ADDENDUM
+- target_version_type — CONTRACT | MC (D-069)
+- target_revision_number — nomor MC yang diimpor (0 untuk CONTRACT), ditetapkan saat run dibuat
 - status — UPLOADED | PROCESSING | NEEDS_REVIEW | APPROVED | REJECTED | FAILED
 - attempt_number, previous_import_id nullable → rab_imports (retry)
 - guide_version — mis. `rab-import-guide@1`
 - parser_version
 - draft JSON nullable — structured draft tervalidasi schema (baris RAB, analisa terpakai, harga, bukti formula, issues, kandidat)
 - error_message nullable
+- deleted_at nullable — soft delete run belum digunakan (D-066); histori tetap tersimpan
 - created_by, created_at, updated_at, processed_at
 - approved_by, approved_at, rejected_by, rejected_at, reject_reason nullable
 - rab_version_id nullable → rab_versions (hasil), price_list_id nullable → price_lists (hasil)
@@ -198,20 +200,35 @@ Milestone 4 (D-040). Kolom yang belum dibuat: `document_id` (M5), `effective_dat
 
 - id
 - project_id → projects (RESTRICT)
-- version_type — CONTRACT | MC0 | ADDENDUM
-- revision_number — 0 untuk CONTRACT/MC0; 1, 2, … untuk ADDENDUM
+- version_type — CONTRACT | MC (D-069)
+- revision_number — 0 untuk CONTRACT; nomor MC 0 … 100 untuk MC
 - document_number nullable
 - document_date nullable
 - previous_version_id nullable → rab_versions (versi approved yang disalin)
-- status — DRAFT | APPROVED | DISCARDED
-- total_before_tax, total_tax, total_value DECIMAL(50,18) nullable — snapshot eksak saat approve (D-043); draft dihitung saat dibaca. REAL COST (2 desimal) dan DIBULATKAN dihitung dari total_value
+- status — DRAFT | APPROVED | DISCARDED | REOPENED (D-068: versi approved yang dibuka kembali untuk koreksi)
+- total_before_tax, total_tax, total_value DECIMAL(50,18) nullable — snapshot eksak saat approve (D-043); draft/REOPENED dihitung saat dibaca. REAL COST (2 desimal) dan DIBULATKAN dihitung dari total_value
 - created_by → users
-- approved_by, approved_at nullable
+- approved_by, approved_at nullable — approval terakhir; urutan versi tidak memakai kolom ini
 - discarded_by, discarded_at, discard_reason nullable
 - created_at
 - updated_at
 
-Index: `project_id, status`. Urutan versi dan "satu DRAFT per proyek" ditegakkan service dengan lock baris proyek.
+Index: `project_id, status`. Urutan versi (domain Kontrak → MC-0 → MC-1 … MC-100) dan "satu DRAFT/REOPENED per proyek" ditegakkan service dengan lock baris proyek.
+
+### rab_version_snapshots
+
+D-068, append-only (tidak pernah di-update/dihapus oleh aplikasi).
+
+- id
+- rab_version_id → rab_versions (RESTRICT); unique `rab_version_id, sequence`
+- sequence SMALLINT — 1, 2, … per versi
+- approved_by → users nullable, approved_at nullable — approval yang diarsipkan
+- total_value DECIMAL(50,18) nullable — untuk daftar
+- payload JSON — identitas versi, seluruh baris (hierarki, WI, angka snapshot, provenance, relasi salinan) dan paket (harga dasar, analisa, komponen, provenance); decimal sebagai string
+- checksum CHAR(64) — SHA-256 dari JSON kanonis (key terurut), bukan urutan key JSON MySQL
+- created_by → users, created_at — siapa/kapan mengarsipkan (approval, atau reopen pertama untuk versi approved lama)
+
+Koreksi (D-068) menambah entri `corrections` (`at`, `by`, `reason`, `kind` MANUAL/RECALCULATED, `changes` before/after) pada `source_locator` baris yang berubah — item RAB, harga dasar, komponen, versi analisa — tanpa menghapus lokasi/bukti Excel asli.
 
 ### work_items
 

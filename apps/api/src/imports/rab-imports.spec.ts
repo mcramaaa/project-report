@@ -543,7 +543,7 @@ describe('MC-0 import with reviewer decisions (D-053)', () => {
       }),
     );
     const mc0 = await runImport(admin, {
-      targetVersionType: 'MC0',
+      targetVersionType: 'MC',
       sources: [{ documentId: mc0Doc.id }],
     });
     const [bata, papan] = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
@@ -585,7 +585,7 @@ describe('MC-0 import with reviewer decisions (D-053)', () => {
     expect(res.body.import.blockingIssues).toBe(0);
     expect((await admin.post(`${base}/${mc0.import.id}/approve`)).status).toBe(200);
 
-    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC0' } });
+    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC', revisionNumber: 0 } });
     const mc0Item = await t.prisma.rabVersionItem.findFirstOrThrow({
       where: { rabVersionId: mc0Rab.id, description: 'Pek. Pasangan Dinding Bata' },
     });
@@ -702,7 +702,7 @@ describe('MC-0 import with reviewer decisions (D-053)', () => {
     );
     const before = await packageSnapshot([contractRab.id, mc0Rab.id]);
     const add = await admin.post(`/projects/${project.id}/rab-versions`, {
-      versionType: 'ADDENDUM',
+      versionType: 'MC',
     });
     expect(add.status, JSON.stringify(add.body)).toBe(201);
     const addId = add.body.version.id as string;
@@ -774,7 +774,7 @@ describe('MC-0 with its own analyses (D-058)', () => {
     // The MC-0 workbook carries full analysis sheets: rows are proven by formula, nothing is offered from Kontrak.
     const mc0Doc = await upload(admin, 'mc0-lengkap.xlsx', await contractBook());
     const mc0 = await runImport(admin, {
-      targetVersionType: 'MC0',
+      targetVersionType: 'MC',
       sources: [{ documentId: mc0Doc.id }],
     });
     const rows = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
@@ -787,6 +787,11 @@ describe('MC-0 with its own analyses (D-058)', () => {
       ['ANALYSIS', 0],
       ['DIRECT', 0],
     ]);
+    // D-065: the package review sees the source analyses and proposes no inheritance.
+    expect(mc0.packageReview).toMatchObject({
+      sourceHasAnalyses: true,
+      counts: { fromSource: 1, inherit: 0, match: 2, newItems: 0, problems: 0 },
+    });
     const decided = await admin.post(`${base}/${mc0.import.id}/decisions`, {
       decisions: rows.map((r: { key: string; workItemCandidates: { workItemId: string }[] }) => ({
         rowKey: r.key,
@@ -797,7 +802,7 @@ describe('MC-0 with its own analyses (D-058)', () => {
     expect(decided.body.import.blockingIssues).toBe(0);
     expect((await admin.post(`${base}/${mc0.import.id}/approve`)).status).toBe(200);
 
-    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC0' } });
+    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC', revisionNumber: 0 } });
     const own = await t.prisma.ahspAnalysisVersion.findMany({
       where: { analysis: { rabVersionId: mc0Rab.id } },
     });
@@ -807,6 +812,294 @@ describe('MC-0 with its own analyses (D-058)', () => {
     ]);
     expect(isIsolated(await checkPackageIsolation(t.prisma, mc0Rab.id))).toBe(true);
     expect(await packageSnapshot([contractRab.id])).toEqual(before);
+  });
+});
+
+/** Imports and approves the Kontrak (import, then RAB version). */
+async function approvedContract() {
+  const doc = await upload(admin, 'rab.xlsx', await contractBook());
+  const contract = await runImport(admin, {
+    targetVersionType: 'CONTRACT',
+    sources: [{ documentId: doc.id }],
+  });
+  expect((await admin.post(`${base}/${contract.import.id}/approve`)).status).toBe(200);
+  const rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { projectId: project.id } });
+  await admin.post(`/projects/${project.id}/rab-versions/${rab.id}/approve`, {
+    acknowledgeWarnings: true,
+  });
+  return rab;
+}
+
+type Row = { no: string | number | null; desc: string; vol?: number; unit?: string; code?: string; recap?: number; price?: number };
+/** MC workbook without analyses: RAB rows look their code up in a values-only recap. */
+async function valuesOnly(type: 'MC', rows: Row[], name = `${type}.xlsx`) {
+  const recapCells: Record<string, string | number> = {};
+  const codes = [...new Set(rows.flatMap((r) => (r.code ? [r.code] : [])))];
+  codes.forEach((code, i) => {
+    recapCells[`B${6 + i}`] = code;
+    recapCells[`E${6 + i}`] = rows.find((r) => r.code === code)!.recap!;
+  });
+  const doc = await upload(
+    admin,
+    name,
+    await xlsxOf({
+      'RAB + PPN': rabSheet(
+        rows.map((r, i) => ({
+          ...r,
+          price: r.code ? recapLookup(13 + i, r.recap!) : r.price,
+        })),
+      ),
+      'REKAP ANALISA': recapCells,
+    }),
+  );
+  return runImport(admin, { targetVersionType: type, sources: [{ documentId: doc.id }] });
+}
+
+const BATA = { no: 1, desc: 'Pek. Pasangan Dinding Bata', unit: 'm2', code: 'P.1', recap: MAIN_PRICE };
+const PAPAN = { no: 2, desc: 'Papan nama proyek', vol: 1, unit: 'bh', price: 500000 };
+const GROUP = { no: 'A', desc: 'PEKERJAAN DINDING' };
+type Detail = { packageReview: { baseVersion: { id: string } | null; token: string; proposals: { rowKey: string }[] } };
+const proposalKeys = (d: Detail) => d.packageReview.proposals.map((p) => p.rowKey);
+/** Confirmation body for the proposals as shown in `d`. */
+const shown = (d: Detail) => ({ baseVersionId: d.packageReview.baseVersion?.id ?? null, token: d.packageReview.token });
+const decisionsOf = (importId: string) => t.prisma.rabImportDecision.count({ where: { importId } });
+const confirmAudits = (importId: string) => t.prisma.auditLog.count({ where: { action: 'CONFIRM_RAB_IMPORT_PROPOSALS', entityId: importId } });
+
+describe('package review (D-065)', () => {
+  it('Kontrak → MC-0 → Addendum without analyses: proposals only, explicit confirmation, copies with provenance', async () => {
+    const contractRab = await approvedContract();
+    const p1 = await t.prisma.ahspAnalysisVersion.findFirstOrThrow({ where: { code: 'P.1' } });
+    const contractBefore = await packageSnapshot([contractRab.id]);
+
+    const mc0 = await valuesOnly('MC', [GROUP, { ...BATA, vol: 12 }, PAPAN]);
+    const [bata, papan] = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(mc0.draft.stats.analysisBlocksInSources).toBe(0);
+    expect(mc0.packageReview).toMatchObject({
+      baseVersion: { id: contractRab.id, label: 'Kontrak' },
+      sourceHasAnalyses: false,
+      counts: { fromSource: 0, inherit: 1, match: 2, newItems: 0, problems: 0 },
+    });
+    expect(mc0.packageReview.proposals).toEqual([
+      expect.objectContaining({ rowKey: bata.key, analysis: expect.objectContaining({ analysisVersionId: p1.id }), workItem: expect.objectContaining({ workItemId: bata.workItemCandidates[0].workItemId }) }),
+      expect.not.objectContaining({ analysis: expect.anything() }),
+    ]);
+    // Proposals are not decisions: nothing recorded, approval still blocked.
+    expect(await t.prisma.rabImportDecision.count({ where: { importId: mc0.import.id } })).toBe(0);
+    expect(mc0.import.blockingIssues).toBe(3);
+    expect((await admin.post(`${base}/${mc0.import.id}/approve`)).status).toBe(409);
+
+    // Backend permission and a token that is not the one shown: refused, nothing recorded.
+    const confirm = `${base}/${mc0.import.id}/confirm-proposals`;
+    const filler = await member('FILLER');
+    expect((await filler.post(confirm, shown(mc0))).status).toBe(403);
+    expect((await admin.post(confirm, { ...shown(mc0), token: 'f'.repeat(64) })).status).toBe(409);
+    expect((await admin.post(confirm, { ...shown(mc0), baseVersionId: null })).status).toBe(409);
+    expect(await t.prisma.rabImportDecision.count({ where: { importId: mc0.import.id } })).toBe(0);
+
+    const confirmed = await admin.post(confirm, shown(mc0));
+    expect(confirmed.status, JSON.stringify(confirmed.body)).toBe(200);
+    expect(confirmed.body.import.blockingIssues).toBe(0);
+    expect(confirmed.body.packageReview.proposals).toEqual([]);
+    const recorded = await t.prisma.rabImportDecision.findMany({ where: { importId: mc0.import.id } });
+    expect(recorded.map((d) => [d.rowKey, d.kind, d.decidedBy]).sort()).toEqual(
+      [
+        [bata.key, 'ANALYSIS_LINK', adminId],
+        [bata.key, 'WORK_ITEM_MATCH', adminId],
+        [papan.key, 'WORK_ITEM_MATCH', adminId],
+      ].sort(),
+    );
+    expect(recorded.every((d) => d.reason?.startsWith('Konfirmasi paket oleh reviewer:'))).toBe(true);
+    const audit = await t.prisma.auditLog.findFirstOrThrow({ where: { action: 'CONFIRM_RAB_IMPORT_PROPOSALS' } });
+    expect(audit).toMatchObject({ userId: adminId, entityId: mc0.import.id, newValue: expect.objectContaining({ baseVersionId: contractRab.id, rows: 2, workItems: 2, analyses: 1 }) });
+    // Confirming the same view again: the proposals changed (none left).
+    expect((await admin.post(confirm, shown(mc0))).status).toBe(409);
+    expect(await t.prisma.auditLog.count({ where: { action: 'CONFIRM_RAB_IMPORT_PROPOSALS' } })).toBe(1);
+
+    expect((await admin.post(`${base}/${mc0.import.id}/approve`)).status).toBe(200);
+    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC', revisionNumber: 0 } });
+    const mc0Item = await t.prisma.rabVersionItem.findFirstOrThrow({
+      where: { rabVersionId: mc0Rab.id, description: BATA.desc },
+      include: { analysisVersion: { include: { analysis: true } } },
+    });
+    expect(mc0Item.analysisVersion).toMatchObject({ copiedFromId: p1.id, sourceImportId: mc0.import.id, analysis: { rabVersionId: mc0Rab.id } });
+    expect(isIsolated(await checkPackageIsolation(t.prisma, mc0Rab.id))).toBe(true);
+    expect(await packageSnapshot([contractRab.id])).toEqual(contractBefore);
+    await admin.post(`/projects/${project.id}/rab-versions/${mc0Rab.id}/approve`, { acknowledgeWarnings: true });
+
+    // Addendum without analysis changes inherits from MC-0 (the latest approved), not from Kontrak.
+    const bothBefore = await packageSnapshot([contractRab.id, mc0Rab.id]);
+    const add = await valuesOnly('MC', [GROUP, { ...BATA, vol: 15 }, PAPAN], 'MC1.xlsx');
+    expect(add.packageReview).toMatchObject({ baseVersion: { id: mc0Rab.id, label: 'MC-0' }, counts: { inherit: 1, match: 2, problems: 0 } });
+    expect(add.packageReview.proposals[0].analysis.analysisVersionId).toBe(mc0Item.analysisVersionId);
+    expect((await admin.post(`${base}/${add.import.id}/confirm-proposals`, shown(add))).body.import.blockingIssues).toBe(0);
+    expect((await admin.post(`${base}/${add.import.id}/approve`)).status).toBe(200);
+    const addRab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC', revisionNumber: 1 } });
+    const addItem = await t.prisma.rabVersionItem.findFirstOrThrow({
+      where: { rabVersionId: addRab.id, description: BATA.desc },
+      include: { analysisVersion: { include: { analysis: true } } },
+    });
+    expect(addItem.workItemId).toBe(mc0Item.workItemId);
+    expect(addItem.analysisVersion).toMatchObject({ copiedFromId: mc0Item.analysisVersionId, analysis: { rabVersionId: addRab.id } });
+    expect(await t.prisma.ahspAnalysis.count({ where: { rabVersionId: addRab.id } })).toBe(2);
+    expect(isIsolated(await checkPackageIsolation(t.prisma, addRab.id))).toBe(true);
+    expect(await packageSnapshot([contractRab.id, mc0Rab.id])).toEqual(bothBefore);
+  });
+
+  it('punctuation-only pairs, manual search and backend validation of explicit matches (D-067)', async () => {
+    await approvedContract();
+    const mc0 = await valuesOnly('MC', [GROUP, { ...BATA, desc: 'Pek.. Pasangan Dinding Bata', vol: 12 }, PAPAN, { no: 3, desc: 'Pek. Baru', vol: 2, unit: 'm2', price: 1000 }]);
+    const [bata, papan, baru] = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(bata.workItemCandidates).toEqual([expect.objectContaining({ analysisCode: 'P.1', reason: expect.stringContaining('tanda baca') })]);
+    expect(proposalKeys(mc0)).toEqual([bata.key, papan.key]);
+    expect(baru.workItemCandidates).toEqual([]);
+
+    // Manual search is available even without candidates; review permission only.
+    const search = `${base}/${mc0.import.id}/work-items`;
+    const papanId = papan.workItemCandidates[0].workItemId;
+    const found = await admin.get(`${search}?q=papan`);
+    expect(found.status).toBe(200);
+    expect(found.body).toMatchObject({ baseVersion: { label: 'Kontrak' }, total: 1, page: 1, items: [{ workItemId: papanId, description: PAPAN.desc, unit: 'bh', analysisCode: null }] });
+    expect((await admin.get(search)).body.total).toBe(2);
+    expect((await (await member('FILLER')).get(search)).status).toBe(403);
+
+    const decisions = `${base}/${mc0.import.id}/decisions`;
+    const match = (rowKey: string, workItemId: string | null) => ({ rowKey, kind: 'WORK_ITEM_MATCH', value: { workItemId } });
+    // Another project's work item, or one not in the latest approved version: refused.
+    const other = await createProject(t.prisma, 'D067-OTHER');
+    const foreign = await t.prisma.workItem.create({ data: { projectId: other.id, internalCode: 'WI-0001', canonicalDescription: 'X' } });
+    const unversioned = await t.prisma.workItem.create({ data: { projectId: project.id, internalCode: 'WI-9999', canonicalDescription: 'Y' } });
+    for (const id of [foreign.id, unversioned.id]) expect((await admin.post(decisions, { decisions: [match(baru.key, id)] })).status).toBe(400);
+    // One work item for two rows: refused within one request and against an earlier decision.
+    expect((await admin.post(decisions, { decisions: [match(baru.key, papanId), match(papan.key, papanId)] })).status).toBe(400);
+    expect(await decisionsOf(mc0.import.id)).toBe(0);
+    expect((await admin.post(decisions, { decisions: [match(baru.key, papanId)] })).status).toBe(200);
+    expect((await admin.post(decisions, { decisions: [match(papan.key, papanId)] })).status).toBe(400);
+    // Moving the choice works once the other row releases it.
+    expect((await admin.post(decisions, { decisions: [match(baru.key, null), match(papan.key, papanId)] })).status).toBe(200);
+  });
+
+  it('ambiguous, new, conflicting and AI-suggested rows are never proposed', async () => {
+    await approvedContract();
+    const p1 = await t.prisma.ahspAnalysisVersion.findFirstOrThrow({ where: { code: 'P.1' } });
+    aiReply = (input) => {
+      const rows = JSON.parse(input.slice(input.indexOf('{"rows"'))).rows as { rowKey: string }[];
+      return { suggestions: rows.map((r) => ({ rowKey: r.rowKey, candidateIds: [p1.id], reason: 'Kode P.1 sama' })) };
+    };
+    // Price conflict on Bata (recap 60000 ≠ analysis 59400), unit conflict on Papan, one new item.
+    const conflicts = await valuesOnly('MC', [
+      GROUP,
+      { ...BATA, vol: 12, recap: 60000 },
+      { ...PAPAN, unit: 'ls' },
+      { no: 3, desc: 'Pek. Baru', vol: 2, unit: 'm2', price: 1000 },
+    ]);
+    const [bata, papan, baru] = conflicts.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(bata.analysisCandidates).toEqual([expect.objectContaining({ analysisVersionId: p1.id, origin: 'AI' })]);
+    expect(conflicts.packageReview.counts).toMatchObject({ inherit: 0, match: 1, newItems: 1, problems: 3 });
+    expect(conflicts.packageReview.proposals).toEqual([
+      expect.objectContaining({ rowKey: bata.key, workItem: expect.anything() }),
+    ]);
+    expect(conflicts.packageReview.proposals[0].analysis).toBeUndefined();
+    expect(proposalKeys(conflicts)).not.toContain(papan.key);
+    expect(proposalKeys(conflicts)).not.toContain(baru.key);
+
+    // Two rows with the same group and name: neither is matched (nor inherits) automatically.
+    aiReply = () => null;
+    const twins = await valuesOnly('MC', [GROUP, { ...BATA, vol: 6 }, { ...BATA, no: 2, vol: 6 }, PAPAN], 'kembar.xlsx');
+    const twinRows = twins.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(twinRows[0].workItemCandidates).toHaveLength(1);
+    expect(proposalKeys(twins)).toEqual([twinRows[2].key]);
+    expect(twins.packageReview.counts).toMatchObject({ inherit: 0, match: 1, problems: 2 });
+    expect(await t.prisma.rabImportDecision.count()).toBe(0);
+  });
+
+  it('a confirmation is refused atomically when the base version or the proposals changed after viewing', async () => {
+    await approvedContract();
+    const p1 = await t.prisma.ahspAnalysisVersion.findFirstOrThrow({ where: { code: 'P.1' } });
+    const rows = [GROUP, { ...BATA, vol: 12 }, PAPAN];
+    const seen = await valuesOnly('MC', rows, 'dilihat.xlsx');
+    expect(seen.packageReview.proposals[0].analysis.analysisVersionId).toBe(p1.id);
+
+    // Meanwhile another MC-0 run is confirmed and approved: the latest approved version becomes MC-0.
+    const other = await valuesOnly('MC', rows, 'lain.xlsx');
+    await admin.post(`${base}/${other.import.id}/confirm-proposals`, shown(other));
+    expect((await admin.post(`${base}/${other.import.id}/approve`)).status).toBe(200);
+    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC', revisionNumber: 0 } });
+    await admin.post(`/projects/${project.id}/rab-versions/${mc0Rab.id}/approve`, { acknowledgeWarnings: true });
+
+    // Same row keys, same work items, but the analysis target is now MC-0's copy: the old view is stale.
+    const now = (await admin.get(`${base}/${seen.import.id}`)).body;
+    expect(proposalKeys(now)).toEqual(proposalKeys(seen));
+    expect(now.packageReview.baseVersion.id).toBe(mc0Rab.id);
+    expect(now.packageReview.proposals[0].analysis.analysisVersionId).not.toBe(p1.id);
+    const stale = await admin.post(`${base}/${seen.import.id}/confirm-proposals`, shown(seen));
+    expect(stale.status).toBe(409);
+    // Even with the new base id, the old token does not match.
+    expect((await admin.post(`${base}/${seen.import.id}/confirm-proposals`, { ...shown(seen), baseVersionId: mc0Rab.id })).status).toBe(409);
+    expect(await decisionsOf(seen.import.id)).toBe(0);
+    expect(await confirmAudits(seen.import.id)).toBe(0);
+
+    // A reviewer's explicit decision changes the kind of a row's proposal (same row key): the old view is stale too.
+    const bata = now.draft.rows.find((r: { description: string }) => r.description === BATA.desc);
+    await admin.post(`${base}/${seen.import.id}/decisions`, { decisions: [{ rowKey: bata.key, kind: 'DIRECT_PRICE', value: { accept: true } }] });
+    const changed = (await admin.get(`${base}/${seen.import.id}`)).body;
+    expect(changed.packageReview.proposals.find((p: { rowKey: string }) => p.rowKey === bata.key)).toEqual(expect.not.objectContaining({ analysis: expect.anything() }));
+    expect((await admin.post(`${base}/${seen.import.id}/confirm-proposals`, shown(now))).status).toBe(409);
+    expect(await decisionsOf(seen.import.id)).toBe(1);
+    expect(await confirmAudits(seen.import.id)).toBe(0);
+    // The current view confirms; the manual direct-price decision stays.
+    expect((await admin.post(`${base}/${seen.import.id}/confirm-proposals`, shown(changed))).status).toBe(200);
+    expect(await t.prisma.rabImportDecision.count({ where: { importId: seen.import.id, kind: 'ANALYSIS_LINK' } })).toBe(0);
+  });
+
+  it('MC-0 without analyses: a literal price with an explicit analysis code inherits; one without a code stays direct', async () => {
+    const contractRab = await approvedContract();
+    const p1 = await t.prisma.ahspAnalysisVersion.findFirstOrThrow({ where: { code: 'P.1' } });
+    const doc = await upload(admin, 'mc0-literal.xlsx', await xlsxOf({ 'RAB + PPN': rabSheet([GROUP, { ...BATA, vol: 12, price: MAIN_PRICE }, PAPAN]) }));
+    const mc0 = await runImport(admin, { targetVersionType: 'MC', sources: [{ documentId: doc.id }] });
+    const [bata, papan] = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect([bata.price.kind, papan.price.kind]).toEqual(['DIRECT', 'DIRECT']);
+    expect(mc0.packageReview.counts).toMatchObject({ inherit: 1, match: 2, problems: 0 });
+    expect(mc0.packageReview.proposals.find((p: { rowKey: string }) => p.rowKey === bata.key).analysis).toMatchObject({ analysisVersionId: p1.id });
+    expect(mc0.packageReview.proposals.find((p: { rowKey: string }) => p.rowKey === papan.key).analysis).toBeUndefined();
+    await admin.post(`${base}/${mc0.import.id}/confirm-proposals`, shown(mc0));
+    expect((await admin.post(`${base}/${mc0.import.id}/approve`)).status).toBe(200);
+    const mc0Rab = await t.prisma.rabVersion.findFirstOrThrow({ where: { versionType: 'MC', revisionNumber: 0 } });
+    const items = await t.prisma.rabVersionItem.findMany({ where: { rabVersionId: mc0Rab.id, rowType: 'ITEM' }, include: { analysisVersion: true }, orderBy: { sortOrder: 'asc' } });
+    expect(items.map((i) => [i.description, i.priceSource, i.analysisVersion?.copiedFromId ?? null])).toEqual([
+      [BATA.desc, 'ANALYSIS', p1.id],
+      [PAPAN.desc, 'DIRECT', null],
+    ]);
+    expect(isIsolated(await checkPackageIsolation(t.prisma, mc0Rab.id))).toBe(true);
+    expect(isIsolated(await checkPackageIsolation(t.prisma, contractRab.id))).toBe(true);
+  });
+
+  it('a source with analyses is the basis: a broken row is not silently inherited', async () => {
+    await approvedContract();
+    const book = await xlsxOf({
+      'RAB + PPN': rabSheet([
+        GROUP,
+        // The chain stops at a typed value although the workbook carries the analysis sheets.
+        { ...BATA, vol: 12, price: ["'REKAP ANALISA'!E40", MAIN_PRICE] },
+        PAPAN,
+      ]),
+      'REKAP ANALISA': {
+        ...recap([
+          { seq: 1, code: 'P.1', price: MAIN_PRICE },
+          { seq: 2, code: 'M.1', price: sub.price },
+        ]),
+        E40: MAIN_PRICE,
+      },
+      ANALISA: { ...main.cells, ...sub.cells },
+      UPAH: upah,
+    });
+    const mc0 = await runImport(admin, { targetVersionType: 'MC', sources: [{ documentId: (await upload(admin, 'mc0-putus.xlsx', book)).id }] });
+    const [bata] = mc0.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(bata.price.kind).toBe('UNRESOLVED');
+    expect(bata.analysisCandidates).toHaveLength(1); // still offered per row
+    expect(mc0.packageReview).toMatchObject({ sourceHasAnalyses: true, counts: { inherit: 0, match: 2, problems: 1 } });
+    expect(mc0.packageReview.proposals.every((p: { analysis?: unknown }) => !p.analysis)).toBe(true);
+    const after = await admin.post(`${base}/${mc0.import.id}/confirm-proposals`, shown(mc0));
+    expect(after.body.issues.filter((i: { severity: string }) => i.severity === 'BLOCKING').map((i: { code: string; rowKey: string }) => [i.code, i.rowKey])).toEqual([['ANALYSIS_UNRESOLVED', bata.key]]);
   });
 });
 
@@ -833,6 +1126,69 @@ async function packageSnapshot(versionIds: string[]) {
 }
 
 describe('failures, retry, rejection, AI', () => {
+  it('never removes an approved import or an import referenced by an official RAB', async () => {
+    const rab = await approvedContract();
+    const approved = await t.prisma.rabImport.findFirstOrThrow({ where: { rabVersionId: rab.id } });
+    const before = await packageSnapshot([rab.id]);
+    expect((await admin.delete(`${base}/${approved.id}`)).status).toBe(409);
+    // Even an inconsistent status must not permit deletion of a run with official results.
+    await t.prisma.rabImport.update({ where: { id: approved.id }, data: { status: 'FAILED' } });
+    expect((await admin.delete(`${base}/${approved.id}`)).status).toBe(409);
+    expect((await t.prisma.rabImport.findUniqueOrThrow({ where: { id: approved.id } })).deletedAt).toBeNull();
+    expect(await packageSnapshot([rab.id])).toEqual(before);
+    expect(await t.prisma.auditLog.count({ where: { action: 'DELETE_RAB_IMPORT' } })).toBe(0);
+  });
+
+  it('deletes a failed run from the list while preserving its document, audit and retry chain', async () => {
+    const sheet = rabSheet([GROUP, { ...BATA, vol: 12, price: MAIN_PRICE }]);
+    const doc = await upload(admin, 'dua-sheet-hapus.xlsx', await xlsxOf({ 'RAB AWAL': sheet, RAB: sheet }));
+    const failed = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id }] });
+    expect(failed.import.status).toBe('FAILED');
+    const retry = await admin.post(`${base}/${failed.import.id}/retry`);
+    await t.app.get(RabImportsService).waitFor(retry.body.id);
+    const before = await t.prisma.rabImport.findUniqueOrThrow({ where: { id: failed.import.id } });
+
+    expect((await admin.delete(`${base}/${failed.import.id}`)).status).toBe(204);
+    const saved = await t.prisma.rabImport.findUniqueOrThrow({ where: { id: failed.import.id } });
+    expect(saved).toMatchObject({ status: 'FAILED', errorMessage: before.errorMessage, deletedAt: expect.any(Date) });
+    expect((await admin.get(base)).body.map((r: { id: string }) => r.id)).toEqual([retry.body.id]);
+    expect((await admin.get(`${base}/${failed.import.id}`)).status).toBe(404);
+    expect((await admin.post(`${base}/${failed.import.id}/retry`)).status).toBe(404);
+    expect((await admin.delete(`${base}/${failed.import.id}`)).status).toBe(404);
+    expect((await admin.get(`${base}/${retry.body.id}`)).body.import.previousImportId).toBe(failed.import.id);
+    const original = await t.prisma.projectDocument.findUniqueOrThrow({ where: { id: doc.id } });
+    expect(existsSync(documentPath(project.id, original.storedFilename))).toBe(true);
+    expect(await t.prisma.rabImportDocument.count({ where: { importId: failed.import.id } })).toBe(1);
+    expect(await t.prisma.auditLog.findMany({ where: { action: 'DELETE_RAB_IMPORT' } })).toEqual([
+      expect.objectContaining({ userId: adminId, projectId: project.id, entityId: failed.import.id, oldValue: { status: 'FAILED' } }),
+    ]);
+  });
+
+  it('keeps review decisions when a reviewer deletes an unused run, but protects running, approved and closed-project runs', async () => {
+    const doc = await upload(admin, 'hapus-review.xlsx', await contractBook());
+    const review = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id }] });
+    const direct = review.draft.rows.find((r: { price: { kind: string } }) => r.price.kind === 'DIRECT');
+    await admin.post(`${base}/${review.import.id}/decisions`, { decisions: [{ rowKey: direct.key, kind: 'DIRECT_PRICE', value: { accept: true } }] });
+    const reviewer = await member('ADMIN');
+    const filler = await member('FILLER');
+    expect((await filler.delete(`${base}/${review.import.id}`)).status).toBe(403);
+    const other = await createProject(t.prisma, 'DELETE-OTHER');
+    expect((await admin.delete(`/projects/${other.id}/rab-imports/${review.import.id}`)).status).toBe(404);
+    expect((await reviewer.delete(`${base}/${review.import.id}`)).status).toBe(204);
+    expect(await t.prisma.rabImportDecision.count({ where: { importId: review.import.id } })).toBe(1);
+    expect((await admin.post(`${base}/${review.import.id}/approve`)).status).toBe(404);
+
+    for (const status of ['UPLOADED', 'PROCESSING', 'APPROVED', 'REJECTED'] as const) {
+      const run = await t.prisma.rabImport.create({ data: { projectId: project.id, createdBy: adminId, targetVersionType: 'CONTRACT', guideVersion: GUIDE_VERSION, parserVersion: 'test', status } });
+      expect((await admin.delete(`${base}/${run.id}`)).status).toBe(status === 'REJECTED' ? 204 : 409);
+    }
+    const closedRun = await t.prisma.rabImport.create({ data: { projectId: project.id, createdBy: adminId, targetVersionType: 'CONTRACT', guideVersion: GUIDE_VERSION, parserVersion: 'test', status: 'FAILED' } });
+    await t.prisma.project.update({ where: { id: project.id }, data: { status: 'CLOSED' } });
+    expect((await admin.delete(`${base}/${closedRun.id}`)).status).toBe(409);
+    expect((await t.prisma.rabImport.findUniqueOrThrow({ where: { id: closedRun.id } })).deletedAt).toBeNull();
+    expect(await t.prisma.auditLog.count({ where: { action: 'DELETE_RAB_IMPORT' } })).toBe(2);
+  });
+
   it('ambiguous sheet → FAILED; retry is a new run linked to the old one; rejection needs a reason', async () => {
     const book = await xlsxOf({
       'RAB A': rabSheet([{ no: 'A', desc: 'P' }]),
@@ -905,7 +1261,7 @@ describe('failures, retry, rejection, AI', () => {
         : null;
     const mc0Doc = await upload(admin, 'mc0.xlsx', mc0Book);
     const withAi = await runImport(admin, {
-      targetVersionType: 'MC0',
+      targetVersionType: 'MC',
       sources: [{ documentId: mc0Doc.id }],
     });
     const row = withAi.draft.rows.find((r: { key: string }) => r.key === '0:14');
@@ -955,7 +1311,7 @@ describe('failures, retry, rejection, AI', () => {
 
     aiReply = () => null;
     const noAi = await runImport(admin, {
-      targetVersionType: 'MC0',
+      targetVersionType: 'MC',
       sources: [{ documentId: mc0Doc.id }],
     });
     expect(noAi.import.status).toBe('NEEDS_REVIEW');

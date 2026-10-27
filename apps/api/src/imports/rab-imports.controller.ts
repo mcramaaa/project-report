@@ -1,5 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import {
+  confirmProposalsSchema,
+  type ConfirmProposalsInput,
   createRabImportSchema,
   rabImportDecisionsSchema,
   requiredReasonSchema,
@@ -49,10 +51,37 @@ export class RabImportsController {
     return this.imports.decide(auth.user, projectId, importId, body);
   }
 
+  /** D-067: manual search of the latest approved version's work items for an explicit match. */
+  @Get(':importId/work-items')
+  @RequireProjectPermission('rabImport.review')
+  searchWorkItems(@Param('projectId') projectId: string, @Param('importId', uuid) importId: string, @Query('q') q?: string, @Query('page') page?: string) {
+    return this.imports.searchWorkItems(projectId, importId, q, page);
+  }
+
+  /** D-065: one explicit confirmation of the backend's package proposals. */
+  @Post(':importId/confirm-proposals')
+  @RequireProjectPermission('rabImport.review')
+  @HttpCode(200)
+  confirmProposals(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('importId', uuid) importId: string,
+    @Body(new ZodPipe(confirmProposalsSchema)) body: ConfirmProposalsInput,
+  ) {
+    return this.imports.confirmProposals(auth.user, projectId, importId, body);
+  }
+
   @Post(':importId/retry')
   @RequireProjectPermission('rabImport.review')
   retry(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('importId', uuid) importId: string) {
     return this.imports.retry(auth.user, projectId, importId);
+  }
+
+  @Delete(':importId')
+  @RequireProjectPermission('rabImport.review')
+  @HttpCode(204)
+  remove(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('importId', uuid) importId: string) {
+    return this.imports.remove(auth.user, projectId, importId);
   }
 
   @Post(':importId/approve')

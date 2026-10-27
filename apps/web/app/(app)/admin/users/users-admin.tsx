@@ -3,6 +3,7 @@
 import { PASSWORD_MIN_LENGTH, type Paginated, type UserDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
+import { ActionMenu, type ActionMenuItem } from '@/components/action-menu';
 import { Alert, Badge, Button, EmptyState, Field, Loading } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 
@@ -148,45 +149,19 @@ export function UsersAdmin({ currentUserId, canManage, isSuperAdmin, canViewAcce
                           Akses
                         </Link>
                       )}
-                      {canManage && (isSuperAdmin || !user.isSystemAdmin) && (<>
-                      <Button variant="secondary" disabled={busyId === user.id} onClick={() => setEditingId(user.id)}>
-                        Ubah
-                      </Button>
-                      {user.isActive ? (
-                        <Button
-                          variant="danger"
-                          disabled={busyId === user.id}
-                          onClick={() =>
-                            runAction(user, 'deactivate', `Nonaktifkan ${user.email}? Semua sesi user ini akan diakhiri.`, `${user.email} dinonaktifkan.`)
-                          }
-                        >
-                          Nonaktifkan
-                        </Button>
-                      ) : (
-                        <Button variant="secondary" disabled={busyId === user.id} onClick={() => runAction(user, 'activate', null, `${user.email} diaktifkan.`)}>
-                          Aktifkan
+                      {canManage && (isSuperAdmin || !user.isSystemAdmin) && (
+                        <Button variant="secondary" disabled={busyId === user.id} onClick={() => setEditingId(user.id)}>
+                          Ubah
                         </Button>
                       )}
-                      </>)}
-                      {isSuperAdmin && (user.isSystemAdmin ? (
-                        <Button
-                          variant="danger"
-                          disabled={busyId === user.id}
-                          onClick={() => runAction(user, 'revoke-system-admin', `Cabut hak super admin dari ${user.email}?`, `Hak super admin ${user.email} dicabut.`)}
-                        >
-                          Cabut super admin
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="secondary"
-                          disabled={busyId === user.id}
-                          onClick={() =>
-                            runAction(user, 'grant-system-admin', `Jadikan ${user.email} super admin? Super admin memiliki akses penuh ke semua proyek.`, `${user.email} menjadi super admin.`)
-                          }
-                        >
-                          Jadikan super admin
-                        </Button>
-                      ))}
+                      {busyId !== user.id && (
+                        <UserMenu
+                          user={user}
+                          canManage={canManage && (isSuperAdmin || !user.isSystemAdmin)}
+                          isSuperAdmin={isSuperAdmin}
+                          run={(path, confirmText, success) => void runAction(user, path, confirmText, success)}
+                        />
+                      )}
                     </div></td>
                   </tr>
                 ),
@@ -307,4 +282,46 @@ function EditUserForm({ user, onCancel, onSaved }: { user: UserDto; onCancel: ()
       </div>
     </form>
   );
+}
+
+/** Less frequent account actions; each still asks for confirmation where it is destructive. */
+function UserMenu({
+  user,
+  canManage,
+  isSuperAdmin,
+  run,
+}: {
+  user: UserDto;
+  canManage: boolean;
+  isSuperAdmin: boolean;
+  run: (path: string, confirmText: string | null, success: string) => void;
+}) {
+  const items: ActionMenuItem[] = [];
+  if (canManage)
+    items.push(
+      user.isActive
+        ? {
+            label: 'Nonaktifkan',
+            destructive: true,
+            onSelect: () => run('deactivate', `Nonaktifkan ${user.email}? Semua sesi user ini akan diakhiri.`, `${user.email} dinonaktifkan.`),
+          }
+        : { label: 'Aktifkan', onSelect: () => run('activate', null, `${user.email} diaktifkan.`) },
+    );
+  if (isSuperAdmin)
+    items.push(
+      user.isSystemAdmin
+        ? {
+            label: 'Cabut super admin',
+            destructive: true,
+            separatorBefore: items.length > 0,
+            onSelect: () => run('revoke-system-admin', `Cabut hak super admin dari ${user.email}?`, `Hak super admin ${user.email} dicabut.`),
+          }
+        : {
+            label: 'Jadikan super admin',
+            separatorBefore: items.length > 0,
+            onSelect: () =>
+              run('grant-system-admin', `Jadikan ${user.email} super admin? Super admin memiliki akses penuh ke semua proyek.`, `${user.email} menjadi super admin.`),
+          },
+    );
+  return items.length ? <ActionMenu label={`Tindakan untuk ${user.name}`} items={items} /> : null;
 }

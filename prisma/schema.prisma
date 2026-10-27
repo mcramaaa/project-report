@@ -43,6 +43,8 @@ model User {
   importDecisions      RabImportDecision[]
   createdPriceLists    PriceList[]
   priceDecisions       RabVersionItem[]    @relation("ItemPriceDecidedBy")
+  approvedSnapshots    RabVersionSnapshot[] @relation("SnapshotApprovedBy")
+  createdSnapshots     RabVersionSnapshot[] @relation("SnapshotCreatedBy")
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -244,16 +246,18 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// One Kontrak, then MC-0 … MC-100 (D-069).
 enum RabVersionType {
   CONTRACT
-  MC0
-  ADDENDUM
+  MC
 }
 
 enum RabVersionStatus {
   DRAFT
   APPROVED
   DISCARDED
+  /// Approved version opened again for correction; same id/type/number (D-068).
+  REOPENED
 }
 
 /// Stored row types; SUBTOTAL/TOTAL are computed for display (D-040).
@@ -264,12 +268,13 @@ enum RabRowType {
   ITEM
 }
 
-/// One RAB version per document; APPROVED/DISCARDED rows are never changed (D-040).
+/// One RAB version per document; APPROVED/DISCARDED rows are never changed (D-040) except through the
+/// D-068 reopen (snapshot archived first, reason + audit, approval again).
 model RabVersion {
   id                String           @id @default(uuid(7)) @db.Char(36)
   projectId         String           @map("project_id") @db.Char(36)
   versionType       RabVersionType   @map("version_type")
-  /// 0 for CONTRACT/MC0; 1, 2, … for ADDENDUM.
+  /// 0 for CONTRACT; the MC number (0 … 100) for MC (D-069).
   revisionNumber    Int              @map("revision_number") @db.UnsignedSmallInt
   documentNumber    String?          @map("document_number") @db.VarChar(100)
   documentDate      DateTime?        @map("document_date") @db.Date
@@ -300,9 +305,33 @@ model RabVersion {
   /// Analysis/price package owned by this version (D-056, D-057).
   priceList       PriceList?
   analyses        AhspAnalysis[]
+  snapshots       RabVersionSnapshot[]
 
   @@index([projectId, status])
   @@map("rab_versions")
+}
+
+/// Append-only archive of each approved state (D-068); never updated or deleted, never recomputed from live data.
+model RabVersionSnapshot {
+  id           String    @id @default(uuid(7)) @db.Char(36)
+  rabVersionId String    @map("rab_version_id") @db.Char(36)
+  sequence     Int       @db.UnsignedSmallInt
+  approvedBy   String?   @map("approved_by") @db.Char(36)
+  approvedAt   DateTime? @map("approved_at") @db.DateTime(3)
+  totalValue   Decimal?  @map("total_value") @db.Decimal(50, 18)
+  /// Decimals as strings; see RabSnapshotPayload in packages/shared.
+  payload      Json
+  /// SHA-256 of the canonical (sorted-key) JSON of payload, not of MySQL's JSON key order.
+  checksum     String    @db.Char(64)
+  createdBy    String    @map("created_by") @db.Char(36)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  rabVersion     RabVersion @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  approvedByUser User?      @relation("SnapshotApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  createdByUser  User       @relation("SnapshotCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([rabVersionId, sequence])
+  @@map("rab_version_snapshots")
 }
 
 /// Permanent identity of a trackable work item across versions (PRD §9).
@@ -414,6 +443,8 @@ model RabImport {
   id                String          @id @default(uuid(7)) @db.Char(36)
   projectId         String          @map("project_id") @db.Char(36)
   targetVersionType RabVersionType  @map("target_version_type")
+  /// MC number the run imports (0 for CONTRACT), fixed at creation (D-069).
+  targetRevisionNumber Int          @default(0) @map("target_revision_number") @db.UnsignedSmallInt
   status            RabImportStatus @default(UPLOADED)
   attemptNumber     Int             @default(1) @map("attempt_number") @db.UnsignedSmallInt
   previousImportId  String?         @map("previous_import_id") @db.Char(36)
@@ -431,6 +462,7 @@ model RabImport {
   rejectedBy        String?         @map("rejected_by") @db.Char(36)
   rejectedAt        DateTime?       @map("rejected_at") @db.DateTime(3)
   rejectReason      String?         @map("reject_reason") @db.Text
+  deletedAt         DateTime?       @map("deleted_at") @db.DateTime(3)
   rabVersionId      String?         @map("rab_version_id") @db.Char(36)
   priceListId       String?         @unique @map("price_list_id") @db.Char(36)
 
@@ -595,7 +627,8 @@ enum AhspSubPriceBasis {
   ROUNDED
 }
 
-/// Immutable once created; RAB items point at a version (D-050, D-051).
+/// RAB items point at a version (D-050, D-051). Source inputs change only while the owning RAB version is
+/// DRAFT/REOPENED, through D-068 corrections that recalculate dependents and append `source_locator.corrections`.
 model AhspAnalysisVersion {
   id              String   @id @default(uuid(7)) @db.Char(36)
   analysisId      String   @map("analysis_id") @db.Char(36)

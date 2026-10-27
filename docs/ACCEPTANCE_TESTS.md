@@ -60,8 +60,10 @@ Gunakan ini sebagai checklist saat vibe coding.
 ## B. RAB Versioning
 
 - [x] CONTRACT dapat dibuat
-- [x] MC0 membuat versi baru
-- [x] ADDENDUM membuat versi baru
+- [x] MC membuat versi baru bernomor MC-0, MC-1, … (D-069)
+- [x] nomor MC boleh meloncat (MC-1 → MC-30 → MC-100) tetapi harus naik; nomor ≤ MC terakhir ditolak (409)
+- [x] nomor di atas 100 ditolak
+- [x] jenis versi ADDENDUM ditolak (400)
 - [x] versi lama tidak di-overwrite (APPROVED terkunci)
 - [x] compare menunjukkan NEW/MODIFIED/REMOVED/UNCHANGED
 - [x] urutan versi linear dan hanya satu DRAFT per proyek
@@ -94,15 +96,15 @@ M3 MC0
 - [ ] M3 memakai MC0
 - [ ] cumulative actual tetap utuh
 
-Scenario Addendum:
+Scenario MC berikutnya:
 
 ```text
 M1-M10 existing baseline
-M11 ADDENDUM 1
+M11 MC-1
 ```
 
 - [ ] M1-M10 tidak dihitung ulang
-- [ ] M11 memakai Addendum
+- [ ] M11 memakai MC-1
 
 ## E. Weekly Progress
 

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { AccessService } from '../auth/access.service';
 import { RabService } from '../rab/rab.service';
 import { createTestPrisma, createUser, resetDatabase } from '../test/db';
 import { parseSampleWorkbook, SAMPLE_PROJECT_CODE, seedSampleRab } from './sample-rab';
@@ -131,9 +132,9 @@ describe('seedSampleRab', () => {
     const versions = await prisma.rabVersion.findMany({ where: { projectId: project.id }, orderBy: { createdAt: 'asc' } });
     expect(versions.map((v) => [v.versionType, v.status])).toEqual([
       ['CONTRACT', 'APPROVED'],
-      ['MC0', 'APPROVED'],
+      ['MC', 'APPROVED'],
     ]);
-    const compare = await new RabService(prisma).compare(project.id, versions[0]!.id, versions[1]!.id);
+    const compare = await new RabService(prisma, new AccessService(prisma)).compare(project.id, versions[0]!.id, versions[1]!.id);
     expect(Object.fromEntries(compare.rows.map((r) => [r.target?.description ?? r.base!.description, r.change]))).toEqual({
       'Papan nama': 'UNCHANGED',
       'Galian pondasi': 'MODIFIED',

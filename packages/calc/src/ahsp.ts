@@ -29,24 +29,8 @@ export function calculateAnalysisPrice(
   components: AhspComponentInput[],
   options: { overheadPercent: string | null; roundingScale: number | null },
 ): AhspPrice {
-  const amounts = components.map((c) => new Decimal(c.coefficient).times(c.unitPrice));
-  const direct = amounts.reduce((sum, a) => sum.plus(a), new Decimal(0));
-  const overhead =
-    options.overheadPercent === null
-      ? new Decimal(0)
-      : direct.times(options.overheadPercent).div(HUNDRED);
-  const exact = direct.plus(overhead);
-  const price =
-    options.roundingScale === null
-      ? exact
-      : exact.toDecimalPlaces(options.roundingScale, Decimal.ROUND_HALF_UP);
-  return {
-    componentAmounts: amounts.map((a) => a.toFixed()),
-    directCost: direct.toFixed(),
-    overheadAmount: overhead.toFixed(),
-    priceExact: exact.toFixed(),
-    price: price.toFixed(),
-  };
+  const componentAmounts = components.map((c) => componentAmount(c.coefficient, c.unitPrice));
+  return { componentAmounts, ...analysisTotals(componentAmounts, options) };
 }
 
 /** D-054: one absolute bound for reconciling cached Excel floats (Rp 0.000001); never changes app values. */
@@ -106,6 +90,179 @@ export function findAnalysisCycle(edges: Map<string, string[]>): string[] | null
     if (cycle) return cycle;
   }
   return null;
+}
+
+/** Constant conversion of a list price used by a component (`VLOOKUP(...)/8`), kept as source evidence. */
+export interface PriceFactor {
+  op: '*' | '/';
+  value: string;
+}
+
+export const applyPriceFactor = (price: DecimalValue, factor: PriceFactor | null): string =>
+  !factor
+    ? new Decimal(price).toFixed()
+    : factor.op === '*'
+      ? new Decimal(price).times(factor.value).toFixed()
+      : new Decimal(price).div(factor.value).toFixed();
+
+export interface PackageComponent {
+  id: string;
+  analysisVersionId: string;
+  coefficient: string;
+  unitPrice: string;
+  amount: string;
+  priceItemId: string | null;
+  factor: PriceFactor | null;
+  subAnalysisVersionId: string | null;
+  subPriceBasis: 'EXACT' | 'ROUNDED' | null;
+}
+
+export interface PackageAnalysis {
+  id: string;
+  overheadPercent: string | null;
+  roundingScale: number | null;
+  directCost: string;
+  overheadAmount: string;
+  priceExact: string;
+  price: string;
+}
+
+export interface AnalysisPackage {
+  prices: { id: string; price: string }[];
+  analyses: PackageAnalysis[];
+  components: PackageComponent[];
+}
+
+/** One source input edit (D-068); derived values are never edited directly. */
+export type PackageEdit =
+  | { kind: 'PRICE_ITEM'; priceItemId: string; price: string }
+  | { kind: 'COMPONENT'; componentId: string; coefficient?: string; unitPrice?: string }
+  | { kind: 'ANALYSIS'; analysisVersionId: string; overheadPercent?: string | null; roundingScale?: number | null };
+
+export interface PackageRecalculation {
+  /** Only rows whose stored values change; unchanged rows keep their stored (source) precision. */
+  components: Map<string, { coefficient: string; unitPrice: string; amount: string }>;
+  analyses: Map<string, Omit<PackageAnalysis, 'id'>>;
+}
+
+/**
+ * Applies one source edit inside one package and recalculates only what depends on it:
+ * price → components (with their factor) → analysis → components using it as sub-analysis (EXACT/ROUNDED) → ….
+ * Untouched components keep their stored amounts. Throws RangeError on a cycle or a relation outside the package.
+ */
+export function recalculatePackage(pkg: AnalysisPackage, edit: PackageEdit): PackageRecalculation {
+  const prices = new Map(pkg.prices.map((p) => [p.id, p.price]));
+  const analyses = new Map(pkg.analyses.map((a) => [a.id, { ...a }]));
+  const components = new Map(pkg.components.map((c) => [c.id, { ...c }]));
+  const edges = new Map<string, string[]>([...analyses.keys()].map((id) => [id, []]));
+  for (const c of components.values()) {
+    if (!analyses.has(c.analysisVersionId)) throw new RangeError(`Komponen ${c.id} di luar paket.`);
+    if (c.priceItemId && !prices.has(c.priceItemId)) throw new RangeError(`Harga komponen ${c.id} di luar paket.`);
+    if (c.subAnalysisVersionId) {
+      if (!analyses.has(c.subAnalysisVersionId)) throw new RangeError(`Subanalisa komponen ${c.id} di luar paket.`);
+      edges.get(c.analysisVersionId)!.push(c.subAnalysisVersionId);
+    }
+  }
+  const cycle = findAnalysisCycle(edges);
+  if (cycle) throw new RangeError(`Rantai subanalisa bersiklus: ${cycle.join(' → ')}.`);
+
+  const changedComponents = new Set<string>();
+  const dirty = new Set<string>();
+  const setComponent = (c: PackageComponent, unitPrice: string, coefficient = c.coefficient) => {
+    if (new Decimal(unitPrice).equals(c.unitPrice) && new Decimal(coefficient).equals(c.coefficient)) return;
+    c.unitPrice = unitPrice;
+    c.coefficient = coefficient;
+    c.amount = componentAmount(coefficient, unitPrice);
+    changedComponents.add(c.id);
+    dirty.add(c.analysisVersionId);
+  };
+
+  if (edit.kind === 'PRICE_ITEM') {
+    if (!prices.has(edit.priceItemId)) throw new RangeError('Harga dasar tidak ada di paket ini.');
+    for (const c of components.values())
+      if (c.priceItemId === edit.priceItemId) setComponent(c, applyPriceFactor(edit.price, c.factor));
+  } else if (edit.kind === 'COMPONENT') {
+    const c = components.get(edit.componentId);
+    if (!c) throw new RangeError('Komponen tidak ada di paket ini.');
+    if (edit.unitPrice !== undefined && (c.priceItemId || c.subAnalysisVersionId))
+      throw new RangeError('Harga komponen ini mengikuti harga dasar/subanalisa; koreksi sumbernya.');
+    setComponent(c, edit.unitPrice ?? c.unitPrice, edit.coefficient ?? c.coefficient);
+  } else {
+    const a = analyses.get(edit.analysisVersionId);
+    if (!a) throw new RangeError('Analisa tidak ada di paket ini.');
+    if (edit.overheadPercent !== undefined) a.overheadPercent = edit.overheadPercent;
+    if (edit.roundingScale !== undefined) a.roundingScale = edit.roundingScale;
+    dirty.add(a.id);
+  }
+
+  const byAnalysis = new Map<string, PackageComponent[]>();
+  for (const c of components.values())
+    byAnalysis.set(c.analysisVersionId, [...(byAnalysis.get(c.analysisVersionId) ?? []), c]);
+  // Acyclic, so the worklist ends; an analysis may be recalculated more than once before it settles.
+  while (dirty.size) {
+    const id = dirty.values().next().value!;
+    dirty.delete(id);
+    const a = analyses.get(id)!;
+    const totals = analysisTotals(
+      (byAnalysis.get(id) ?? []).map((c) => c.amount),
+      { overheadPercent: a.overheadPercent, roundingScale: a.roundingScale },
+    );
+    const before = { ...a };
+    Object.assign(a, totals);
+    if (new Decimal(before.price).equals(a.price) && new Decimal(before.priceExact).equals(a.priceExact)) continue;
+    for (const c of components.values())
+      if (c.subAnalysisVersionId === id)
+        setComponent(c, applyPriceFactor(c.subPriceBasis === 'EXACT' ? a.priceExact : a.price, c.factor));
+  }
+  const same = (x: string | null, y: string | null) => (x === null || y === null ? x === y : new Decimal(x).equals(y));
+  const changedAnalyses = pkg.analyses
+    .filter((o) => {
+      const a = analyses.get(o.id)!;
+      return (
+        a.roundingScale !== o.roundingScale ||
+        !same(a.overheadPercent, o.overheadPercent) ||
+        (['directCost', 'overheadAmount', 'priceExact', 'price'] as const).some((k) => !same(a[k], o[k]))
+      );
+    })
+    .map((o) => o.id);
+  return {
+    components: new Map(
+      [...changedComponents].map((id) => {
+        const c = components.get(id)!;
+        return [id, { coefficient: c.coefficient, unitPrice: c.unitPrice, amount: c.amount }];
+      }),
+    ),
+    analyses: new Map(
+      changedAnalyses.map((id) => {
+        const a = analyses.get(id)!;
+        return [
+          id,
+          {
+            overheadPercent: a.overheadPercent,
+            roundingScale: a.roundingScale,
+            directCost: a.directCost,
+            overheadAmount: a.overheadAmount,
+            priceExact: a.priceExact,
+            price: a.price,
+          },
+        ];
+      }),
+    ),
+  };
+}
+
+/** D, E, F and the used price from component amounts, as `calculateAnalysisPrice` does. */
+export function analysisTotals(
+  amounts: string[],
+  options: { overheadPercent: string | null; roundingScale: number | null },
+): Omit<AhspPrice, 'componentAmounts'> {
+  const direct = amounts.reduce((sum, a) => sum.plus(a), new Decimal(0));
+  const overhead =
+    options.overheadPercent === null ? new Decimal(0) : direct.times(options.overheadPercent).div(HUNDRED);
+  const exact = direct.plus(overhead);
+  const price =
+    options.roundingScale === null ? exact : exact.toDecimalPlaces(options.roundingScale, Decimal.ROUND_HALF_UP);
+  return { directCost: direct.toFixed(), overheadAmount: overhead.toFixed(), priceExact: exact.toFixed(), price: price.toFixed() };
 }
 
 /** Worksheet group subtotals; sums exact stored amounts without display rounding. */

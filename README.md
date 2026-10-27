@@ -6,7 +6,7 @@ Starter repository dan kumpulan spesifikasi untuk aplikasi laporan progres proye
 
 Aplikasi ini menggantikan alur kerja Excel yang tersebar menjadi satu sistem terstruktur:
 
-- Kontrak -> MC-0 -> Addendum sebagai versi baseline.
+- Kontrak -> MC-0 -> MC-1 … MC-100 sebagai versi baseline (D-069).
 - Progress aktual tetap utuh walaupun baseline berubah.
 - Input progres mingguan menghasilkan alokasi harian.
 - Laporan harian, mingguan, dan periode 4 minggu dibentuk dari satu sumber data.
@@ -74,11 +74,17 @@ npm run db:seed               # buat system admin pertama dari SEED_ADMIN_* (.en
 npm run db:seed:dev           # opsional, development saja: proyek contoh DEV-001
 npm run ai:ping               # uji koneksi 9router (data dummy; model utama + fallback; key tidak dicetak)
 npm run db:seed:sample        # opsional, development saja: proyek SDN 2 Serangan + RAB Kontrak & MC-0 dari workbook di storage/temp
-npm run dev                   # api :3001 dan web :3000 bersamaan
+npm run dev                   # API dan web bersamaan; port web mengikuti APP_URL
 ```
 
 - Web: http://localhost:3000
 - API: http://localhost:3001/api/health
+
+Jika port 3000 dipakai aplikasi lain, ubah `APP_URL` di `.env`, misalnya
+`APP_URL="http://localhost:3100"`, lalu jalankan `npm run dev` seperti biasa.
+Port web mengikuti `APP_URL` agar sesuai dengan pemeriksaan CSRF backend;
+`PORT` tetap khusus API (default 3001). Hentikan server proyek yang sudah
+berjalan sebelum menjalankan perintah tersebut kembali.
 
 ### Seed system admin
 
@@ -127,14 +133,14 @@ Model lengkap: `docs/PERMISSIONS.md`.
 
 ```bash
 npm run db:seed                  # super admin dulu
-npm run db:seed:sample-ahsp      # storage/temp/00. RAB PENAWARAN… (Kontrak) dan 04. LAPORAN MINGGUAN… (MC-0), lalu Addendum
+npm run db:seed:sample-ahsp      # storage/temp/00. RAB PENAWARAN… (Kontrak) dan 04. LAPORAN MINGGUAN… (MC-0), lalu MC-1
 ```
 
 Membuat proyek `SDN2-SERANGAN-2026-PAKET` dengan **paket analisa/harga per versi RAB**:
 
 - **Kontrak** dari `00`: upload asli → draft → keputusan reviewer (harga langsung SMKK) → approve impor → approve RAB. Paket: 110 analisa (5 subanalisa), 704 komponen, 162 harga.
 - **MC-0** dari `04` (workbook tanpa analisa): rantai berhenti di REKAP ANALISA, sehingga baris ditautkan ke kandidat dari paket Kontrak lewat keputusan eksplisit; saat approve, analisa itu **disalin** ke paket MC-0 beserta subanalisa dan harga (D-058).
-- **Addendum 1** lewat "Buat versi": item dan paket disalin dari MC-0. Versi ini dibiarkan DRAFT karena belum ada dokumen Addendum kantor.
+- **MC-1** lewat "Buat versi": item dan paket disalin dari MC-0. Versi ini dibiarkan DRAFT karena belum ada dokumen MC-1 kantor.
 
 Seed berhenti bila ada issue terbuka, rekonsiliasi gagal, total berbeda dari workbook, atau ada relasi yang keluar dari paket versinya. Aman diulang dan melanjutkan dari langkah yang gagal. Proyek contoh lama `SDN2-SERANGAN-2026-AHSP` (seed sebelum D-056) tidak diubah; item MC-0 approved di sana masih menautkan analisa Kontrak (legacy, D-057).
 
@@ -160,7 +166,7 @@ Membuat proyek `SDN2-SERANGAN-2026` (identitas dari sheet Data, 210 hari, 30 min
 2. **Tambah baris teratas** (Bagian), lalu **+ Sub** untuk sub-bagian/induk/item. Item berisi volume, satuan, no analisa, harga satuan, PPN %.
 3. Panel **Pemeriksaan draft** menampilkan error (wajib diperbaiki) dan peringatan (wajib dikonfirmasi saat approve).
 4. **Approve RAB** (role MANAGER): versi terkunci, nilai disimpan sebagai snapshot.
-5. Buat **MC-0** atau **Addendum**: isi disalin dari versi approved terakhir; ubah, tambah, hapus baris; **Bandingkan** menampilkan Baru/Berubah/Dihapus/Tetap per kode pekerjaan (WI-xxxx).
+5. Buat **MC** berikutnya (MC-0, MC-1, … MC-100): isi disalin dari versi approved terakhir; ubah, tambah, hapus baris; **Bandingkan** menampilkan Baru/Berubah/Dihapus/Tetap per kode pekerjaan (WI-xxxx).
 
 Proyek yang sudah ada sebelum M3 mendapat minggu/periode dari migration `20261025090000_project_master`; nilai kontraknya kosong sampai diisi lewat **Ubah identitas**.
 

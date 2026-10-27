@@ -55,7 +55,14 @@ export const PERMISSIONS = [
   },
   { code: 'rab.read', scope: 'PROJECT', module: 'RAB', name: 'Lihat RAB', description: 'Melihat versi RAB, isi, dan perbandingan antarversi.' },
   { code: 'rab.edit', scope: 'PROJECT', module: 'RAB', name: 'Kelola draft RAB', description: 'Membuat, mengubah, dan membatalkan draft RAB.' },
-  { code: 'rab.approve', scope: 'PROJECT', module: 'RAB', name: 'Approve RAB', description: 'Menyetujui draft RAB; versi approved terkunci.' },
+  { code: 'rab.approve', scope: 'PROJECT', module: 'RAB', name: 'Approve RAB', description: 'Menyetujui draft atau koreksi RAB; versi approved terkunci.' },
+  {
+    code: 'rab.reopen',
+    scope: 'PROJECT',
+    module: 'RAB',
+    name: 'Koreksi RAB approved',
+    description: 'Membuka kembali versi RAB approved dengan alasan (snapshot lama disimpan) dan mengubah isinya selama koreksi.',
+  },
   { code: 'document.read', scope: 'PROJECT', module: 'Dokumen', name: 'Lihat dokumen', description: 'Melihat dan mengunduh dokumen proyek.' },
   { code: 'document.upload', scope: 'PROJECT', module: 'Dokumen', name: 'Upload dokumen', description: 'Mengunggah dokumen proyek (.xlsx).' },
   {
@@ -73,6 +80,13 @@ export const PERMISSIONS = [
     description: 'Menyetujui/menolak impor: membuat daftar harga dan analisa resmi serta RAB versi draft.',
   },
   { code: 'ahsp.read', scope: 'PROJECT', module: 'AHSP', name: 'Lihat analisa', description: 'Melihat daftar analisa gabungan, komponen, dan daftar harga.' },
+  {
+    code: 'ahsp.edit',
+    scope: 'PROJECT',
+    module: 'AHSP',
+    name: 'Edit sumber analisa',
+    description: 'Mengubah harga dasar, koefisien, harga manual komponen, overhead dan pembulatan analisa pada draft/koreksi RAB.',
+  },
 ] as const satisfies readonly { code: string; scope: PermissionScope; module: string; name: string; description: string }[];
 
 export type PermissionCode = (typeof PERMISSIONS)[number]['code'];
@@ -87,14 +101,16 @@ export function permissionsForScope(scope: PermissionScope): PermissionCode[] {
 export const SYSTEM_PROJECT_ROLES = [
   { code: 'FILLER', name: 'Filler', description: 'Input progres dan laporan harian.' },
   { code: 'REVIEWER', name: 'Reviewer', description: 'Memeriksa dan memfinalisasi laporan (bukan input sendiri).' },
-  { code: 'MANAGER', name: 'Manager', description: 'Fungsi reviewer, aktivasi baseline, reopen laporan, Addendum.' },
+  { code: 'MANAGER', name: 'Manager', description: 'Fungsi reviewer, aktivasi baseline, reopen laporan, MC.' },
   { code: 'ADMIN', name: 'Admin Proyek', description: 'Upload dokumen dan review ekstraksi AI.' },
+  { code: 'RAB_EDITOR', name: 'Editor RAB', description: 'Mengelola draft, membuka kembali dan mengoreksi RAB serta sumber analisa, lalu approve (D-068).' },
 ] as const;
 export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
   FILLER: ['project.read', 'rab.read', 'ahsp.read'],
   REVIEWER: ['project.read', 'rab.read', 'ahsp.read'],
   MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
   ADMIN: ['project.read', 'rab.read', 'rab.edit', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review'],
+  RAB_EDITOR: ['project.read', 'rab.read', 'rab.edit', 'rab.approve', 'rab.reopen', 'ahsp.read', 'ahsp.edit', 'document.read'],
 };
 
 /** Permissions the MANAGER role must hold for project creation to hand the creator a usable project (D-039). */

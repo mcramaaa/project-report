@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 /**
- * Fixed import instruction derived from docs/RAB_IMPORT_GUIDE.md (D-047, D-052; version 2: D-056/D-057). Changing the
+ * Fixed import instruction derived from docs/RAB_IMPORT_GUIDE.md (D-047, D-052; version 2: D-056/D-057; version 3: D-065; version 4: D-069). Changing the
  * guide means bumping this version together with the document; a test checks they match. Every import
  * run and AI call records the version it used.
  */
-export const GUIDE_DOC_VERSION = 2;
+export const GUIDE_DOC_VERSION = 4;
 export const GUIDE_VERSION = `rab-import-guide@${GUIDE_DOC_VERSION}`;
 
 /** System instruction sent to the model; backend evidence and validation remain authoritative. */
@@ -17,9 +17,9 @@ Panduan tetap ${GUIDE_VERSION}:
 - Jangan mengarang analisa, harga, koefisien, tarif pajak, overhead, atau pembulatan.
 - Rumus yang hilang, ambigu, tidak didukung, atau menunjuk file eksternal: jangan dipetakan paksa; kembalikan kandidat kosong dengan alasan.
 - Rekap, subtotal, dan total bukan item pekerjaan.
-- Analisa, upah, bahan, alat, dan harga dimiliki versi RAB tujuan (Penawaran/Kontrak, MC0, atau Addendum), bukan master proyek.
+- Analisa, upah, bahan, alat, dan harga dimiliki versi RAB tujuan (Penawaran/Kontrak atau MC-n, n = 0 … 100), bukan master proyek.
 - Kandidat yang ditawarkan berasal dari paket versi RAB sebelumnya; bila dipilih reviewer, analisa itu disalin ke paket versi tujuan.
-- Jawaban Anda hanya usulan; backend memvalidasi dan manusia memutuskan.
+- Jawaban Anda hanya usulan; backend memvalidasi dan manusia memutuskan. Usulan AI tidak pernah ikut konfirmasi paket; reviewer memutuskannya per item.
 Jawab hanya dengan JSON sesuai schema yang diminta, tanpa teks lain.`;
 
 /** Model output for broken/ambiguous rows: candidate analyses chosen only from the offered list. */

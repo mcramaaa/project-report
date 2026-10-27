@@ -2,13 +2,19 @@
 
 ## Arah visual aplikasi
 
-Acuan: OLMAT v2 Backoffice (`olmat-v2/olmat-backoffice/docs/STYLE-GUIDE.md`
-dan `src/styles/tokens.css` pada workspace referensi). Implementasi mandiri
-di aplikasi ini; build tidak bergantung pada direktori OLMAT.
+Arah tema mengikuti OLMAT v2 Backoffice: kanvas ice blue, sidebar gradien biru
+pucat dengan menu aktif glass, panel putih transparan, border tipis, dan
+bayangan ringan. Warna utama aplikasi ini `#0263f5` (menggantikan biru OLMAT).
+Implementasi memakai CSS dan komponen lokal; tidak mengimpor kode atau
+dependency dari OLMAT.
 
-- Latar ice blue `#f5f8fc`, panel putih, teks slate, aksen biru `#2563eb`.
-- Border tipis, radius 10–18px, shadow ringan; font sistem tanpa unduhan font.
-- Sidebar terang pada desktop (mulai 1024px), topbar dengan breadcrumb dan akun.
+- Tombol, input, badge, alert, loading, menu, dan focus state menggunakan token
+  warna serta bayangan yang konsisten.
+- Radius lembut 10–20px, font sistem tanpa unduhan font, dukungan
+  `prefers-reduced-motion`, dan focus ring yang terlihat.
+- Sidebar bergaya OLMAT pada desktop (mulai 1024px), dapat diminimalkan menjadi
+  ikon dengan pilihan tersimpan; tooltip dan nama aksesibel tetap tersedia.
+  Topbar memuat breadcrumb dan akun.
 - Pada mobile: drawer native dialog, navigasi bawah, tabel user/anggota menjadi
   kartu berlabel di bawah 768px. Focus keyboard, skip link, dan reduced motion tersedia.
 - Login dua kolom pada desktop dan satu kolom pada mobile, dengan toggle password.
@@ -30,8 +36,7 @@ Proyek
 
 RAB & Baseline
   Kontrak
-  MC-0
-  Addendum
+  MC-0 … MC-100
   Perbandingan
   Riwayat Baseline
 
@@ -69,7 +74,7 @@ Pengaturan
 | `/projects/:projectId` | `project.read` | tab Informasi, Minggu & Periode, Tim; dengan `project.update`: ubah identitas, ubah jadwal, tutup/buka kembali |
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
 | `/projects/:projectId/imports` | `document.read` / `rabImport.review` | dokumen (upload .xlsx, unduh asli, kandidat sheet RAB), buat run impor (peran RAB/pendukung, sheet, versi tujuan), daftar run |
-| `/projects/:projectId/imports/:importId` | `rabImport.review` / `rabImport.approve` | ringkasan & rekonsiliasi, issue, item dengan rantai rumus, kandidat, keputusan (analisa, harga langsung, harga analisa/override beralasan, pekerjaan permanen), terima kandidat tunggal, analisa terpakai & bukti rekonsiliasi, panggilan AI, approve/tolak/ulangi |
+| `/projects/:projectId/imports/:importId` | `rabImport.review` / `rabImport.approve` | ringkasan & rekonsiliasi, issue, item dengan rantai rumus, kandidat, keputusan (analisa, harga langsung, harga analisa/override beralasan, pekerjaan permanen termasuk cari/pilih pekerjaan lama manual, D-067), review paket (ringkasan sumber/warisan/cocok/baru/masalah, konfirmasi usulan sekaligus, D-065), analisa terpakai & bukti rekonsiliasi, panggilan AI, approve/tolak/ulangi |
 | `/projects/:projectId/rab/:versionId` | `rab.read` | Lihat RAB: tab Rekap RAB, Analisa, Bahan, Alat, dan Upah sesuai izin; konteks versi tetap (D-059) |
 | `/projects/:projectId/rab/:versionId/analyses` | `ahsp.read` | analisa dan harga upah/bahan/alat paket versi yang sedang dilihat, pencarian, asal salinan |
 | `/projects/:projectId/rab/:versionId/analyses/:analysisId` | `ahsp.read` | rincian analisa, D/E/harga, komponen dan tautan subanalisa dalam versi yang sama |
@@ -168,10 +173,9 @@ Tabel:
 
 Pilih:
 - Kontrak
-- MC0
-- Addendum
+- MC (MC-0 … MC-100; nomor dipilih, boleh meloncat asal naik; D-069)
 
-Jika Addendum:
+Jika MC:
 - nomor
 - nomor dokumen
 - tanggal
@@ -223,7 +227,7 @@ sumber tersedia untuk penelusuran/filter; pengguna tidak perlu berpindah
 daftar analisa per disiplin. Pilihan analisa pada item RAB merujuk daftar ini
 dengan versi yang sesuai. Hierarki kelompok pekerjaan pada grid RAB tetap ada.
 
-Milestone 4 (D-040): `/projects/:id/rab` (daftar versi, buat Kontrak/MC-0/Addendum) dan `/projects/:id/rab/:versionId` (grid). Draft dapat diedit per baris (tambah baris/sub-baris, ubah, hapus, naik/turun, pindah induk) oleh `rab.edit`; panel validasi menampilkan error/warning; approve oleh `rab.approve` dengan konfirmasi warning; discard wajib alasan. Header tabel dan kolom No/Uraian sticky; pilihan kolom tersimpan per browser.
+Milestone 4 (D-040): `/projects/:id/rab` (daftar versi, buat Kontrak/MC berikutnya) dan `/projects/:id/rab/:versionId` (grid). Draft dapat diedit per baris (tambah baris/sub-baris, ubah, hapus, naik/turun, pindah induk) oleh `rab.edit`; panel validasi menampilkan error/warning; approve oleh `rab.approve` dengan konfirmasi warning; discard wajib alasan. Header tabel dan kolom No/Uraian sticky; pilihan kolom tersimpan per browser.
 
 Tampilan familiar seperti Excel.
 
@@ -243,7 +247,7 @@ Hierarchical rows dapat collapse/expand.
 
 ## 10. RAB Compare
 
-Milestone 4: `/projects/:id/rab/compare?base=&target=`; filter perubahan (semua/berubah/baru/dihapus). Volume, harga, dan jumlah versi target serta Δ volume dan Δ jumlah berwarna hijau dengan ▲ bila naik dan merah dengan ▼ bila turun (teks "naik"/"turun" untuk pembaca layar); baris baru/dihapus tidak diwarnai.
+Milestone 4: `/projects/:id/rab/compare?base=&target=`; filter perubahan (semua/berubah/baru/dihapus). Volume, harga, dan jumlah versi target serta Δ volume dan Δ jumlah berwarna hijau dengan ▲ bila naik dan merah dengan ▼ bila turun (teks "naik"/"turun" untuk pembaca layar); baris baru/dihapus tidak diwarnai. Volume tiap versi dan Δ volume tampil 2 desimal (Decimal HALF_UP, mis. 561,972461257442 → 561,97), sama seperti jumlah; panah/warna dan tanda Δ mengikuti nilai pada presisi tampilan, sehingga selisih yang hilang setelah pembulatan tidak diberi panah dan tampil 0,00 tanpa tanda. Hanya format tampilan: presisi data, kalkulasi, dan status perubahan item tidak berubah; nilai lengkap tetap dapat ditelusuri lewat tautan ke item versi sumber.
 
 ```text
 [Kontrak] vs [MC0]
@@ -263,9 +267,9 @@ Timeline:
 
 ```text
 CONTRACT
--> MC0
--> ADDENDUM 1
--> ADDENDUM 2
+-> MC-0
+-> MC-1
+-> MC-2 … MC-100
 ```
 
 Tampilkan effective period.
@@ -414,3 +418,22 @@ ke daftar analisa dalam versi yang sama.
 D-064: garis putus-putus dan dialog Asal nilai khusus angka RAB dan
 pendukungnya. Informasi proyek dan kalender/pratinjau jadwal memakai teks
 biasa; tombol ubah dan navigasi normal tetap dipertahankan.
+
+## Workspace RAB: penataan aksi
+
+- Aksi persetujuan draft/koreksi ditampilkan tepat setelah ringkasan pemeriksaan,
+  sebelum tabel panjang, agar pengguna melihat status dan langkah berikutnya.
+- Toolbar tabel memisahkan pencarian, pengaturan tampilan, dan aksi utama
+  `Tambah bagian / pekerjaan`.
+- Semua aksi per baris berada di dropdown tombol `⋯`, termasuk `Ubah`,
+  `Tambah sub-bagian` atau `Ganti WI` sesuai konteks, dan `Hapus baris`.
+  Hapus tetap berwarna danger dan meminta konfirmasi.
+- Saat versi editable, pegangan `☰` di kiri nomor baris dapat diseret untuk
+  mengurutkan saudara dalam kelompok/induk yang sama. Drop ditandai garis biru.
+  Perpindahan lintas induk tetap dilakukan lewat `Ubah`; urutan baris diubah
+  dengan drag melalui pegangan tersebut.
+- Tombol `Koreksi` pada harga dasar dan komponen analisa memakai gaya sekunder
+  berukuran ringkas. Tombol simpan tetap aksi utama; pada REOPENED alasan wajib
+  dan pesan validasi tampil di dekat form.
+- Pada layar kecil toolbar membungkus dengan urutan yang sama, tombol utama
+  memenuhi lebar area, dan aksi baris tidak menutupi uraian pekerjaan.

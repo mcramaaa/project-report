@@ -1,28 +1,28 @@
 'use client';
 
-import { rabVersionLabel, type RabVersionDetailDto, type RabVersionSummaryDto, type RabVersionType } from '@laporan-proyek/shared';
+import { MC_MAX_NUMBER, nextMcNumber, type RabVersionDetailDto, type RabVersionSummaryDto, type RabVersionType } from '@laporan-proyek/shared';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { Alert, Button, Field, Select } from '@/components/ui';
+import { Alert, Button, Field } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 
-/** Offers the next version allowed by D-040 (the API enforces the same order). */
-function nextOptions(versions: RabVersionSummaryDto[]): RabVersionType[] {
-  const live = versions.filter((v) => v.status !== 'DISCARDED');
-  if (live.some((v) => v.status === 'DRAFT')) return [];
-  if (live.length === 0) return ['CONTRACT'];
-  return live.some((v) => v.versionType !== 'CONTRACT') ? ['ADDENDUM'] : ['MC0', 'ADDENDUM'];
+/** Offers the next version allowed by D-040/D-069: Kontrak first, then the next MC (the API enforces the same order). */
+function nextOption(live: RabVersionSummaryDto[]): RabVersionType | null {
+  if (live.some((v) => v.status === 'DRAFT' || v.status === 'REOPENED')) return null;
+  return live.length === 0 ? 'CONTRACT' : 'MC';
 }
 
 export function CreateRabVersion({ projectId, versions }: { projectId: string; versions: RabVersionSummaryDto[] }) {
   const router = useRouter();
-  const options = nextOptions(versions);
+  const live = versions.filter((v) => v.status !== 'DISCARDED');
+  const option = nextOption(live);
+  const mcNumber = nextMcNumber(live);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const nextAddendum = Math.max(0, ...versions.filter((v) => v.versionType === 'ADDENDUM' && v.status !== 'DISCARDED').map((v) => v.revisionNumber)) + 1;
 
-  if (options.length === 0) return <Alert kind="info">Ada draft RAB yang belum selesai. Approve atau batalkan draft tersebut sebelum membuat versi baru.</Alert>;
+  if (!option) return <Alert kind="info">Ada draft atau koreksi RAB yang belum selesai. Approve (atau batalkan draft) sebelum membuat versi baru.</Alert>;
+  if (option === 'MC' && mcNumber > MC_MAX_NUMBER) return <Alert kind="info">Batas MC tercapai: MC-{MC_MAX_NUMBER} adalah MC terakhir.</Alert>;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,7 +32,8 @@ export function CreateRabVersion({ projectId, versions }: { projectId: string; v
     setErrors({});
     try {
       const created = await api<RabVersionDetailDto>('POST', `/projects/${projectId}/rab-versions`, {
-        versionType: form.get('versionType'),
+        versionType: option,
+        ...(option === 'MC' && String(form.get('revisionNumber') ?? '') !== '' ? { revisionNumber: Number(form.get('revisionNumber')) } : {}),
         documentNumber: String(form.get('documentNumber') ?? ''),
         documentDate: String(form.get('documentDate') ?? ''),
       });
@@ -50,19 +51,28 @@ export function CreateRabVersion({ projectId, versions }: { projectId: string; v
         Versi RAB baru
       </h2>
       <div className="form-grid">
-        <div>
-          <label htmlFor="versionType" className="field-label">
-            Jenis versi
-          </label>
-          <Select id="versionType" name="versionType" defaultValue={options[0]}>
-            {options.map((type) => (
-              <option key={type} value={type}>
-                {rabVersionLabel({ versionType: type, revisionNumber: nextAddendum })}
-              </option>
-            ))}
-          </Select>
-          {options[0] !== 'CONTRACT' && <p className="field-hint">Isi disalin dari versi approved terakhir; pekerjaan yang sama tetap memakai kode pekerjaan yang sama.</p>}
-        </div>
+        {option === 'CONTRACT' ? (
+          <div>
+            <span className="field-label">Versi berikutnya</span>
+            <p className="text-base font-semibold">Kontrak</p>
+          </div>
+        ) : (
+          <div>
+            <Field
+              id="revisionNumber"
+              name="revisionNumber"
+              type="number"
+              inputMode="numeric"
+              min={mcNumber}
+              max={MC_MAX_NUMBER}
+              step={1}
+              defaultValue={mcNumber}
+              label={`Nomor MC (${mcNumber}–${MC_MAX_NUMBER})`}
+              error={errors.revisionNumber}
+            />
+            <p className="field-hint">Boleh meloncat (mis. MC-1 lalu MC-30), asal lebih besar dari MC terakhir. Isi disalin dari versi approved terakhir; pekerjaan yang sama tetap memakai kode pekerjaan yang sama.</p>
+          </div>
+        )}
         <Field id="documentNumber" name="documentNumber" label="Nomor dokumen (opsional)" error={errors.documentNumber} />
         <Field id="documentDate" name="documentDate" type="date" label="Tanggal dokumen (opsional)" error={errors.documentDate} />
       </div>

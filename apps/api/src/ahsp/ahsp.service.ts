@@ -59,6 +59,7 @@ export class AhspService {
               select: {
                 id: true,
                 targetVersionType: true,
+                targetRevisionNumber: true,
                 documents: { select: { document: { select: { originalFilename: true } } } },
               },
             },
@@ -95,6 +96,7 @@ export class AhspService {
               ? {
                   importId: v.sourceImport.id,
                   versionType: v.sourceImport.targetVersionType,
+                  label: rabVersionLabel({ versionType: v.sourceImport.targetVersionType, revisionNumber: v.sourceImport.targetRevisionNumber }),
                   documents: v.sourceImport.documents.map((d) => d.document.originalFilename),
                 }
               : null,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { RAB_ROW_TYPES, RAB_VERSION_TYPES } from './rab.js';
+import { MC_MAX_NUMBER, mcNumberSchema, RAB_ROW_TYPES, RAB_VERSION_TYPES } from './rab.js';
 
 /** Structured draft of a RAB package import (D-045–D-053, RAB_IMPORT_GUIDE v1). Decimals are strings. */
 export const RAB_IMPORT_STATUSES = [
@@ -142,7 +142,20 @@ export const workItemCandidateSchema = z.object({
   code: z.string(),
   description: z.string(),
   groupPath: z.string(),
+  /** D-067; absent in old drafts. */
+  unit: z.string().nullable().optional(),
+  analysisCode: z.string().nullable().optional(),
+  /** Set when the description differs only in punctuation (D-067); never applied without a reviewer decision. */
+  reason: z.string().optional(),
 });
+/** Manual search over the latest approved version's items (D-067). */
+export interface WorkItemSearchDto {
+  baseVersion: { id: string; label: string } | null;
+  items: { workItemId: string; code: string; description: string; groupPath: string; unit: string | null; analysisCode: string | null }[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 export const analysisCandidateSchema = z.object({
   /** Official analysis version of the project, or … */
   analysisVersionId: z.string().nullable(),
@@ -195,6 +208,8 @@ export const rabImportDraftSchema = z.object({
   guideVersion: z.string(),
   parserVersion: z.string(),
   targetVersionType: z.enum(RAB_VERSION_TYPES),
+  /** MC number the run imports (0 for Kontrak); absent in drafts before D-069, which were all MC-0 or Kontrak. */
+  targetRevisionNumber: z.number().int().min(0).max(MC_MAX_NUMBER).default(0),
   sources: z.array(
     z.object({
       documentId: z.string(),
@@ -220,6 +235,8 @@ export const rabImportDraftSchema = z.object({
     subAnalyses: z.number().int(),
     components: z.number().int(),
     pricesImported: z.number().int(),
+    /** Analysis blocks found anywhere in the sources (D-065); 0 = the source has no analyses. Absent in old drafts. */
+    analysisBlocksInSources: z.number().int().optional(),
   }),
   issues: z.array(importIssueSchema),
 });
@@ -227,6 +244,8 @@ export type RabImportDraft = z.infer<typeof rabImportDraftSchema>;
 
 export const createRabImportSchema = z.object({
   targetVersionType: z.enum(RAB_VERSION_TYPES),
+  /** MC only; absent = lowest allowed number. Picks the "MC - n" block (D-069). */
+  targetRevisionNumber: mcNumberSchema,
   sources: z
     .array(
       z.object({
@@ -278,9 +297,45 @@ export const rabImportDecisionsSchema = z.object({
 });
 export type RabImportDecisionsInput = z.infer<typeof rabImportDecisionsSchema>;
 
+/** Explicit package confirmation (D-065): the base version and token of the proposals the reviewer saw. */
+export const confirmProposalsSchema = z.object({
+  baseVersionId: z.uuid().nullable(),
+  token: z.string().regex(/^[0-9a-f]{64}$/),
+});
+export type ConfirmProposalsInput = z.infer<typeof confirmProposalsSchema>;
+
+/** Backend-validated proposals of an MC run against the latest approved version (D-065). */
+export interface PackageReviewDto {
+  baseVersion: { id: string; label: string } | null;
+  /** SHA-256 over the base version and every proposal (row, kind, target); confirmation must send it back. */
+  token: string;
+  /** false = the source has no analysis blocks (inheritance applies); null = old draft, unknown. */
+  sourceHasAnalyses: boolean | null;
+  counts: {
+    /** Items (not distinct analyses) priced by an analysis proven in the new source. */
+    fromSource: number;
+    /** Items (not distinct analyses) with a pending proposal to copy an analysis of the base package. */
+    inherit: number;
+    /** Pending proposals to match a permanent work item. */
+    match: number;
+    /** Undecided items without any counterpart in the base version. */
+    newItems: number;
+    /** Items still blocking after every proposal would be confirmed. */
+    problems: number;
+  };
+  proposals: {
+    rowKey: string;
+    description: string;
+    workItem?: { workItemId: string; code: string; reason: string };
+    analysis?: { analysisVersionId: string; code: string | null; reason: string };
+  }[];
+}
+
 export interface RabImportSummaryDto {
   id: string;
   targetVersionType: (typeof RAB_VERSION_TYPES)[number];
+  /** MC number of the target (0 for Kontrak), fixed when the run is created (D-069). */
+  targetRevisionNumber: number;
   status: RabImportStatus;
   attemptNumber: number;
   previousImportId: string | null;
@@ -327,6 +382,8 @@ export interface RabImportDetailDto {
   aiRuns: AiRunDto[];
   /** Reconciliation of the version the import would create, D-043 formula. */
   reconciliation: RabReconciliation | null;
+  /** MC runs under review only (D-065). */
+  packageReview: PackageReviewDto | null;
 }
 
 /**
@@ -394,7 +451,7 @@ export interface AhspAnalysisSummaryDto {
     rabItems: number;
     usedAsSub: number;
     /** Import that created it (a copy made by "Buat versi" has none). */
-    source: { importId: string; versionType: string; documents: string[] } | null;
+    source: { importId: string; versionType: string; label: string; documents: string[] } | null;
     copiedFrom: CopiedFromDto | null;
   };
 }

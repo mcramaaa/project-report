@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Icon } from './icon';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 
@@ -40,10 +41,10 @@ export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSe
   return <select className={`${CONTROL} ${className}`} {...props} />;
 }
 
-export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info'; children: ReactNode }) {
+export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info' | 'warning'; children: ReactNode }) {
   return (
     <div role={kind === 'error' ? 'alert' : 'status'} className={`alert alert-${kind}`}>
-      <Icon name={kind === 'success' ? 'check' : 'info'} size={18} />
+      <Icon name={kind === 'success' ? 'check' : 'info'} size={17} />
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -58,19 +59,76 @@ export function Loading({ label = 'Memuat…' }: { label?: string }) {
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="empty-state"><span className="metric-icon"><Icon name="folder" size={24} /></span><span>{children}</span></div>;
+  return <div className="empty-state"><span className="empty-icon"><Icon name="folder" size={22} /></span><span>{children}</span></div>;
 }
 
-export function Badge({ tone = 'slate', children }: { tone?: 'slate' | 'green' | 'red' | 'blue'; children: ReactNode }) {
+export function Badge({ tone = 'slate', children }: { tone?: 'slate' | 'green' | 'red' | 'blue' | 'amber'; children: ReactNode }) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 
-export function PageTitle({ children, subtitle }: { children: ReactNode; subtitle?: ReactNode }) {
+/** Page header: title on the left, the page's primary actions on the right (olmat page-head). */
+export function PageTitle({
+  children,
+  subtitle,
+  eyebrow,
+  actions,
+  back,
+}: {
+  children: ReactNode;
+  subtitle?: ReactNode;
+  eyebrow?: ReactNode;
+  actions?: ReactNode;
+  back?: { href: string; label: string };
+}) {
   return (
-    <div className="page-heading">
-      <span className="eyebrow">Laporan Proyek / Workspace</span>
-      <h1>{children}</h1>
-      {subtitle && <p>{subtitle}</p>}
-    </div>
+    <header className="page-head">
+      <div className="page-head-copy">
+        {back && (
+          <Link href={back.href} className="page-back">
+            <Icon name="arrow-left" size={14} />
+            {back.label}
+          </Link>
+        )}
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+        <h1 className="page-title">{children}</h1>
+        {subtitle && <div className="page-description">{subtitle}</div>}
+      </div>
+      {actions && <div className="page-actions">{actions}</div>}
+    </header>
+  );
+}
+
+/** Card with its title inside, so a section's heading and content read as one unit. */
+export function Section({
+  title,
+  description,
+  action,
+  children,
+  body = true,
+  className = '',
+  id,
+}: {
+  title?: ReactNode;
+  description?: ReactNode;
+  action?: ReactNode;
+  children: ReactNode;
+  body?: boolean;
+  className?: string;
+  id?: string;
+}) {
+  const headingId = id ? `${id}-title` : undefined;
+  return (
+    <section id={id} className={`surface ${className}`} aria-labelledby={headingId}>
+      {title && (
+        <div className="surface-header">
+          <div className="min-w-0">
+            <h2 id={headingId} className="surface-title">{title}</h2>
+            {description && <p className="surface-subtitle">{description}</p>}
+          </div>
+          {action}
+        </div>
+      )}
+      <div className={body ? 'surface-body' : ''}>{children}</div>
+    </section>
   );
 }

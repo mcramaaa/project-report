@@ -2,18 +2,34 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useRef, type ReactNode } from 'react';
+import { useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { Brand } from './brand';
 import { Icon, type IconName } from './icon';
 import { can } from '@/lib/permissions';
 import { LogoutButton } from './logout-button';
 
 type ShellUser = { name: string; email: string; isSystemAdmin: boolean; permissions: string[] };
-type NavItem = { href: string; label: string; icon: IconName; group: string };
+type NavItem = { href: string; label: string; short: string; icon: IconName; group: string };
+const SIDEBAR_PREFERENCE = 'sidebar-collapsed';
+
+function subscribeSidebarPreference(onChange: () => void) {
+  window.addEventListener('storage', onChange);
+  window.addEventListener('sidebar-preference-change', onChange);
+  return () => {
+    window.removeEventListener('storage', onChange);
+    window.removeEventListener('sidebar-preference-change', onChange);
+  };
+}
+
+function getSidebarPreference() {
+  return window.localStorage.getItem(SIDEBAR_PREFERENCE) === 'true';
+}
 
 export function AppShell({ user, children }: { user: ShellUser; children: ReactNode }) {
   const pathname = usePathname();
   const drawer = useRef<HTMLDialogElement>(null);
+  const accountMenu = useRef<HTMLDialogElement>(null);
+  const sidebarCollapsed = useSyncExternalStore(subscribeSidebarPreference, getSidebarPreference, () => false);
   // One entry for access management; delegates land on their first permitted tab.
   const accessHref = can(user, 'users.read')
     ? '/admin/users'
@@ -23,12 +39,12 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
         ? '/admin/projects'
         : undefined;
   const items: NavItem[] = [
-    { href: '/', label: 'Proyek saya', icon: 'grid', group: 'Ruang kerja' },
+    { href: '/', label: 'Proyek saya', short: 'Proyek', icon: 'grid', group: 'Ruang kerja' },
     // UX only: the API checks each permission (docs/PERMISSIONS.md).
     ...(accessHref
-      ? [{ href: accessHref, label: 'Pengguna', icon: 'users' as const, group: 'Manajemen akses' }]
+      ? [{ href: accessHref, label: 'Pengguna', short: 'Akses', icon: 'users' as const, group: 'Manajemen akses' }]
       : []),
-    { href: '/profile', label: 'Profil & keamanan', icon: 'user', group: 'Akun' },
+    { href: '/profile', label: 'Profil & keamanan', short: 'Profil', icon: 'user', group: 'Akun' },
   ];
   const active = (href: string) =>
     href === accessHref
@@ -82,6 +98,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
                 : []),
         ]
       : [{ label: currentLabel }];
+  const role = user.isSystemAdmin ? 'Super admin' : user.permissions.length ? 'Admin akses' : 'Anggota proyek';
   const initials = user.name
     .trim()
     .split(/\s+/)
@@ -91,10 +108,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
     .toUpperCase();
 
   function navigation(mobile = false) {
+    const iconOnly = !mobile && sidebarCollapsed;
     return (
       <nav className="sidebar-nav" aria-label={mobile ? 'Navigasi mobile' : 'Navigasi utama'}>
         {[...new Set(items.map((item) => item.group))].map((group) => (
-          <div className="nav-group" key={group}>
+          <div key={group}>
             <p className="nav-group-label">{group}</p>
             {items
               .filter((item) => item.group === group)
@@ -104,11 +122,12 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
                   href={item.href}
                   className="nav-link"
                   aria-current={active(item.href) ? 'page' : undefined}
+                  aria-label={iconOnly ? item.label : undefined}
+                  title={iconOnly ? item.label : undefined}
                   onClick={() => drawer.current?.close()}
                 >
-                  <Icon name={item.icon} size={19} />
-                  <span>{item.label}</span>
-                  {active(item.href) && <span className="nav-active-dot" />}
+                  <Icon name={item.icon} size={18} />
+                  <span className="nav-label">{item.label}</span>
                 </Link>
               ))}
           </div>
@@ -117,36 +136,85 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
     );
   }
 
+  const accountCard = (
+    <Link
+      href="/profile"
+      className="account-card"
+      aria-label={`Profil ${user.name}`}
+      title={sidebarCollapsed ? `Profil ${user.name}` : undefined}
+      onClick={() => drawer.current?.close()}
+    >
+      <span className="avatar">{initials}</span>
+      <span className="account-copy">
+        <strong>{user.name}</strong>
+        <small>{user.email}</small>
+      </span>
+    </Link>
+  );
+
   return (
-    <div className="app-frame">
+    <div className="app-frame" data-sidebar-collapsed={sidebarCollapsed}>
       <a className="skip-link" href="#main-content">
         Lewati ke konten
       </a>
-      <aside className="sidebar">
-        <Link href="/" className="sidebar-brand" aria-label="Laporan Proyek, beranda">
+      <aside className="sidebar" aria-label="Sidebar">
+        <Link href="/" className="sidebar-brand" aria-label="Laporan Proyek, beranda" title={sidebarCollapsed ? 'Laporan Proyek' : undefined}>
           <Brand />
         </Link>
         {navigation()}
         <div className="sidebar-footer">
-          <div className="workspace-note">
-            <Icon name="shield" size={18} />
-            <span>
-              Akses sesuai penugasan<small>Ruang kerja proyek Anda</small>
-            </span>
+          {accountCard}
+          <div className="sidebar-collapse">
+            <span className="version-text">Akses sesuai penugasan</span>
+            <button
+              type="button"
+              aria-label={sidebarCollapsed ? 'Perluas sidebar' : 'Ringkas sidebar'}
+              title={sidebarCollapsed ? 'Perluas sidebar' : 'Ringkas sidebar'}
+              aria-expanded={!sidebarCollapsed}
+              onClick={() => {
+                window.localStorage.setItem(SIDEBAR_PREFERENCE, String(!sidebarCollapsed));
+                window.dispatchEvent(new Event('sidebar-preference-change'));
+              }}
+            >
+              <Icon name={sidebarCollapsed ? 'chevron' : 'chevron-left'} size={17} />
+            </button>
           </div>
-          <Link href="/profile" className="account-card">
-            <span className="avatar">{initials}</span>
-            <span className="min-w-0">
-              <strong>{user.name}</strong>
-              <small>{user.email}</small>
-            </span>
-            <Icon name="chevron" size={15} />
-          </Link>
         </div>
       </aside>
       <div className="app-main">
         <header className="topbar">
           <div className="flex min-w-0 items-center gap-3">
+            <Link href="/" className="mobile-brand" aria-label="Laporan Proyek, beranda">
+              <Brand />
+            </Link>
+            <nav className="breadcrumb" aria-label="Lokasi halaman">
+              <Icon name="building" size={15} />
+              {crumbs.map((crumb, index) => (
+                <span key={index} className="inline-flex items-center gap-2">
+                  {index > 0 && <Icon name="chevron" size={12} />}
+                  {crumb.href && index !== crumbs.length - 1 ? (
+                    <Link href={crumb.href}>{crumb.label}</Link>
+                  ) : (
+                    <strong aria-current="page">{crumb.label}</strong>
+                  )}
+                </span>
+              ))}
+            </nav>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="topbar-account"
+              aria-label="Buka menu akun"
+              aria-haspopup="dialog"
+              onClick={() => accountMenu.current?.showModal()}
+            >
+              <span className="topbar-account-copy">
+                <strong>{user.name}</strong>
+                <small>{role}</small>
+              </span>
+              <span className="avatar">{initials}</span>
+            </button>
             <button
               type="button"
               className="icon-button mobile-menu-trigger"
@@ -156,46 +224,14 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
             >
               <Icon name="menu" />
             </button>
-            <div className="breadcrumb">
-              <Icon name="building" size={16} />
-              {crumbs.map((crumb, index) => (
-                <span key={index} className="inline-flex items-center gap-2">
-                  {index > 0 && <Icon name="chevron" size={12} />}
-                  {crumb.href && index !== crumbs.length - 1 ? (
-                    <Link href={crumb.href}>{crumb.label}</Link>
-                  ) : (
-                    <strong>{crumb.label}</strong>
-                  )}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link href="/profile" className="topbar-account">
-              <span className="account-caption">
-                <strong>{user.name}</strong>
-                <small>
-                  {user.isSystemAdmin
-                    ? 'Super admin'
-                    : user.permissions.length
-                      ? 'Admin akses'
-                      : 'Anggota proyek'}
-                </small>
-              </span>
-              <span className="avatar avatar-small">{initials}</span>
-            </Link>
-            <span className="topbar-divider" />
-            <LogoutButton />
           </div>
         </header>
         <main id="main-content" className="app-content" tabIndex={-1}>
           {children}
         </main>
         <footer className="app-footer">
-          <span>
-            LaporanProyek <span aria-hidden="true">·</span> Ruang kerja konstruksi
-          </span>
-          <span>Terstruktur. Tertelusur. Terjaga.</span>
+          <span>LaporanProyek, ruang kerja konstruksi</span>
+          <span>Akses sesuai penugasan</span>
         </footer>
       </div>
       <nav className="mobile-bottom-nav" aria-label="Navigasi cepat">
@@ -206,7 +242,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
             aria-current={active(item.href) ? 'page' : undefined}
           >
             <Icon name={item.icon} size={20} />
-            <span>{item.label}</span>
+            <span>{item.short}</span>
           </Link>
         ))}
         <button
@@ -239,14 +275,48 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
             aria-label="Tutup menu"
             onClick={() => drawer.current?.close()}
           >
-            <Icon name="close" />
+            <Icon name="close" size={18} />
           </button>
         </div>
         {navigation(true)}
-        <div className="drawer-account">
-          <strong>{user.name}</strong>
-          <p>{user.email}</p>
-          <LogoutButton />
+        <div className="sidebar-footer">
+          {accountCard}
+          <LogoutButton className="btn btn-ghost mt-2 w-full" />
+        </div>
+      </dialog>
+      <dialog
+        ref={accountMenu}
+        className="modal-dialog"
+        aria-labelledby="account-menu-title"
+        onClick={(event) => {
+          const box = event.currentTarget.getBoundingClientRect();
+          if (
+            event.target === event.currentTarget &&
+            (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)
+          )
+            accountMenu.current?.close();
+        }}
+      >
+        <div className="modal-head">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="avatar">{initials}</span>
+            <div className="min-w-0">
+              <h2 id="account-menu-title">{user.name}</h2>
+              <p>
+                {user.email} · {role}
+              </p>
+            </div>
+          </div>
+          <button type="button" className="icon-button" aria-label="Tutup menu akun" onClick={() => accountMenu.current?.close()}>
+            <Icon name="close" size={17} />
+          </button>
+        </div>
+        <div className="modal-body flex flex-wrap gap-3">
+          <Link className="btn btn-secondary" href="/profile" onClick={() => accountMenu.current?.close()}>
+            <Icon name="user" size={16} />
+            Profil & keamanan
+          </Link>
+          <LogoutButton className="btn btn-danger" />
         </div>
       </dialog>
     </div>

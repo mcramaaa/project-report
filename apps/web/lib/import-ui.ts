@@ -9,6 +9,4 @@ export const IMPORT_STATUS: Record<RabImportStatus, { label: string; tone: 'slat
   FAILED: { label: 'Gagal', tone: 'red' },
 };
 
-export const VERSION_LABEL: Record<string, string> = { CONTRACT: 'Kontrak', MC0: 'MC-0', ADDENDUM: 'Addendum' };
-
 export const CATEGORY_LABEL: Record<string, string> = { LABOR: 'Tenaga', MATERIAL: 'Bahan', EQUIPMENT: 'Alat' };

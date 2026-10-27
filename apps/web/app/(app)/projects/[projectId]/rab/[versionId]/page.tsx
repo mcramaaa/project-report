@@ -40,8 +40,7 @@ export default async function RabVersionPage({
           <RabEditor
             projectId={project.id}
             initial={detail.data}
-            canEdit={project.permissions.includes('rab.edit') && project.status === 'ACTIVE'}
-            canApprove={project.permissions.includes('rab.approve') && project.status === 'ACTIVE'}
+            permissions={project.status === 'ACTIVE' ? project.permissions : []}
           />
         </>
       )}

@@ -2,14 +2,15 @@ import { SourceValue } from '@/components/source-value';
 import { workbookSource, rabRowHref } from '@/lib/value-source';
 import { Fragment } from 'react';
 import { Decimal } from '@laporan-proyek/calc';
-import type { AhspAnalysisDetailDto, ProjectDto } from '@laporan-proyek/shared';
+import { rabVersionLabel, type AhspAnalysisDetailDto, type ProjectDto, type RabVersionType } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { RabBackLinks, RabTabs } from '@/components/rab-tabs';
 import { Alert, Badge, PageTitle } from '@/components/ui';
-import { VERSION_LABEL } from '@/lib/import-ui';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
+import { canChangeVersion } from '@/lib/rab-ui';
+import { CorrectionBadge, CorrectionForm } from '@/components/corrections';
 
 /** The route keeps the owning RAB explicit, including when following sub-analysis links. */
 /** No overhead in the price chain; a listed but unused overhead row (D-063) is named with its cells. */
@@ -37,6 +38,11 @@ export default async function AnalysisPage({
   if (status === 404 || detail.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const a = detail.data;
+  // D-068: source inputs of a DRAFT/REOPENED package are editable; derived values never are.
+  const canCorrect =
+    project.status === 'ACTIVE' && !!a && canChangeVersion(a.rabVersion.status, project.permissions, 'ahsp.edit');
+  const reopened = a?.rabVersion.status === 'REOPENED';
+  const versionPath = `${base}/rab-versions/${encodeURIComponent(version)}`;
 
   return (
     <>
@@ -52,9 +58,9 @@ export default async function AnalysisPage({
       />
       <Link
         href={`${base}/rab/${encodeURIComponent(version)}/analyses`}
-        className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900"
+        className="page-back"
       >
-        ← Daftar analisa
+        Daftar analisa
       </Link>
       {!a ? (
         <Alert>
@@ -104,7 +110,19 @@ export default async function AnalysisPage({
                     Daftar harga paket {a.rabVersion.label}
                     {v.priceList.location && ` · ${v.priceList.location}`}
                     {v.priceList.period && ` · ${v.priceList.period}`}
+                    <CorrectionBadge locator={v.sourceLocator} />
                   </p>
+                  {canCorrect && (
+                    <CorrectionForm
+                      path={`${versionPath}/analysis-versions/${v.id}`}
+                      reopened={reopened}
+                      title="Koreksi overhead dan pembulatan"
+                      fields={[
+                        { name: 'overheadPercent', label: 'Overhead & profit (%)', value: v.overheadPercent ?? '', hint: 'Kosongkan bila sumber tidak memakai overhead.' },
+                        { name: 'roundingScale', label: 'Pembulatan harga (desimal)', value: v.roundingScale === null ? '' : String(v.roundingScale), number: true, hint: 'Kosongkan bila sumber tidak membulatkan.' },
+                      ]}
+                    />
+                  )}
                 </div>
                 <dl className="calendar-preview">
                   <div>
@@ -276,6 +294,21 @@ export default async function AnalysisPage({
                                       Daftar harga: {c.priceItem.name}
                                     </span>
                                   )
+                                )}
+                                <CorrectionBadge locator={c.sourceLocator} />
+                                {canCorrect && (
+                                  <CorrectionForm
+                                    path={`${versionPath}/components/${c.id}`}
+                                    reopened={reopened}
+                                    title={`Koreksi komponen ${c.description}`}
+                                    fields={[
+                                      { name: 'coefficient', label: 'Koefisien', value: c.coefficient },
+                                      // Linked prices follow the base price/sub-analysis; only a manual price is an input.
+                                      ...(c.priceItem || c.subAnalysis
+                                        ? []
+                                        : [{ name: 'unitPrice', label: 'Harga komponen manual (Rp)', value: c.unitPrice }]),
+                                    ]}
+                                  />
                                 )}
                               </td>
                               <td>{c.unit ?? '–'}</td>
@@ -521,9 +554,7 @@ export default async function AnalysisPage({
                         className="link-button"
                         href={rabRowHref(projectId, i.rabVersion.id, i.id)}
                       >
-                        {VERSION_LABEL[i.rabVersion.versionType]}
-                        {i.rabVersion.versionType === 'ADDENDUM' &&
-                          ` ${i.rabVersion.revisionNumber}`}
+                        {rabVersionLabel({ versionType: i.rabVersion.versionType as RabVersionType, revisionNumber: i.rabVersion.revisionNumber })}
                       </Link>{' '}
                       — {i.displayNumber ? `${i.displayNumber}. ` : ''}
                       {i.description}{' '}

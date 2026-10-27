@@ -1,13 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import {
+  latestInDomainOrder,
+  mcNumberError,
+  nextMcNumber,
   rabImportDraftSchema,
+  rabVersionLabel,
   type AnalysisCandidate,
+  type ConfirmProposalsInput,
   type CreateRabImportInput,
   type RabImportDecisionsInput,
   type RabImportDetailDto,
   type RabImportDraft,
   type RabImportSummaryDto,
+  type WorkItemSearchDto,
 } from '@laporan-proyek/shared';
 import { Decimal } from '@laporan-proyek/calc';
 import ExcelJS from 'exceljs';
@@ -19,8 +25,9 @@ import { documentPath } from '../documents/documents.service';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextWorkItemNumber, RabService, workItemCode } from '../rab/rab.service';
-import { buildDraft, DraftInputError, PARSER_VERSION, type OfficialAnalysis, type PreviousItem } from './build-draft';
-import { blockingIssues, evaluateImport, type DecisionRecord, type OfficialVersion } from './evaluate';
+import { buildDraft, DraftInputError, looseText, PARSER_VERSION, type OfficialAnalysis } from './build-draft';
+import { blockingIssues, evaluateImport, latestDecisions, type DecisionRecord, type OfficialVersion } from './evaluate';
+import { proposePackage, type BaseItem } from './proposals';
 import { AI_CANDIDATE_RESPONSE_FORMAT, aiCandidateResponseSchema, GUIDE_VERSION, SYSTEM_INSTRUCTION } from './guide/rab-import-guide';
 import { WorkbookModel } from './workbook/workbook-model';
 
@@ -59,7 +66,7 @@ export class RabImportsService implements OnModuleInit {
 
   async list(projectId: string): Promise<RabImportSummaryDto[]> {
     // Drafts are several MB each: never sort rows that carry them (MySQL sort buffer); load per run instead.
-    const rows = await this.prisma.rabImport.findMany({ where: { projectId }, omit: { draft: true }, include: IMPORT_INCLUDE, orderBy: { createdAt: 'desc' } });
+    const rows = await this.prisma.rabImport.findMany({ where: { projectId, deletedAt: null }, omit: { draft: true }, include: IMPORT_INCLUDE, orderBy: { createdAt: 'desc' } });
     const official = await this.officialVersions(projectId);
     return Promise.all(
       rows.map(async (r) => {
@@ -103,6 +110,7 @@ export class RabImportsService implements OnModuleInit {
         finishedAt: r.finishedAt.toISOString(),
       })),
       reconciliation: evaluation?.reconciliation ?? null,
+      packageReview: draft && row.status === 'NEEDS_REVIEW' ? await this.packageReview(this.prisma, projectId, draft, decisions.map(toRecord)) : null,
     };
   }
 
@@ -115,11 +123,22 @@ export class RabImportsService implements OnModuleInit {
       if (new Set(ids).size !== ids.length) throw new BadRequestException('Dokumen yang sama dipilih lebih dari sekali.');
       const docs = await tx.projectDocument.findMany({ where: { id: { in: ids }, projectId }, select: { id: true } });
       if (docs.length !== ids.length) throw new BadRequestException('Dokumen tidak ditemukan di proyek ini.');
+      // The MC number is fixed now: it picks the workbook block ("MC - n"); approval re-checks it is still allowed (D-069).
+      let targetRevisionNumber = 0;
+      if (input.targetVersionType === 'MC') {
+        const versions = await tx.rabVersion.findMany({ where: { projectId, status: { not: 'DISCARDED' } }, select: { versionType: true, revisionNumber: true } });
+        targetRevisionNumber = input.targetRevisionNumber ?? nextMcNumber(versions);
+        const invalid = mcNumberError(versions, targetRevisionNumber);
+        if (invalid) throw new ConflictException(invalid);
+      } else if (input.targetRevisionNumber !== undefined) {
+        throw new BadRequestException('Nomor hanya untuk MC.');
+      }
       const attempt = previousImportId ? ((await tx.rabImport.findUnique({ where: { id: previousImportId }, select: { attemptNumber: true } }))?.attemptNumber ?? 0) + 1 : 1;
       const created = await tx.rabImport.create({
         data: {
           projectId,
           targetVersionType: input.targetVersionType,
+          targetRevisionNumber,
           attemptNumber: attempt,
           previousImportId,
           guideVersion: GUIDE_VERSION,
@@ -134,7 +153,7 @@ export class RabImportsService implements OnModuleInit {
         entityType: 'RAB_IMPORT',
         entityId: created.id,
         projectId,
-        newValue: { targetVersionType: input.targetVersionType, sources: input.sources, previousImportId, attempt, guideVersion: GUIDE_VERSION },
+        newValue: { targetVersionType: input.targetVersionType, targetRevisionNumber, sources: input.sources, previousImportId, attempt, guideVersion: GUIDE_VERSION },
       });
       return created.id;
     });
@@ -149,9 +168,36 @@ export class RabImportsService implements OnModuleInit {
     return this.create(
       actor,
       projectId,
-      { targetVersionType: old.targetVersionType, sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined })) },
+      { targetVersionType: old.targetVersionType, targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined, sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined })) },
       old.id,
     );
+  }
+
+  /** Remove only unused, idle runs from the active list while preserving their history (D-066). */
+  async remove(actor: AuthUser, projectId: string, importId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM rab_imports WHERE id = ${importId} AND project_id = ${projectId} FOR UPDATE`;
+      const row = await this.find(tx, projectId, importId);
+      const project = await tx.project.findUniqueOrThrow({ where: { id: projectId }, select: { status: true } });
+      if (project.status === 'CLOSED') throw new ConflictException('Proyek sudah ditutup.');
+      if (!['FAILED', 'REJECTED', 'NEEDS_REVIEW'].includes(row.status)) {
+        throw new ConflictException('Hanya impor gagal, ditolak, atau belum disetujui yang dapat dihapus.');
+      }
+      if (row.rabVersionId || row.priceListId || await tx.ahspAnalysisVersion.count({ where: { sourceImportId: importId } })) {
+        throw new ConflictException('Impor sudah digunakan untuk data resmi dan tidak dapat dihapus.');
+      }
+      const deletedAt = new Date();
+      await tx.rabImport.update({ where: { id: importId }, data: { deletedAt } });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'DELETE_RAB_IMPORT',
+        entityType: 'RAB_IMPORT',
+        entityId: importId,
+        projectId,
+        oldValue: { status: row.status },
+        newValue: { deletedAt: deletedAt.toISOString() },
+      });
+    });
   }
 
   /** Waits for background processing (tests, seed). */
@@ -189,6 +235,7 @@ export class RabImportsService implements OnModuleInit {
       const official = await this.officialVersions(row.projectId);
       const draft = buildDraft(sources, {
         targetVersionType: row.targetVersionType,
+        targetRevisionNumber: row.targetRevisionNumber,
         officialAnalyses: [...official.values()] satisfies OfficialAnalysis[],
         previousItems: row.targetVersionType === 'CONTRACT' ? [] : await this.previousItems(row.projectId),
       });
@@ -275,6 +322,14 @@ export class RabImportsService implements OnModuleInit {
       const rows = new Map(draft.rows.map((r) => [r.key, r]));
       const analyses = new Map(draft.analyses.map((a) => [a.key, a]));
       const official = await this.officialVersions(projectId, tx);
+      // D-067: chosen work item per row (latest decisions, then this batch); base items loaded on first need.
+      const chosen = new Map(
+        [...latestDecisions((await tx.rabImportDecision.findMany({ where: { importId } })).map(toRecord)).values()]
+          .filter((d) => d.kind === 'WORK_ITEM_MATCH')
+          .map((d) => [d.rowKey, (d.value as { workItemId: string | null }).workItemId]),
+      );
+      const picked: { rowKey: string; id: string }[] = [];
+      let baseIds: Set<string> | undefined;
       for (const d of input.decisions) {
         const r = rows.get(d.rowKey);
         if (!r || r.rowType !== 'ITEM') throw new BadRequestException(`Baris ${d.rowKey} bukan item pekerjaan di draft ini.`);
@@ -292,7 +347,18 @@ export class RabImportsService implements OnModuleInit {
         if (d.kind === 'WORK_ITEM_MATCH') {
           if (draft.targetVersionType === 'CONTRACT') throw new BadRequestException('Impor Kontrak selalu membuat pekerjaan baru.');
           const id = (d.value as { workItemId: string | null }).workItemId;
-          if (id && !(await tx.workItem.findFirst({ where: { id, projectId }, select: { id: true } }))) throw new BadRequestException(`${r.description}: pekerjaan permanen tidak ditemukan.`);
+          chosen.set(d.rowKey, id);
+          if (id) {
+            baseIds ??= new Set((await this.previousItems(projectId, tx)).map((b) => b.workItemId));
+            if (!baseIds.has(id)) throw new BadRequestException(`${r.description}: pekerjaan permanen tidak ada di versi RAB approved terakhir proyek ini.`);
+            picked.push({ rowKey: d.rowKey, id });
+          }
+        }
+      }
+      for (const p of picked) {
+        const other = [...chosen].find(([rowKey, id]) => id === p.id && rowKey !== p.rowKey);
+        if (other && chosen.get(p.rowKey) === p.id) {
+          throw new BadRequestException(`${rows.get(p.rowKey)!.description}: pekerjaan permanen sudah dipilih untuk baris "${rows.get(other[0])?.description ?? other[0]}".`);
         }
       }
       await tx.rabImportDecision.createMany({
@@ -348,7 +414,7 @@ export class RabImportsService implements OnModuleInit {
         projectId,
         draft.targetVersionType === 'CONTRACT'
           ? { versionType: 'CONTRACT', documentNumber: project.contractNumber, documentDate: project.contractDate.toISOString().slice(0, 10) }
-          : { versionType: draft.targetVersionType },
+          : { versionType: 'MC', revisionNumber: row.targetRevisionNumber },
         { copyPrevious: false },
       );
 
@@ -512,11 +578,11 @@ export class RabImportsService implements OnModuleInit {
 
   /**
    * Candidates for broken chains (D-057): analyses of the latest approved RAB version's package — the version
-   * a new MC-0/Addendum continues from. Linking one copies it into the new package at approval.
+   * a new MC continues from. Linking one copies it into the new package at approval.
    */
   /** Analyses of the latest approved version's package (D-057), plus `alsoIds` of the same project. */
-  private async officialVersions(projectId: string, db: Db = this.prisma, alsoIds: string[] = []): Promise<Map<string, OfficialVersion>> {
-    const latest = await db.rabVersion.findFirst({ where: { projectId, status: 'APPROVED' }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
+  private async officialVersions(projectId: string, db: Db = this.prisma, alsoIds: string[] = [], base?: { id: string } | null): Promise<Map<string, OfficialVersion>> {
+    const latest = base === undefined ? await latestApproved(db, projectId) : base;
     if (!latest && !alsoIds.length) return new Map();
     const versions = await db.ahspAnalysisVersion.findMany({
       where: { analysis: { projectId }, OR: [...(latest ? [{ analysis: { rabVersionId: latest.id } }] : []), { id: { in: alsoIds } }] },
@@ -526,13 +592,81 @@ export class RabImportsService implements OnModuleInit {
     return new Map(versions.map((v) => [v.id, { analysisVersionId: v.id, code: v.code, name: v.name, unit: v.unit, price: new Decimal(v.price.toString()).toFixed() }]));
   }
 
-  /** ITEM rows of the latest approved RAB version with their group path, for work item candidates. */
-  private async previousItems(projectId: string): Promise<PreviousItem[]> {
-    const version = await this.prisma.rabVersion.findFirst({ where: { projectId, status: 'APPROVED' }, orderBy: { approvedAt: 'desc' }, select: { id: true } });
+  /** Base of a package review (D-065): one approved version read once, its items and its package's analyses. */
+  private async packageReview(db: Db, projectId: string, draft: RabImportDraft, decisions: DecisionRecord[]) {
+    if (draft.targetVersionType === 'CONTRACT') return null;
+    const v = await latestApproved(db, projectId);
+    return proposePackage(draft, decisions, {
+      version: v ? { id: v.id, label: rabVersionLabel(v) } : null,
+      items: await this.previousItems(projectId, db, v),
+      official: await this.officialVersions(projectId, db, [], v),
+    });
+  }
+
+  /**
+   * Explicit package confirmation (D-065): proposals are recomputed under the import lock and must be exactly the
+   * ones the reviewer saw (same base version and token over every row, target and kind); otherwise 409 and
+   * nothing is recorded. Confirmed proposals become ordinary decisions.
+   */
+  async confirmProposals(actor: AuthUser, projectId: string, importId: string, input: ConfirmProposalsInput): Promise<RabImportDetailDto> {
+    await this.prisma.$transaction(async (tx) => {
+      const row = await this.lockReviewable(tx, projectId, importId);
+      const decisions = (await tx.rabImportDecision.findMany({ where: { importId } })).map(toRecord);
+      const review = await this.packageReview(tx, projectId, row.draft as unknown as RabImportDraft, decisions);
+      if (!review) throw new BadRequestException('Review paket hanya untuk impor MC.');
+      if ((review.baseVersion?.id ?? null) !== input.baseVersionId || review.token !== input.token) {
+        throw new ConflictException('Usulan paket berubah sejak ditampilkan (versi dasar atau isi usulan); muat ulang dan tinjau lagi. Tidak ada keputusan yang dicatat.');
+      }
+      if (!review.proposals.length) throw new ConflictException('Tidak ada usulan paket yang terbuka.');
+      const chosen = review.proposals;
+      const keys = chosen.map((p) => p.rowKey);
+      const reason = (text: string) => `Konfirmasi paket oleh reviewer: ${text}`.slice(0, 1000);
+      await tx.rabImportDecision.createMany({
+        data: chosen.flatMap((p) => [
+          ...(p.workItem ? [{ importId, rowKey: p.rowKey, kind: 'WORK_ITEM_MATCH' as const, value: { workItemId: p.workItem.workItemId }, reason: reason(p.workItem.reason), decidedBy: actor.id }] : []),
+          ...(p.analysis ? [{ importId, rowKey: p.rowKey, kind: 'ANALYSIS_LINK' as const, value: { analysisVersionId: p.analysis.analysisVersionId }, reason: reason(p.analysis.reason), decidedBy: actor.id }] : []),
+        ]),
+      });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'CONFIRM_RAB_IMPORT_PROPOSALS',
+        entityType: 'RAB_IMPORT',
+        entityId: importId,
+        projectId,
+        newValue: {
+          baseVersionId: review.baseVersion?.id ?? null,
+          rows: chosen.length,
+          workItems: chosen.filter((p) => p.workItem).length,
+          analyses: chosen.filter((p) => p.analysis).length,
+          rowKeys: keys.slice(0, 200),
+        },
+      });
+    });
+    return this.get(projectId, importId);
+  }
+
+  /** Manual work item search for review (D-067): latest approved version's items, matched on every term. */
+  async searchWorkItems(projectId: string, importId: string, q: string | undefined, page: string | undefined): Promise<WorkItemSearchDto> {
+    const row = await this.find(this.prisma, projectId, importId);
+    if (row.targetVersionType === 'CONTRACT') throw new BadRequestException('Impor Kontrak selalu membuat pekerjaan baru.');
+    const v = await latestApproved(this.prisma, projectId);
+    const terms = looseText(typeof q === 'string' ? q.slice(0, 200) : '').split(' ').filter(Boolean);
+    // shortcut: filters in memory (one version, hundreds of items); move to SQL if versions grow to many thousands.
+    const items = (await this.previousItems(projectId, this.prisma, v))
+      .filter((i) => terms.every((t) => looseText(`${i.description} ${i.code} ${i.analysisCode ?? ''}`).includes(t)))
+      .sort((a, b) => a.code.localeCompare(b.code));
+    const pageSize = 20;
+    const n = Math.max(1, Math.floor(Number(page)) || 1);
+    return { baseVersion: v ? { id: v.id, label: rabVersionLabel(v) } : null, items: items.slice((n - 1) * pageSize, n * pageSize), total: items.length, page: n, pageSize };
+  }
+
+  /** ITEM rows of the latest approved RAB version with their group path, unit and analysis code (D-053, D-065). */
+  private async previousItems(projectId: string, db: Db = this.prisma, base?: { id: string } | null): Promise<BaseItem[]> {
+    const version = base === undefined ? await latestApproved(db, projectId) : base;
     if (!version) return [];
-    const rows = await this.prisma.rabVersionItem.findMany({
+    const rows = await db.rabVersionItem.findMany({
       where: { rabVersionId: version.id },
-      select: { id: true, parentItemId: true, rowType: true, displayNumber: true, description: true, workItemId: true, workItem: { select: { internalCode: true } } },
+      select: { id: true, parentItemId: true, rowType: true, displayNumber: true, description: true, unit: true, workItemId: true, workItem: { select: { internalCode: true } }, analysisVersion: { select: { code: true } } },
     });
     const byId = new Map(rows.map((r) => [r.id, r]));
     const pathOf = (parentId: string | null) => {
@@ -542,7 +676,7 @@ export class RabImportsService implements OnModuleInit {
     };
     return rows
       .filter((r) => r.rowType === 'ITEM' && r.workItemId)
-      .map((r) => ({ workItemId: r.workItemId!, code: r.workItem!.internalCode, description: r.description, groupPath: pathOf(r.parentItemId) }));
+      .map((r) => ({ workItemId: r.workItemId!, code: r.workItem!.internalCode, description: r.description, groupPath: pathOf(r.parentItemId), unit: r.unit, analysisCode: r.analysisVersion?.code ?? null }));
   }
 
   private async previousRows(tx: Db, versionId: string) {
@@ -560,7 +694,7 @@ export class RabImportsService implements OnModuleInit {
   }
 
   private async find(db: Db, projectId: string, importId: string): Promise<ImportRow> {
-    const row = await db.rabImport.findFirst({ where: { id: importId, projectId }, include: IMPORT_INCLUDE });
+    const row = await db.rabImport.findFirst({ where: { id: importId, projectId, deletedAt: null }, include: IMPORT_INCLUDE });
     if (!row) throw new NotFoundException('Impor tidak ditemukan.');
     return row;
   }
@@ -579,6 +713,7 @@ export class RabImportsService implements OnModuleInit {
     return {
       id: r.id,
       targetVersionType: r.targetVersionType,
+      targetRevisionNumber: r.targetRevisionNumber,
       status: r.status,
       attemptNumber: r.attemptNumber,
       previousImportId: r.previousImportId,
@@ -595,6 +730,10 @@ export class RabImportsService implements OnModuleInit {
     };
   }
 }
+
+/** The approved version a new MC continues from (D-057), in domain order, not by (re)approval time (D-068). */
+const latestApproved = async (db: Db, projectId: string) =>
+  latestInDomainOrder(await db.rabVersion.findMany({ where: { projectId, status: 'APPROVED' }, select: { id: true, versionType: true, revisionNumber: true } })) ?? null;
 
 /** Structural identity of a group row: its number and normalised name. */
 const structural = (r: { displayNumber: string | null; description: string }) => `${r.displayNumber ?? ''}|${r.description.replace(/\s+/g, ' ').trim().toLowerCase()}`;

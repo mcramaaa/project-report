@@ -22,12 +22,12 @@ export function ProjectActions({ project }: { project: ProjectDto }) {
 
   return (
     <section className="space-y-3" aria-labelledby="project-actions-title">
-      <h2 id="project-actions-title" className="text-base font-semibold">
-        Kelola proyek
-      </h2>
-      {closed && <Alert kind="info">Proyek ditutup. Identitas dan jadwal tidak dapat diubah sampai proyek dibuka kembali; data tetap dapat dibaca.</Alert>}
-      {notice && <Alert kind="success">{notice}</Alert>}
-      <div className="row-actions">
+      <div className="surface flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div className="min-w-0">
+          <h2 id="project-actions-title" className="surface-title">Kelola proyek</h2>
+          <p className="surface-subtitle">Perubahan identitas dan jadwal tercatat di riwayat audit.</p>
+        </div>
+        <div className="row-actions">
         <Button variant="secondary" disabled={closed} aria-expanded={open === 'identity'} onClick={() => toggle('identity')}>
           Ubah identitas
         </Button>
@@ -37,7 +37,10 @@ export function ProjectActions({ project }: { project: ProjectDto }) {
         <Button variant={closed ? 'primary' : 'danger'} aria-expanded={open === 'status'} onClick={() => toggle('status')}>
           {closed ? 'Buka kembali proyek' : 'Tutup proyek'}
         </Button>
+        </div>
       </div>
+      {closed && <Alert kind="info">Proyek ditutup. Identitas dan jadwal tidak dapat diubah sampai proyek dibuka kembali; data tetap dapat dibaca.</Alert>}
+      {notice && <Alert kind="success">{notice}</Alert>}
       {open === 'identity' && <IdentityForm project={project} onDone={() => done('Identitas proyek disimpan.')} onCancel={() => setOpen(undefined)} />}
       {open === 'schedule' && <ScheduleForm project={project} onDone={() => done('Jadwal proyek, minggu, dan periode diperbarui.')} onCancel={() => setOpen(undefined)} />}
       {open === 'status' && <StatusForm project={project} onDone={(text) => done(text)} onCancel={() => setOpen(undefined)} />}

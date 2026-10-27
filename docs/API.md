@@ -119,9 +119,12 @@ GET  /projects/:projectId/documents/:documentId/download  document.read
 ```text
 GET  /projects/:projectId/rab-imports                                  rabImport.review | rabImport.approve
 POST /projects/:projectId/rab-imports   { targetVersionType, sources: [{ documentId, role: RAB|SUPPORT, rabSheet? }] }   rabImport.review -> 201, status UPLOADED → diproses di latar
-GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns, reconciliation }
+GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns, reconciliation, packageReview }
 POST /projects/:projectId/rab-imports/:importId/decisions  { rowKey, kind, value, reason? }   rabImport.review
+POST /projects/:projectId/rab-imports/:importId/confirm-proposals  { baseVersionId, token }   rabImport.review (D-065)
+GET  /projects/:projectId/rab-imports/:importId/work-items?q=&page=    rabImport.review -> { baseVersion, items, total, page, pageSize } (D-067)
 POST /projects/:projectId/rab-imports/:importId/retry                  rabImport.review -> run baru
+DELETE /projects/:projectId/rab-imports/:importId                     rabImport.review -> 204, soft delete run belum digunakan (D-066)
 POST /projects/:projectId/rab-imports/:importId/approve                rabImport.approve
 POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport.approve
 ```
@@ -130,6 +133,9 @@ POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport
 - keputusan hanya pada status `NEEDS_REVIEW`; approve ditolak (`409`) bila masih ada issue `BLOCKING`
 - approve dalam satu transaksi: versi daftar harga, analisa/versi/komponen terpakai, RAB versi DRAFT tertaut, audit; mengikuti aturan urutan versi M4 (satu DRAFT per proyek)
 - AI dipakai otomatis saat pemrosesan untuk baris putus/ambigu bila 9router dikonfigurasi; hasilnya hanya kandidat
+- `packageReview` (D-065; null bila Kontrak atau run tidak NEEDS_REVIEW): `baseVersion` ({ id, label } versi approved terakhir), `token` (SHA-256 atas versi dasar + baris/jenis/target setiap usulan), `sourceHasAnalyses` (null untuk draft lama tanpa angka blok analisa), `counts` (`fromSource`, `inherit`, `match`, `newItems`, `problems`), `proposals` ([{ rowKey, description, workItem?: { workItemId, code, reason }, analysis?: { analysisVersionId, code, reason } }])
+- `WORK_ITEM_MATCH` (D-067): `workItemId` harus item versi approved terakhir proyek ini dan belum dipilih baris lain, selain itu `400`; `work-items` mencari item versi itu (uraian/WI/kode analisa, 20 per halaman): `items` [{ workItemId, code, description, groupPath, unit, analysisCode }]; kandidat baris dapat memuat `unit`, `analysisCode`, `reason` (beda tanda baca)
+- `confirm-proposals`: `baseVersionId` dan `token` dari `packageReview` yang ditampilkan; backend menghitung ulang seluruh usulan dalam transaksi, `409` bila versi dasar atau isi usulan berubah (tidak ada yang dicatat); seluruh usulan yang ditampilkan dikonfirmasi; sukses mencatat keputusan biasa atas nama reviewer + audit `CONFIRM_RAB_IMPORT_PROPOSALS`
 - `reconciliation` (D-063): `realCost`, `rounded`, `workbookRealCost`, `workbookRounded`, `matches`, `value` (total eksak), `rowsChecked`, `rowsMismatched`, `totalStatus` (`MATCH` | `FLOAT_RESIDUE` | `MISMATCH` | null), `entries` (perbandingan total D-054); selisih item/total dan `OVERHEAD_UNUSED` muncul sebagai issue `WARNING`
 
 ## 6. RAB
@@ -145,16 +151,24 @@ POST  /projects/:projectId/rab-versions/:versionId/items        { parentId?, row
 PATCH /projects/:projectId/rab-versions/:versionId/items/:itemId   { field?, parentId? }        rab.edit
 DELETE /projects/:projectId/rab-versions/:versionId/items/:itemId                               rab.edit
 POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/move  { direction: up|down }   rab.edit
+POST  /projects/:projectId/rab-versions/:versionId/items/reorder     { parentId, itemIds[] }  rab.edit
 POST  /projects/:projectId/rab-versions/:versionId/approve      { acknowledgeWarnings }          rab.approve
-POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }                       rab.edit
+POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }                       rab.edit (DRAFT saja; REOPENED 409)
+POST  /projects/:projectId/rab-versions/:versionId/reopen       { reason }                       rab.reopen (D-068)
+GET   /projects/:projectId/rab-versions/:versionId/history      -> { snapshots, events }         rab.read + ahsp.read
+GET   /projects/:projectId/rab-versions/:versionId/snapshots/:snapshotId -> { …, checksumValid, payload } rab.read + ahsp.read
+POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/work-item  { workItemId, reason? }  rab.edit
 GET   /projects/:projectId/rab-versions/:baseId/compare/:targetId -> { base, target, rows, totals } rab.read
 POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 ```
 
 - angka (volume, harga, PPN, jumlah, bobot) berupa decimal string eksak (D-043); input volume maks. 12 desimal, harga 2 desimal, PPN 0–100 maks. 2 desimal
 - `totals`: `{ beforeTax, tax, value, realCost, rounded }` — `realCost` = ROUND(value, 2), `rounded` = DIBULATKAN (dipotong ke rupiah)
-- MC0/ADDENDUM menyalin versi approved terakhir; urutan salah atau masih ada DRAFT: `409`
-- versi bukan DRAFT atau proyek CLOSED: `409` untuk semua perubahan
+- MC menyalin versi approved terakhir menurut urutan domain Kontrak → MC-0 → MC-1 … MC-100 (D-069; `revisionNumber` opsional 0–100, boleh meloncat asal lebih besar dari MC terakhir; kosong = nomor terkecil yang diizinkan) (bukan waktu approval); urutan salah atau masih ada DRAFT/REOPENED: `409`
+- versi bukan DRAFT/REOPENED atau proyek CLOSED: `409` untuk semua perubahan
+- REOPENED (D-068): setiap perubahan (termasuk PATCH/POST/DELETE baris, move/reorder, data dokumen) butuh `rab.reopen` selain izin endpoint (`403`) dan `reason` di body (`400`); dicatat `CORRECT_*` dengan before/after dan ditandai di `sourceLocator.corrections`. Baris yang sudah ada saat approval terakhir tidak dapat dihapus (`409`). Harga item ANALYSIS tetap dari analisa (`409`)
+- approve versi REOPENED = approve ulang dengan seluruh validasi; setiap approval menambah snapshot (urutan, payload JSON kanonis, SHA-256). Reopen versi approved lama tanpa snapshot membekukan kondisinya lebih dulu
+- koreksi WI: `workItemId` harus item versi sebelumnya proyek ini (`400`), tidak dipakai item lain versi ini (`409`); WI lama tidak dihapus
 - baris: SECTION hanya di tingkat teratas; induk bukan ITEM dan dari versi yang sama: `400`; menghapus baris yang punya sub-baris: `409`
 - `issues`: `{ errors: [{ itemId?, message }], warnings: [...] }`; approve dengan error: `409`; ada warning tanpa `acknowledgeWarnings: true`: `409`
 - `rows` urut pohon dengan `depth`; baris non-ITEM membawa jumlah & bobot agregat sub-barisnya
@@ -170,7 +184,20 @@ paket versi itu (selain itu 404).
 GET /projects/:projectId/rab-versions/:versionId/analyses?search=         ahsp.read -> daftar gabungan paket versi RAB
 GET /projects/:projectId/rab-versions/:versionId/analyses/:analysisId     ahsp.read -> komponen, sumber/provenance, item RAB versi itu
 GET /projects/:projectId/rab-versions/:versionId/price-list?search=       ahsp.read -> harga upah/bahan/alat paket (null bila belum ada)
+PATCH /projects/:projectId/rab-versions/:versionId/price-items/:priceItemId              { price, reason? }                         ahsp.edit (D-068)
+PATCH /projects/:projectId/rab-versions/:versionId/components/:componentId               { coefficient?, unitPrice?, reason? }      ahsp.edit
+PATCH /projects/:projectId/rab-versions/:versionId/analysis-versions/:analysisVersionId  { overheadPercent?, roundingScale?, reason? } ahsp.edit
 ```
+
+Koreksi sumber (D-068) hanya pada paket versi DRAFT/REOPENED (REOPENED: juga
+`rab.reopen` + `reason`). Respons = detail versi RAB. Dalam satu transaksi
+backend menghitung ulang yang terdampak saja (komponen dengan faktor
+`source_locator.factor`, subanalisa EXACT/ROUNDED, analisa, item ANALYSIS;
+item SOURCE_OVERRIDE/DIRECT hanya `analysisUnitPrice`) dan menulis satu audit.
+`409` bila: harga komponen tertaut diedit langsung, siklus subanalisa, relasi
+keluar paket, harga komponen tersimpan tidak terbukti berasal dari sumbernya,
+hasil melebihi presisi kolom, atau harga item ANALYSIS baru > 2 desimal
+(`errors[]` berisi rinciannya; tetapkan pembulatan analisa lebih dahulu).
 
 `AhspAnalysisSummaryDto.latestVersion.copiedFrom` dan
 `AhspAnalysisDetailDto.versions[].copiedFrom` berisi asal salinan

@@ -209,16 +209,38 @@ describe('hierarchy', () => {
     expect(rows.slice(0, 4)).toEqual(['Pekerjaan Persiapan', 'Pembersihan', 'Galian tanah', 'Mobilisasi']);
     expect((await admin.delete(`${base}/${v.id}/items/${section}`)).status).toBe(409);
   });
+
+  it('reorders the complete sibling list atomically and rejects a partial or mixed-parent list', async () => {
+    const v = await contract();
+    const before = (await admin.get(`${base}/${v.id}`)).body.rows as { id: string; parentId: string | null; description: string }[];
+    const roots = before.filter((row) => row.parentId === null);
+    const reordered = await admin.post(`${base}/${v.id}/items/reorder`, {
+      parentId: null,
+      itemIds: roots.map((row) => row.id).reverse(),
+    });
+    expect(reordered.status, JSON.stringify(reordered.body)).toBe(200);
+    expect(reordered.body.rows.filter((row: { parentId: string | null }) => row.parentId === null).map((row: { description: string }) => row.description))
+      .toEqual(roots.map((row) => row.description).reverse());
+
+    expect((await admin.post(`${base}/${v.id}/items/reorder`, {
+      parentId: null,
+      itemIds: [roots[0]!.id],
+    })).status).toBe(400);
+    expect((await admin.post(`${base}/${v.id}/items/reorder`, {
+      parentId: null,
+      itemIds: [roots[0]!.id, before.find((row) => row.parentId !== null)!.id],
+    })).status).toBe(400);
+  });
 });
 
 describe('versions and work item identity', () => {
   it('copies the approved version into MC-0, keeps work item ids, and compares NEW/MODIFIED/REMOVED/UNCHANGED', async () => {
     const c = await contract();
-    expect((await admin.post(base, { versionType: 'MC0' })).status).toBe(409); // contract not approved yet
+    expect((await admin.post(base, { versionType: 'MC' })).status).toBe(409); // contract not approved yet
     await ok(approve(c.id), 200);
     const contractItems = await t.prisma.rabVersionItem.findMany({ where: { rabVersionId: c.id, rowType: 'ITEM' } });
 
-    const mc0 = await ok(admin.post(base, { versionType: 'MC0' }));
+    const mc0 = await ok(admin.post(base, { versionType: 'MC' }));
     expect(mc0.version).toMatchObject({ label: 'MC-0', status: 'DRAFT', previousVersionId: c.id });
     const copied = await t.prisma.rabVersionItem.findMany({ where: { rabVersionId: mc0.version.id, rowType: 'ITEM' } });
     expect(copied.map((i) => i.workItemId).sort()).toEqual(contractItems.map((i) => i.workItemId).sort());
@@ -246,24 +268,58 @@ describe('versions and work item identity', () => {
     await expect(t.prisma.rabVersionItem.update({ where: { id: row('Galian tanah') }, data: { workItemId: beton.workItemId } })).rejects.toThrow();
   });
 
-  it('enforces version order and numbers addenda', async () => {
+  it('enforces version order and numbers MC-0, MC-1, … (D-069)', async () => {
     const c = await contract();
     expect((await admin.post(base, { versionType: 'CONTRACT' })).status).toBe(409); // one draft / one contract
     await ok(approve(c.id), 200);
     expect((await admin.post(base, { versionType: 'CONTRACT' })).status).toBe(409);
 
-    const a1 = await ok(admin.post(base, { versionType: 'ADDENDUM', documentNumber: 'ADD/1' }));
-    expect(a1.version).toMatchObject({ label: 'Addendum 1', revisionNumber: 1 });
-    await ok(approve(a1.version.id), 200);
-    expect((await admin.post(base, { versionType: 'MC0' })).status).toBe(409); // MC-0 only before addenda
-    const a2 = await ok(admin.post(base, { versionType: 'ADDENDUM' }));
-    expect(a2.version).toMatchObject({ label: 'Addendum 2', previousVersionId: a1.version.id });
+    const m0 = await ok(admin.post(base, { versionType: 'MC', documentNumber: 'MC/0' }));
+    expect(m0.version).toMatchObject({ label: 'MC-0', revisionNumber: 0, previousVersionId: c.id });
+    await ok(approve(m0.version.id), 200);
+    const m1 = await ok(admin.post(base, { versionType: 'MC' }));
+    expect(m1.version).toMatchObject({ label: 'MC-1', revisionNumber: 1, previousVersionId: m0.version.id });
+    const legacy = await admin.post(base, { versionType: 'ADDENDUM' });
+    expect(legacy.status, JSON.stringify(legacy.body)).toBe(400); // no longer a version type (D-069)
+  });
+
+  it('lets MC numbers skip but only go up, within 0–100 (D-069)', async () => {
+    const c = await contract();
+    await ok(approve(c.id), 200);
+    expect((await admin.post(base, { versionType: 'MC', revisionNumber: 101 })).status).toBe(400);
+    expect((await admin.post(base, { versionType: 'CONTRACT', revisionNumber: 3 })).status).toBe(400);
+    const m1 = await ok(admin.post(base, { versionType: 'MC', revisionNumber: 1 })); // first MC need not be MC-0
+    expect(m1.version).toMatchObject({ label: 'MC-1', revisionNumber: 1 });
+    await ok(approve(m1.version.id), 200);
+    const m30 = await ok(admin.post(base, { versionType: 'MC', revisionNumber: 30 }));
+    expect(m30.version).toMatchObject({ label: 'MC-30', previousVersionId: m1.version.id });
+    await ok(approve(m30.version.id), 200);
+    for (const n of [0, 1, 30]) {
+      const res = await admin.post(base, { versionType: 'MC', revisionNumber: n });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toContain('minimal MC-31');
+    }
+    const m100 = await ok(admin.post(base, { versionType: 'MC', revisionNumber: 100 }));
+    expect(m100.version).toMatchObject({ label: 'MC-100', previousVersionId: m30.version.id });
+  });
+
+  it('stops at MC-100', async () => {
+    const c = await contract();
+    await ok(approve(c.id), 200);
+    // The 101st MC is refused; seed MC-100 directly instead of approving a hundred versions.
+    const { createdBy } = await t.prisma.rabVersion.findUniqueOrThrow({ where: { id: c.id } });
+    await t.prisma.rabVersion.create({
+      data: { projectId: project.id, versionType: 'MC', revisionNumber: 100, previousVersionId: c.id, status: 'APPROVED', createdBy },
+    });
+    const res = await admin.post(base, { versionType: 'MC' });
+    expect(res.status).toBe(409);
+    expect(res.body.message).toContain('MC-100');
   });
 
   it('allows only one draft per project under concurrent requests', async () => {
     const c = await contract();
     await ok(approve(c.id), 200);
-    const results = await Promise.all([1, 2, 3, 4].map(() => admin.post(base, { versionType: 'ADDENDUM' })));
+    const results = await Promise.all([1, 2, 3, 4].map(() => admin.post(base, { versionType: 'MC' })));
     expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409, 409]);
     expect(await t.prisma.rabVersion.count({ where: { projectId: project.id, status: 'DRAFT' } })).toBe(1);
   });
@@ -310,7 +366,7 @@ describe('regressions from review', () => {
   it('compare detects moves between groups but not the new ids a copy gets, across several versions', async () => {
     const c = await contract();
     await ok(approve(c.id), 200);
-    const mc0 = await ok(admin.post(base, { versionType: 'MC0' }));
+    const mc0 = await ok(admin.post(base, { versionType: 'MC' }));
     const row = (detail: { rows: { id: string; description: string }[] }, d: string) => detail.rows.find((r) => r.description === d)!.id;
 
     // A plain copy changes every parent id, yet nothing moved.
@@ -320,7 +376,7 @@ describe('regressions from review', () => {
     // Move the parent item "Pembersihan" (with its item) from section I to section II.
     await ok(admin.patch(`${base}/${mc0.version.id}/items/${row(mc0, 'Pembersihan')}`, { parentId: row(mc0, 'Pekerjaan Struktur') }), 200);
     await ok(approve(mc0.version.id), 200);
-    const a1 = await ok(admin.post(base, { versionType: 'ADDENDUM' }));
+    const a1 = await ok(admin.post(base, { versionType: 'MC' }));
 
     for (const target of [mc0.version.id, a1.version.id]) {
       const cmp = (await admin.get(`${base}/${c.id}/compare/${target}`)).body;

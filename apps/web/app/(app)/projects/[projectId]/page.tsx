@@ -7,7 +7,7 @@ import type {
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectTabs, type ProjectTab } from '@/components/project-tabs';
-import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
+import { Alert, Badge, EmptyState, PageTitle, Section } from '@/components/ui';
 import { can } from '@/lib/permissions';
 import { formatDate, formatRupiah } from '@/lib/project-fields';
 import { requireMe, serverGet } from '@/lib/server-api';
@@ -39,9 +39,11 @@ export default async function ProjectPage({
   return (
     <>
       <PageTitle
-        subtitle={
+        back={{ href: '/', label: 'Proyek saya' }}
+        eyebrow={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{p.code}</span>
+            <span>TA {p.fiscalYear}</span>
             {p.status === 'CLOSED' ? (
               <Badge tone="red">Ditutup</Badge>
             ) : (
@@ -49,6 +51,7 @@ export default async function ProjectPage({
             )}
           </span>
         }
+        subtitle={`${p.location} · ${formatDate(p.startDate)} – ${formatDate(p.plannedFinishDate)}`}
       >
         {p.projectName}
       </PageTitle>
@@ -96,13 +99,11 @@ function InfoTab({ project: p }: { project: ProjectDto }) {
     ],
   ];
   return (
-    <div className="space-y-6">
+    <div className="stack">
+      {p.permissions.includes('project.update') && <ProjectActions project={p} />}
       {groups.map(([title, rows]) => (
-        <section key={title} aria-labelledby={`info-${title}`} className="space-y-2">
-          <h2 id={`info-${title}`} className="text-base font-semibold">
-            {title}
-          </h2>
-          <dl className="panel detail-list">
+        <Section key={title} id={`info-${title.replace(/\W+/g, '-').toLowerCase()}`} title={title} body={false}>
+          <dl className="detail-list">
             {rows.map(([label, value]) => (
               <div key={label} className="min-w-0">
                 <dt>{label}</dt>
@@ -110,9 +111,8 @@ function InfoTab({ project: p }: { project: ProjectDto }) {
               </div>
             ))}
           </dl>
-        </section>
+        </Section>
       ))}
-      {p.permissions.includes('project.update') && <ProjectActions project={p} />}
     </div>
   );
 }
@@ -125,24 +125,17 @@ async function CalendarTab({ base }: { base: string }) {
   if (!weeks.data || !periods.data) return <Alert>Minggu dan periode tidak dapat dimuat.</Alert>;
   if (weeks.data.length === 0) return <EmptyState>Belum ada minggu proyek.</EmptyState>;
   return (
-    <div className="space-y-6">
+    <div className="stack">
       {periods.data.map((period) => (
-        <section
+        <Section
           key={period.id}
-          className="space-y-2"
-          aria-labelledby={`period-${period.periodNumber}`}
+          id={`period-${period.periodNumber}`}
+          body={false}
+          title={`B${period.periodNumber} · ${formatDate(period.startDate)} – ${formatDate(period.endDate)}`}
+          description={`M${period.firstWeekNumber}–M${period.lastWeekNumber}, ${period.days} hari`}
+          action={period.days < 28 && <Badge tone="amber">Periode pendek</Badge>}
         >
-          <h2
-            id={`period-${period.periodNumber}`}
-            className="flex flex-wrap items-center gap-2 text-base font-semibold"
-          >
-            B{period.periodNumber} · {formatDate(period.startDate)} – {formatDate(period.endDate)}
-            <span className="text-sm font-normal text-slate-500">
-              M{period.firstWeekNumber}–M{period.lastWeekNumber}, {period.days} hari
-            </span>
-            {period.days < 28 && <Badge>Periode pendek</Badge>}
-          </h2>
-          <div className="panel data-panel">
+          <div className="data-panel">
             <table role="table" className="data-table">
               <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
                 <tr role="row">
@@ -179,7 +172,7 @@ async function CalendarTab({ base }: { base: string }) {
 
                         {w.days < 7 && (
                           <span className="ml-2">
-                            <Badge>Minggu pendek</Badge>
+                            <Badge tone="amber">Minggu pendek</Badge>
                           </span>
                         )}
                       </td>
@@ -188,7 +181,7 @@ async function CalendarTab({ base }: { base: string }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </Section>
       ))}
     </div>
   );

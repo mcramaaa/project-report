@@ -4,7 +4,7 @@ import { excelDecimal, type WorkbookModel } from './workbook-model';
 
 /**
  * Reads the RAB/recap sheet of a workbook: header row with VOLUME and NO. ANALISA, optional side-by-side
- * blocks (KONTRAK | MC - 0 | ADDENDUM n) chosen by the target version, and the row hierarchy
+ * blocks (KONTRAK | MC - 0 … MC - n) chosen by the target version and MC number, and the row hierarchy
  * (D-044 mapping; item rows keep their recap name, D-047).
  */
 
@@ -70,10 +70,12 @@ function findHeaderRow(model: WorkbookModel, sheet: string): number | null {
   return null;
 }
 
-const blockMatches = (label: string, target: RabVersionType) =>
-  target === 'CONTRACT' ? /KONTRAK|PENAWARAN/.test(label) : target === 'MC0' ? /^MC\s*-?\s*0\b|MUTUAL/.test(label) : /ADDENDUM|ADD\b/.test(label);
+const blockMatches = (label: string, target: RabVersionType, mc: number) =>
+  target === 'CONTRACT'
+    ? /KONTRAK|PENAWARAN/.test(label)
+    : new RegExp(`^MC\\s*-?\\s*${mc}\\b`).test(label) || (mc === 0 && /MUTUAL/.test(label));
 
-export function detectRabColumns(model: WorkbookModel, sheet: string, target: RabVersionType): RabColumns {
+export function detectRabColumns(model: WorkbookModel, sheet: string, target: RabVersionType, mc = 0): RabColumns {
   const headerRow = findHeaderRow(model, sheet);
   if (headerRow === null) throw new RabSheetError(`Sheet "${sheet}" tidak memiliki header RAB (VOLUME dan NO. ANALISA).`);
   const width = Math.min(60, model.columnCount(sheet));
@@ -85,15 +87,16 @@ export function detectRabColumns(model: WorkbookModel, sheet: string, target: Ra
   const blocks: { col: number; label: string }[] = [];
   for (let c = 1; c <= width; c++) {
     const t = upper(model.text(sheet, headerRow - 1, c));
-    if (t && /KONTRAK|PENAWARAN|MC\s*-?\s*0|ADDENDUM|MUTUAL/.test(t)) blocks.push({ col: c, label: t });
+    // ADDENDUM still bounds a block in older workbooks, though it is never a target (D-069).
+    if (t && /KONTRAK|PENAWARAN|MC\s*-?\s*\d+|ADDENDUM|MUTUAL/.test(t)) blocks.push({ col: c, label: t });
   }
   const volumeCols = Array.from({ length: width }, (_, i) => i + 1).filter((c) => top(c) === 'VOLUME');
   let span: [number, number] = [1, width];
   let block: string | null = null;
   if (blocks.length > 0) {
-    const chosen = blocks.filter((b) => blockMatches(b.label, target));
+    const chosen = blocks.filter((b) => blockMatches(b.label, target, mc));
     if (chosen.length !== 1) {
-      throw new RabSheetError(`Sheet "${sheet}" memiliki blok ${blocks.map((b) => b.label).join(', ')}; blok untuk versi ${target} tidak dapat dipastikan.`);
+      throw new RabSheetError(`Sheet "${sheet}" memiliki blok ${blocks.map((b) => b.label).join(', ')}; blok untuk ${target === 'CONTRACT' ? 'Kontrak' : `MC-${mc}`} tidak dapat dipastikan.`);
     }
     const start = chosen[0]!.col;
     const next = blocks.find((b) => b.col > start)?.col ?? width + 1;
@@ -130,10 +133,10 @@ const isSection = (no: string) => /^[A-Z]$/.test(no);
 const isSubsection = (no: string) => /^[A-Z]\.[IVXLC]+$/.test(no);
 const isTotalLabel = (t: string) => /^(JUMLAH|DIBULATKAN|TOTAL|SUB ?TOTAL|REAL COST)\b/.test(t);
 
-export function readRabSheet(model: WorkbookModel, sheetName: string, target: RabVersionType): RabSheet {
+export function readRabSheet(model: WorkbookModel, sheetName: string, target: RabVersionType, mc = 0): RabSheet {
   const sheet = model.sheetName(sheetName);
   if (!sheet) throw new RabSheetError(`Sheet "${sheetName}" tidak ada.`);
-  const cols = detectRabColumns(model, sheet, target);
+  const cols = detectRabColumns(model, sheet, target, mc);
   const rows: RabSheetRow[] = [];
   let section: number | null = null;
   let subsection: number | null = null;

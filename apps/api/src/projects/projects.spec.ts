@@ -172,11 +172,13 @@ describe('update identity', () => {
       'rab.read',
       'rab.edit',
       'rab.approve',
+      'rab.reopen',
       'document.read',
       'document.upload',
       'rabImport.review',
       'rabImport.approve',
       'ahsp.read',
+      'ahsp.edit',
     ]);
     const outsider = await createUser(t.prisma, { email: 'luar@example.com' });
     expect(outsider).toBeTruthy();

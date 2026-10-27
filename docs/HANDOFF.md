@@ -1,8 +1,75 @@
-# Handoff: Ubuntu laptop → WSL PC kantor
+# Handoff: Ubuntu laptop ⇄ WSL PC kantor
 
-Kondisi per 2026-10-26, dari repo dan mesin laptop (`/home/mchrama/project/project-report`).
 Dokumen ini tidak memuat password, token, atau isi `.env`.
-Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex.
+Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
+`docs/AI_ENGINEERING_STANDARDS.md` untuk standar kerja frontend/backend.
+
+## 0. Terbaru: sesi PC kantor (WSL), 2026-10-27 → lanjut di laptop
+
+### Yang berubah di sesi ini
+
+- **UI mengikuti olmat-backoffice** (`docs/UI_UX.md` "Visual Direction"):
+  `apps/web/app/globals.css` ditulis ulang menjadi satu set token (warna, skala
+  teks, spacing, radius, bayangan); palet `slate` Tailwind disetel ke abu-abu
+  OLMAT; font Inter dimuat lewat `next/font`. Shell: sidebar kartu yang bisa
+  diringkas, topbar dengan menu akun (Profil/Keluar), drawer + bottom nav di
+  mobile. `PageTitle` kini punya `eyebrow`/`actions`/`back`; komponen baru
+  `Section`. Ukuran ±8% lebih kecil, tanpa `max-width` sehingga mengisi layar
+  saat zoom out Chrome. Halaman pengguna memakai menu ⋯ untuk aksi jarang.
+- **D-069 dokumen RAB = Kontrak + MC-0 … MC-100**, Addendum dihapus. Nomor MC
+  dipilih pengguna, boleh meloncat asal naik (MC-0, MC-1, MC-30, …, MC-100).
+  Impor menyimpan nomor MC (`rab_imports.target_revision_number`) untuk memilih
+  blok "MC - n". `rab-import-guide@4`, `rab-parser@4`.
+- **Tanggal efektif MC** mengikuti D-020 (default minggu berikutnya; tanggal
+  pasti bila dokumen resmi mewajibkan). OD-013 ditutup. Diterapkan saat M6.
+- Bug: kartu kosong di bawah review impor yang sudah approved dihilangkan.
+
+### Mulai di laptop
+
+1. `git pull` lalu `npm ci` (dependensi tidak berubah di sesi ini, tetapi aman).
+2. `npm run build:packages` (prisma generate + build `calc`/`shared`).
+3. **Wajib:** `npx prisma migrate deploy`. Migration yang belum ada di database
+   laptop: `20261026100000_soft_delete_rab_import`,
+   `20261026120000_rab_reopen_corrections`, `20261027120000_rab_mc_versions`.
+   Yang terakhir mengubah MC0 → MC 0 dan ADDENDUM n → MC n (data tetap).
+   Jika laptop memakai dump PC kantor yang lebih baru, migration yang sudah
+   tercatat dilewati otomatis.
+4. `npm run dev`. Di PC kantor port 3000 dipakai WhatsApp bridge Hermes, jadi
+   web dijalankan manual di 3100 (`cd apps/web && npx next dev --port 3100`);
+   origin CSRF API tetap `APP_URL`. Di laptop biasanya tidak perlu.
+5. Graph graphify tidak di-commit (`graphify-out/` di-ignore, 13 MB).
+   Bangun ulang: `graphify update .` (kode, gratis) atau `/graphify` di Claude
+   Code untuk menyertakan dokumen.
+6. `.claude/` dan `.codex/` tetap lokal (lihat §4). `.claude/CLAUDE.md` di PC
+   kantor hanya berisi: baca `docs/AI_ENGINEERING_STANDARDS.md` sebelum kerja
+   frontend/backend, dan pemakaian skill graphify.
+
+### Hasil checks terakhir (PC kantor, 2026-10-27)
+
+- API `vitest run`: 162 lulus, 6 skip (butuh workbook kantor di `storage/temp`:
+  seed `db:seed:sample-ahsp` dan workbook asli belum dijalankan dengan D-069).
+- Typecheck API + web bersih; ESLint API + web bersih; `prisma migrate diff`
+  migrations ↔ schema: tidak ada selisih.
+- UI diperiksa dengan Playwright (screenshot 1440/2160/390 px; alur sidebar
+  ringkas, menu akun, drawer, menu ⋯, logout; tanpa scroll horizontal di HP).
+- **Belum dijalankan:** `next build` (bentrok dengan dev server yang hidup).
+  Jalankan `npm run build -w @laporan-proyek/web` sebelum deploy.
+
+### Berikutnya (urut prioritas)
+
+1. Jalankan `next build` web, dan seed `db:seed:sample-ahsp` dengan workbook
+   kantor untuk memverifikasi D-069 (kini membuat MC-1, bukan Addendum 1).
+2. Uji impor MC bernomor selain 0 dengan workbook yang punya blok "MC - n".
+3. Sisa audit RAB di §9 (cache pratinjau Excel, tautan kembali, locator sel,
+   rekonsiliasi per item di dialog).
+4. Rapikan bagian dalam RAB editor & review impor ke komponen baru
+   (`Section`, `PageTitle actions`); halaman lain sudah ikut token baru.
+5. M6 baseline per periode memakai D-069 (tanggal efektif MC), lalu M8–M9.
+   Ajukan OD-003, OD-004, OD-006, OD-008 dengan rekomendasi sebelum mulai.
+
+---
+
+Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26).
 
 ## 1. Progres
 
@@ -15,7 +82,7 @@ Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex.
 | M4 RAB manual (versi, hierarki, grid, compare, approval)                               | selesai                                                                                |
 | M5 Upload/ekstraksi/review impor RAB (deterministik + AI 9router sebagai kandidat)     | selesai                                                                                |
 | M7 AHSP (analisa, harga bahan/upah/alat, paket per versi RAB)                          | selesai                                                                                |
-| M6 MC-0 + Addendum + baseline                                                          | sebagian: versi MC-0/Addendum, impor MC-0, pewarisan paket; baseline per periode belum |
+| M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode belum     |
 | M8–M16 (jadwal lanjutan, progres, alokasi harian, laporan, finalisasi, export, deploy) | belum dimulai                                                                          |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap
@@ -24,12 +91,14 @@ Jangan lanjut ke progres/laporan sebelum diputuskan pengguna.
 
 ## 2. Keputusan
 
-Semua keputusan ada di `docs/DECISIONS.md` (D-001 … D-064). Yang paling menentukan untuk RAB:
+Semua keputusan ada di `docs/DECISIONS.md` (D-001 … D-069). Yang paling menentukan untuk RAB:
 
 - D-043 rumus RAB mengikuti workbook (PPN per item, REAL COST, DIBULATKAN, bobot).
 - D-051 harga satuan analisa (D + overhead per versi analisa, pembulatan sumber).
 - D-054 toleransi rekonsiliasi cached Excel: absolut Rp 0,000001.
-- D-056–D-058 paket analisa/harga milik tiap versi RAB; MC-0/Addendum mewarisi lewat salinan.
+- D-056–D-058 paket analisa/harga milik tiap versi RAB; MC mewarisi lewat salinan.
+- D-068 role Editor RAB, reopen dan koreksi dari sumber.
+- D-069 Kontrak + MC-0 … MC-100 (nomor boleh meloncat), tanggal efektif MC ikut D-020.
 - D-059–D-062 navigasi dan asal nilai di dalam Lihat RAB.
 - D-063 rekonsiliasi per item/total, WARNING `OVERHEAD_UNUSED`, keterbatasan presisi 12 desimal.
 - D-064 klik asal nilai hanya untuk RAB dan pendukungnya.
@@ -176,7 +245,7 @@ RAB (sisa dari audit):
 5. Impor dengan `rab-parser@1` (data dev lama) tidak punya nilai cached item; rekonsiliasi per item "belum tersedia".
 6. Presisi 12 desimal (D-063) belum dimigrasi; isolasi paket dijaga backend, belum oleh constraint DB.
 7. Proyek lama `SDN2-SERANGAN-2026-AHSP`: 408 item MC-0 approved masih menautkan analisa Kontrak (legacy, tidak diubah).
-8. Addendum 1 di proyek PAKET tetap DRAFT, karena tidak ada workbook Addendum. TKDN ditunda (OD-010).
+8. MC-1 (dulu Addendum 1) di proyek PAKET tetap DRAFT, karena tidak ada workbook MC-1. TKDN ditunda (OD-010).
 
 Setelah RAB dinyatakan selesai: M6 baseline per periode, lalu M8–M9 (jadwal, progres mingguan).
 Ajukan OD-003, OD-004, OD-006 dan izin fitur (OD-008) sebelum mulai.

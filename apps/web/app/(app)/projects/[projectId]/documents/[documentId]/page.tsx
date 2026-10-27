@@ -28,8 +28,8 @@ export default async function DocumentPage({
   return (
     <>
       <PageTitle subtitle={project.data?.projectName}>Sumber dokumen</PageTitle>
-      <Link href={`${base}/imports`} className="btn btn-secondary mb-5">
-        ← Dokumen &amp; impor
+      <Link href={`${base}/imports`} className="page-back">
+        Dokumen &amp; impor
       </Link>
       {!d ? (
         <Alert>

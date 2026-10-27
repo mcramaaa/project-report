@@ -8,8 +8,8 @@ export default async function NewProjectPage() {
   const me = await requireMe();
   return (
     <>
-      <Link href="/" className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
-        ← Proyek saya
+      <Link href="/" className="page-back">
+        Proyek saya
       </Link>
       <PageTitle subtitle="Identitas, kontrak, dan SPMK. Minggu proyek dan periode 4 minggu dibentuk otomatis saat disimpan; Anda menjadi MANAGER proyek ini.">
         Proyek baru

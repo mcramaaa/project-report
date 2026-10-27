@@ -9,8 +9,8 @@ export default async function UserAccessPage({ params }: { params: Promise<{ use
   return (
     <>
       <AccessTabs me={me} active="users" />
-      <Link href="/admin/users" className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
-        ← Daftar pengguna
+      <Link href="/admin/users" className="page-back">
+        Daftar pengguna
       </Link>
       <UserAccess
         userId={userId}

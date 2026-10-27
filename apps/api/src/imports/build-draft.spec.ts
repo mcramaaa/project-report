@@ -225,11 +225,11 @@ describe('buildDraft (RAB_IMPORT_GUIDE v1)', () => {
       ]),
     });
     const draft = buildDraft([{ model, documentId: 'd1', filename: 'f', sha256: 's' }], {
-      targetVersionType: 'MC0',
+      targetVersionType: 'MC',
       officialAnalyses: [],
       previousItems: [
-        { workItemId: 'w1', code: 'WI-0001', description: 'Papan  Nama', groupPath: 'A' },
-        { workItemId: 'w2', code: 'WI-0002', description: 'Papan nama', groupPath: 'B' },
+        { workItemId: 'w1', code: 'WI-0001', description: 'Papan  Nama', groupPath: 'A', unit: null, analysisCode: null },
+        { workItemId: 'w2', code: 'WI-0002', description: 'Papan nama', groupPath: 'B', unit: null, analysisCode: null },
       ],
     });
     const item = draft.rows.find((r) => r.rowType === 'ITEM')!;

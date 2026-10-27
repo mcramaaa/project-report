@@ -113,7 +113,7 @@ export default async function RabVersionsPage({
                       <td role="cell" data-label="Aksi">
                         <div className="row-actions">
                           <Link className="btn btn-secondary" href={`${base}/rab/${v.id}`}>
-                            {v.status === 'DRAFT' && canEdit ? 'Edit' : 'Lihat'}
+                            {(v.status === 'DRAFT' || v.status === 'REOPENED') && canEdit ? 'Edit' : 'Lihat'}
                           </Link>
                           {v.previousVersionId && (
                             <Link

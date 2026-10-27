@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
 import { RabBackLinks, RabTabs } from '@/components/rab-tabs';
-import { VERSION_LABEL } from '@/lib/import-ui';
 import { formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
@@ -145,7 +144,7 @@ export default async function AnalysesPage({
                           )}
                           {a.latestVersion.source && (
                             <span className="block text-xs text-slate-500">
-                              Impor {VERSION_LABEL[a.latestVersion.source.versionType]}:{' '}
+                              Impor {a.latestVersion.source.label}:{' '}
                               {a.latestVersion.source.documents.join(', ')}
                             </span>
                           )}

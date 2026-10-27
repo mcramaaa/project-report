@@ -16,8 +16,8 @@ import { parseSampleProject, parseSampleWorkbook } from './sample-rab';
  * Development sample (D-053, D-056–D-058): project SDN2-SERANGAN-2026-PAKET built through the regular flows —
  * upload → draft → reviewer decisions (recorded explicitly as the seed admin) → import approval → RAB
  * approval — for Penawaran/Kontrak (workbook 00, full package) and MC-0 (workbook 04, values-only recap, so its
- * package is inherited from Kontrak by copy), then an Addendum through "Buat versi" (copy of MC-0 and its
- * package, left DRAFT: there is no office Addendum document). Verifies every package is isolated.
+ * package is inherited from Kontrak by copy), then MC-1 through "Buat versi" (copy of MC-0 and its
+ * package, left DRAFT: there is no office MC-1 document). Verifies every package is isolated.
  * Resumable: every step checks what already exists. Stops before approving when reconciliation fails.
  */
 export const AHSP_SAMPLE_CODE = 'SDN2-SERANGAN-2026-PAKET';
@@ -35,7 +35,7 @@ export interface AhspSampleReport {
   steps: string[];
   contract: VersionReport;
   mc0: VersionReport;
-  addendum: PackageReport;
+  mc1: PackageReport;
 }
 
 /** What a version's own package holds and where its copies came from. */
@@ -99,21 +99,21 @@ export async function seedAhspSample(s: AhspSampleServices, actor: AuthUser, fil
   // 3. Kontrak.
   const contract = await ensureVersion(s, actor, projectId, 'CONTRACT', docPenawaran, steps, (detail) => contractDecisions(detail));
   // 4. MC-0.
-  const mc0 = await ensureVersion(s, actor, projectId, 'MC0', docMingguan, steps, (detail) => mc0Decisions(detail));
-  // 5. Addendum: "Buat versi" copies MC-0's items and package (D-057); kept DRAFT.
-  let addendum = await s.prisma.rabVersion.findFirst({ where: { projectId, versionType: 'ADDENDUM', status: { not: 'DISCARDED' } }, select: { id: true } });
-  if (!addendum) {
-    addendum = (await s.rab.create(actor, projectId, { versionType: 'ADDENDUM', documentNumber: 'CONTOH-SEED (bukan dokumen kantor)' })).version;
-    steps.push('Addendum 1 dibuat dari MC-0 (DRAFT, salinan paket)');
+  const mc0 = await ensureVersion(s, actor, projectId, 'MC', docMingguan, steps, (detail) => mc0Decisions(detail));
+  // 5. MC-1: "Buat versi" copies MC-0's items and package (D-057); kept DRAFT.
+  let mc1 = await s.prisma.rabVersion.findFirst({ where: { projectId, versionType: 'MC', revisionNumber: 1, status: { not: 'DISCARDED' } }, select: { id: true } });
+  if (!mc1) {
+    mc1 = (await s.rab.create(actor, projectId, { versionType: 'MC', documentNumber: 'CONTOH-SEED (bukan dokumen kantor)' })).version;
+    steps.push('MC-1 dibuat dari MC-0 (DRAFT, salinan paket)');
   }
-  const report = { projectId, steps, contract, mc0, addendum: await packageReport(s, projectId, addendum.id) };
+  const report = { projectId, steps, contract, mc0, mc1: await packageReport(s, projectId, mc1.id) };
   // Isolation proof (D-056): every package keeps its relations inside, and copies point one version back.
-  for (const [label, r] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['Addendum', report.addendum]] as const) {
+  for (const [label, r] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['MC-1', report.mc1]] as const) {
     if (!isIsolated(r.isolation)) throw new Error(`Paket ${label} tidak terisolasi: ${JSON.stringify(r.isolation)}`);
   }
   if (Object.keys(report.contract.copiedFrom).length) throw new Error('Paket Kontrak tidak boleh berisi salinan.');
   if (Object.keys(report.mc0.copiedFrom).join() !== 'Kontrak') throw new Error(`Salinan MC-0 harus dari Kontrak: ${JSON.stringify(report.mc0.copiedFrom)}`);
-  if (Object.keys(report.addendum.copiedFrom).join() !== 'MC-0') throw new Error(`Salinan Addendum harus dari MC-0: ${JSON.stringify(report.addendum.copiedFrom)}`);
+  if (Object.keys(report.mc1.copiedFrom).join() !== 'MC-0') throw new Error(`Salinan MC-1 harus dari MC-0: ${JSON.stringify(report.mc1.copiedFrom)}`);
   return report;
 }
 
@@ -166,7 +166,7 @@ async function ensureVersion(
   const label = versionType === 'CONTRACT' ? 'Kontrak' : 'MC-0';
   // Latest usable run for this version: approved, or one still in review.
   let run = await s.prisma.rabImport.findFirst({
-    where: { projectId, targetVersionType: versionType, status: { in: ['APPROVED', 'NEEDS_REVIEW', 'UPLOADED', 'PROCESSING'] } },
+    where: { projectId, targetVersionType: versionType, targetRevisionNumber: 0, status: { in: ['APPROVED', 'NEEDS_REVIEW', 'UPLOADED', 'PROCESSING'] } },
     orderBy: { createdAt: 'desc' },
     select: { id: true, status: true },
   });

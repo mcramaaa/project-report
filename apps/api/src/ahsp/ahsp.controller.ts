@@ -1,6 +1,18 @@
-import { AHSP_CATEGORIES, type AhspCategory } from '@laporan-proyek/shared';
-import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
+import {
+  AHSP_CATEGORIES,
+  correctAnalysisSchema,
+  correctComponentSchema,
+  correctPriceItemSchema,
+  type AhspCategory,
+  type CorrectAnalysisInput,
+  type CorrectComponentInput,
+  type CorrectPriceItemInput,
+} from '@laporan-proyek/shared';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query } from '@nestjs/common';
+import { CurrentAuth, type AuthContext } from '../auth/auth-context';
 import { RequireProjectPermission } from '../auth/guards';
+import { ZodPipe } from '../common/zod.pipe';
+import { RabCorrectionsService } from '../rab/corrections.service';
 import { AhspService } from './ahsp.service';
 
 const uuid = new ParseUUIDPipe({ errorHttpStatusCode: 404 });
@@ -10,7 +22,47 @@ const searchTerm = (search?: string) =>
 /** Packages are owned by a RAB version (D-056, D-057): every read names the version. */
 @Controller('projects/:projectId/rab-versions/:versionId')
 export class AhspController {
-  constructor(private readonly ahsp: AhspService) {}
+  constructor(
+    private readonly ahsp: AhspService,
+    private readonly corrections: RabCorrectionsService,
+  ) {}
+
+  // D-068 source corrections: ahsp.edit here; a REOPENED version also needs rab.reopen + reason (service).
+  @Patch('price-items/:priceItemId')
+  @RequireProjectPermission('ahsp.edit')
+  correctPrice(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('versionId', uuid) versionId: string,
+    @Param('priceItemId', uuid) priceItemId: string,
+    @Body(new ZodPipe(correctPriceItemSchema)) body: CorrectPriceItemInput,
+  ) {
+    return this.corrections.correctPriceItem(auth.user, projectId, versionId, priceItemId, body);
+  }
+
+  @Patch('components/:componentId')
+  @RequireProjectPermission('ahsp.edit')
+  correctComponent(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('versionId', uuid) versionId: string,
+    @Param('componentId', uuid) componentId: string,
+    @Body(new ZodPipe(correctComponentSchema)) body: CorrectComponentInput,
+  ) {
+    return this.corrections.correctComponent(auth.user, projectId, versionId, componentId, body);
+  }
+
+  @Patch('analysis-versions/:analysisVersionId')
+  @RequireProjectPermission('ahsp.edit')
+  correctAnalysis(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('versionId', uuid) versionId: string,
+    @Param('analysisVersionId', uuid) analysisVersionId: string,
+    @Body(new ZodPipe(correctAnalysisSchema)) body: CorrectAnalysisInput,
+  ) {
+    return this.corrections.correctAnalysis(auth.user, projectId, versionId, analysisVersionId, body);
+  }
 
   @Get('analyses')
   @RequireProjectPermission('ahsp.read')

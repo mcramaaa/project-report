@@ -123,6 +123,8 @@ Tenaga kerja fase awal manual.
 
 ## D-020 Addendum Effective Date
 
+(Sejak D-069 berlaku untuk setiap MC; Addendum bukan lagi jenis versi.)
+
 Default: minggu berikutnya.
 
 Tetap dukung exact date untuk kasus resmi.
@@ -733,7 +735,153 @@ dan review impor RAB). Identitas, kontrak, SPMK, kalender dan pratinjau
 jadwal ditampilkan sebagai teks biasa. Mengoreksi perluasan UI D-061 pada
 informasi/jadwal proyek; rumus dan data tidak berubah.
 
+## D-065 Review Paket untuk Pewarisan MC-0/Addendum
+
+Permintaan pengguna 2026-10-26: memutuskan ±200 item impor satu per satu
+terlalu berat. Melengkapi D-053 dan D-058; urutan versi tetap Kontrak → MC-0
+(opsional) → Addendum 1 dst.
+
+- **Usulan backend, bukan keputusan.** Saat run NEEDS_REVIEW dibuka, backend
+  menghitung ulang usulan dari versi RAB approved terakhir (dasar yang sama
+  dengan kandidat D-057). Tombol lama "Terima semua kandidat tunggal"
+  (dihitung di browser, ikut menerima usulan AI) dihapus: satu kandidat
+  bukan otomatis bukti kuat.
+- **Pekerjaan permanen** diusulkan cocok hanya bila tepat satu item versi dasar
+  memiliki jalur kelompok, uraian, dan satuan sama, dan item itu bukan pasangan
+  baris lain di draft maupun sudah dipilih untuk baris lain.
+- **Pewarisan analisa** (salinan, bukan tautan bersama) diusulkan hanya bila:
+  sumber impor tidak memuat blok analisa sama sekali (`analysisBlocksInSources`
+  = 0; draft lama tanpa angka ini tidak mendapat usulan), harga item berupa
+  (a) rantai yang berhenti di nilai tanpa rumus dengan kode analisa (dan kode
+  kolom NO. ANALISA tidak bertentangan), atau (b) harga literal di baris RAB
+  dengan kode NO. ANALISA eksplisit; harga literal tanpa kode tetap harga
+  langsung. Lalu tepat satu analisa paket dasar berkode sama, satuan sama,
+  dan harga sama persis dengan harga RAB sumber, serta pekerjaan yang sama di
+  versi dasar tidak memakai analisa berkode lain (perubahan analisa).
+- Bila sumber memuat analisa, sumber baru menjadi dasar (D-058); baris yang
+  rantainya putus tidak diwariskan otomatis, tetap kandidat per item.
+- Usulan AI, kandidat dokumen pendukung, kandidat ganda, item tanpa pasangan
+  (pekerjaan baru), konflik satuan/harga, dan perubahan analisa tidak masuk
+  usulan paket; tetap diputuskan eksplisit per item.
+- Usulan untuk baris yang sudah punya keputusan manual (mis. harga langsung)
+  tidak dibuat untuk jenis keputusan itu.
+- **Konfirmasi paket** `POST …/rab-imports/:importId/confirm-proposals`
+  (`rabImport.review`) dengan `baseVersionId` dan `token` dari review yang
+  ditampilkan; token = SHA-256 atas versi dasar serta setiap baris, jenis, dan
+  target usulan (pekerjaan/analisa). Dalam satu transaksi backend membaca satu
+  versi dasar, menghitung ulang usulan, dan menolak (409) seluruh konfirmasi
+  bila versi dasar atau isi usulan berubah, walaupun baris yang sama masih
+  diusulkan. Yang dikonfirmasi adalah seluruh usulan yang ditampilkan. Keputusan
+  `WORK_ITEM_MATCH`/`ANALYSIS_LINK` biasa dicatat atas nama reviewer dengan
+  alasan berisi bukti, ditambah audit `CONFIRM_RAB_IMPORT_PROPOSALS`.
+  Tidak ada keputusan yang dicatat sebelum konfirmasi ini. Tanpa schema baru.
+- Approval impor (`rabImport.approve`) tetap menyalin dependency analisa
+  terpakai ke paket versi baru secara transaksional (D-057); paket sumber dan
+  histori approved tidak berubah. Approval RAB tetap terpisah (M4).
+- Panduan `rab-import-guide@3`, parser `rab-parser@3` (angka blok analisa
+  sumber). Run lama tetap mencatat versinya.
+
+## D-066 Hapus Run Impor yang Belum Digunakan
+
+Permintaan pengguna 2026-10-26: tombol Hapus pada daftar run agar impor dengan
+pemilihan sheet yang salah dapat diulang.
+
+- `DELETE /projects/:projectId/rab-imports/:importId` membutuhkan
+  `rabImport.review`. Proyek harus ACTIVE.
+- Hanya FAILED, REJECTED, dan NEEDS_REVIEW tanpa hasil RAB/daftar harga/analisa
+  resmi yang dapat dihapus. UPLOADED, PROCESSING, dan APPROVED ditolak (409).
+- Soft delete melalui `rab_imports.deleted_at`; status asal, draft, keputusan,
+  AI run, dokumen dan rantai retry dipertahankan. File asli tidak dihapus dan
+  dapat dipakai membuat run baru dengan sheet yang benar.
+- Run yang dihapus tidak muncul dalam daftar dan endpoint operasionalnya
+  menjawab 404. Penghapusan dan audit `DELETE_RAB_IMPORT` satu transaksi,
+  memakai row lock yang sama dengan operasi review/approval.
+- Tombol Hapus tersedia pada daftar untuk reviewer, disertai konfirmasi.
+  Tidak otomatis membuat ulang atau menyetujui impor.
+
+## D-067 Pasangan Pekerjaan Beda Tanda Baca dan Pencarian Manual
+
+Bug SDSerangan 2026-10-26: Kontrak "Pas.. Kwh Meter …" (WI-0364) dan MC-0
+"Pas. Kwh Meter …" tidak mendapat kandidat; UI hanya menawarkan Pekerjaan baru.
+Melengkapi D-053 dan D-065. Data historis (WI-0417) tidak dikoreksi otomatis.
+
+- **Beda tanda baca ringan.** Uraian yang hanya berbeda pada tanda baca berulang
+  (`..`, `,,`, `;;`, `::` → satu) dianggap pasangan hanya bila jalur kelompok,
+  satuan, dan kode analisa baris (kolom NO. ANALISA, atau kunci teks tempat
+  rantai harga berhenti) sama dengan item versi approved terakhir; tanpa kode
+  analisa di kedua sisi tidak ada pasangan. Tanda baca di antara angka
+  (`1..5`) tidak diubah; angka, kode, dan ukuran yang berbeda tidak pernah
+  disamakan. Uraian persis sama tetap memakai aturan D-053/D-065.
+- Aturan yang sama dipakai untuk kandidat backend per baris (dengan alasan) dan
+  usulan review paket D-065. Usulan tetap butuh tepat satu pasangan di kedua
+  arah (satu baris draft ↔ satu item dasar), tidak dipakai baris lain, dan
+  keputusan manual tidak ditimpa. Kandidat ganda/konflik tetap review per item.
+  Kemiripan nama saja tidak pernah menjadi keputusan.
+- **Pencarian manual.** `GET …/rab-imports/:importId/work-items?q=&page=`
+  (`rabImport.review`) mencari item versi approved terakhir (uraian, WI, kode
+  analisa), 20 per halaman, menampilkan uraian, WI, satuan, kelompok, kode
+  analisa. UI review menyediakan "Cari pekerjaan lama" di samping kandidat dan
+  "Pekerjaan baru", termasuk saat kandidat kosong. Pilihan tetap keputusan
+  `WORK_ITEM_MATCH` eksplisit reviewer.
+- **Validasi keputusan.** `WORK_ITEM_MATCH` dengan `workItemId` ditolak (400)
+  bila pekerjaan bukan item versi approved terakhir proyek ini, atau sudah
+  dipilih baris lain (keputusan terakhir maupun dalam permintaan yang sama).
+  Audit tetap `DECIDE_RAB_IMPORT_ROW`. Tanpa schema baru; berlaku untuk impor
+  dan review berikutnya, draft lama menyimpan kandidat lama.
+
+## D-068 Role Editor RAB, Reopen dan Koreksi dari Sumber
+
+Disetujui pengguna 2026-10-26: buka kembali **versi yang sama** dengan
+snapshot lama, alasan, audit dan approval ulang; role hanya pada proyek
+yang ditugaskan. Menggantikan kunci approved permanen D-040 khusus alur ini.
+
+- Role proyek `RAB_EDITOR`, permission backend `rab.reopen` dan `ahsp.edit`;
+  tidak memberi akses global dan tidak menaikkan permission role lama.
+- Status `APPROVED -> REOPENED -> APPROVED`; satu draft/koreksi per proyek,
+  tidak dapat discard baseline yang sudah pernah approved.
+- Snapshot approval lengkap dan checksum disimpan append-only. Snapshot lama,
+  dokumen asli, paket versi lain dan histori tetap utuh.
+- Edit pada sumber angka: harga dasar/koefisien/analisa atau input RAB;
+  dependency terpakai dihitung ulang secara Decimal dalam satu transaksi
+  dengan audit. Faktor konversi dan override eksplisit tetap dihormati.
+- Urutan baseline mengikuti jenis/nomor versi, bukan tanggal approval ulang.
+- Koreksi identitas WI tersedia tanpa menghapus master/riwayat WI lama.
+- Rancangan rinci, otorisasi, API/UI yang harus tersedia, dan skenario uji
+  terdapat di `docs/RAB_CORRECTIONS.md`; implementasi harus mengikutinya.
+
+## D-069 Dokumen RAB: Kontrak dan MC-0 … MC-100
+
+Disetujui pengguna 2026-10-27: dokumen RAB proyek hanya **RAB Kontrak** dan
+**MC**, dan MC bisa banyak (MC-0 sampai MC-100). Addendum bukan lagi jenis
+versi. Mengganti aturan jenis/urutan versi pada D-040 (MC0 sekali, lalu
+Addendum n), D-058 dan D-065 (sebutan "MC0/Addendum" kini berarti MC).
+
+- `rab_versions.version_type`: `CONTRACT` | `MC`; `revision_number` = nomor MC
+  (0 … 100), 0 untuk Kontrak. Urutan domain Kontrak → MC-0 → MC-1 … MC-100;
+  label `Kontrak` / `MC-n` (`rabVersionLabel`).
+- Nomor MC dipilih pengguna dan boleh meloncat (mis. MC-0, MC-1, MC-30, MC-50,
+  MC-75, MC-100), asal lebih besar dari MC tertinggi yang tidak di-discard dan
+  ≤ 100 (409 bila tidak; 400 bila di luar 0–100). MC pertama boleh bernomor
+  berapa pun. Tanpa nomor, dipakai nomor terkecil yang diizinkan. Hanya setelah
+  Kontrak approved; tetap satu DRAFT/REOPENED per proyek. Setiap MC menyalin
+  versi approved terakhir (Buat versi) atau berasal dari impor.
+- Impor MC: nomor MC ditetapkan saat run dibuat (`rab_imports.target_revision_number`,
+  ikut saat retry) dan memilih blok "MC - n" di sheet RAB (`rab-parser@4`,
+  `rab-import-guide@4`). Approve memeriksa ulang nomor itu (409 bila sudah tidak
+  diizinkan).
+- Migrasi `20261027120000_rab_mc_versions`: MC0 → MC 0, ADDENDUM n → MC n
+  (versi dan run impor, termasuk draft JSON). Snapshot approval dan audit log
+  tidak diubah; snapshot lama tetap mencatat `MC0`/`MC-0` sebagai sejarah.
+- Seed `db:seed:sample-ahsp` kini membuat MC-1 (dulu Addendum 1) lewat Buat versi.
+- Tanggal efektif D-020 (dulu untuk Addendum) berlaku untuk setiap MC
+  (MC-0 … MC-100): default minggu berikutnya (`NEXT_WEEK`), tanggal pasti
+  (`EXACT_DATE`, termasuk tengah minggu lewat segmen baseline harian) bila
+  dokumen resmi mewajibkan. Minggu sebelum tanggal efektif tidak dihitung ulang.
+  Disetujui pengguna 2026-10-27 (menutup OD-013); diterapkan saat baseline M6.
+
 ## Keputusan Terbuka
+
+
 
 Belum diputuskan. Jangan diimplementasikan dengan asumsi. Ajukan beserta rekomendasi dan konsekuensinya sebelum milestone terkait dimulai.
 
@@ -804,3 +952,8 @@ Sudah diputuskan: lihat D-050.
 ### OD-012 Komposisi Harga Satuan Analisa dan Rekonsiliasi RAB
 
 Sudah diputuskan: lihat D-051.
+
+### OD-013 Tanggal efektif MC (pengganti D-020 Addendum)
+
+**Ditutup 2026-10-27 oleh D-069:** setiap MC memakai aturan D-020 (default
+minggu berikutnya; tanggal pasti bila dokumen resmi mewajibkan).

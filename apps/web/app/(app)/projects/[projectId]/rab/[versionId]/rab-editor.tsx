@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  correctionsOf,
   RAB_ROW_TYPES,
   type RabIssue,
   type RabRowDto,
@@ -10,11 +11,19 @@ import {
 import Link from 'next/link';
 import { SourceValue, type ValueSource } from '@/components/source-value';
 import { workbookSource, rabRowHref } from '@/lib/value-source';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type DragEvent, type FormEvent } from 'react';
 import { Alert, Badge, Button, Field, Select } from '@/components/ui';
+import { ActionMenu } from '@/components/action-menu';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { formatDate, formatNumber, formatRounded } from '@/lib/project-fields';
-import { RAB_COLUMNS, RAB_ROW_TYPE_LABEL, RAB_STATUS_BADGE, type RabColumn } from '@/lib/rab-ui';
+import {
+  canChangeVersion,
+  RAB_COLUMNS,
+  RAB_ROW_TYPE_LABEL,
+  RAB_STATUS_BADGE,
+  type RabColumn,
+} from '@/lib/rab-ui';
+import { CorrectionBadge, correctionNote, CorrectionPanel, ReopenPanel, WorkItemForm } from '@/components/corrections';
 
 const COLUMNS_KEY = 'rab-columns';
 const collapsedKey = (versionId: string) => `rab-collapsed:${versionId}`;
@@ -33,6 +42,7 @@ const ITEM_FIELDS = [
 
 type Notice = { kind: 'success' | 'error'; text: string; issues?: RabIssue[] };
 type Result = { ok: boolean; fieldErrors: Record<string, string> };
+type DropMark = { rowId: string; edge: 'before' | 'after' };
 
 function loadColumns(): RabColumn[] {
   try {
@@ -74,28 +84,38 @@ function cell(row: RabRowDto, column: RabColumn): string {
   }
 }
 
+/** `permissions` are the user's project permissions, empty when the project is closed (UI hints only). */
 export function RabEditor({
   projectId,
   initial,
-  canEdit,
-  canApprove,
+  permissions,
 }: {
   projectId: string;
   initial: RabVersionDetailDto;
-  canEdit: boolean;
-  canApprove: boolean;
+  permissions: string[];
 }) {
   const [detail, setDetail] = useState(initial);
   const [notice, setNotice] = useState<Notice>();
   const [busy, setBusy] = useState(false);
   const [editingId, setEditingId] = useState<string>();
   const [adding, setAdding] = useState<{ parentId: string | null }>();
+  const [workItemFor, setWorkItemFor] = useState<string>();
+  const [draggingId, setDraggingId] = useState<string>();
+  const [dropMark, setDropMark] = useState<DropMark>();
+  const [reason, setReason] = useState('');
   const [search, setSearch] = useState('');
   const [columns, setColumns] = useState<RabColumn[]>(RAB_COLUMNS.map((c) => c.key));
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const { version, rows, totals, issues } = detail;
-  const draft = version.status === 'DRAFT';
-  const editable = draft && canEdit && !busy;
+  const reopened = version.status === 'REOPENED';
+  // An open version: a draft, or an approved one reopened for correction (D-068).
+  const draft = version.status === 'DRAFT' || reopened;
+  const canEdit = canChangeVersion(version.status, permissions, 'rab.edit');
+  const canApprove = draft && permissions.includes('rab.approve');
+  const canReopen = version.status === 'APPROVED' && permissions.includes('rab.reopen');
+  const editable = canEdit && !busy;
+  /** Every change to a reopened version carries the correction reason. */
+  const withReason = <T extends object | undefined>(body: T) => (reopened ? { ...body, reason } : body);
   const base = `/projects/${projectId}/rab-versions/${version.id}`;
   const shown = RAB_COLUMNS.filter((c) => columns.includes(c.key));
 
@@ -230,6 +250,9 @@ export function RabEditor({
     }
     if (!sources.length && !formula)
       note = `${note ?? ''} Alamat Excel tidak tercatat untuk nilai ini.`;
+    const last = correctionsOf(row.sourceLocator).at(-1);
+    if (row.rowType === 'ITEM' && last)
+      note = `${note ?? ''} ${correctionNote(last)}`;
     return {
       title: `${RAB_COLUMNS.find((c) => c.key === key)?.label} · ${row.description}`,
       value: row[key],
@@ -284,10 +307,15 @@ export function RabEditor({
     body: unknown,
     success: string,
   ): Promise<Result> {
+    const plain = path === '/approve' || path === '/reopen';
+    if (reopened && !plain && !reason.trim()) {
+      setNotice({ kind: 'error', text: 'Isi alasan koreksi terlebih dahulu sebelum menyimpan perubahan.' });
+      return { ok: false, fieldErrors: {} };
+    }
     setBusy(true);
     setNotice(undefined);
     try {
-      setDetail(await api<RabVersionDetailDto>(method, `${base}${path}`, body));
+      setDetail(await api<RabVersionDetailDto>(method, `${base}${path}`, plain ? body : withReason(body as object | undefined)));
       setNotice({ kind: 'success', text: success });
       return { ok: true, fieldErrors: {} };
     } catch (err) {
@@ -305,6 +333,50 @@ export function RabEditor({
     }
   }
 
+  function dragOverRow(event: DragEvent<HTMLTableRowElement>, row: RabRowDto) {
+    const source = rows.find((candidate) => candidate.id === draggingId);
+    if (!source || source.id === row.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (source.parentId !== row.parentId) {
+      setDropMark(undefined);
+      return;
+    }
+    const edge = event.clientY < event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2
+      ? 'before'
+      : 'after';
+    setDropMark((current) => current?.rowId === row.id && current.edge === edge ? current : { rowId: row.id, edge });
+  }
+
+  async function dropRow(event: DragEvent<HTMLTableRowElement>, target: RabRowDto) {
+    event.preventDefault();
+    const source = rows.find((candidate) => candidate.id === draggingId);
+    setDraggingId(undefined);
+    setDropMark(undefined);
+    if (!source || source.id === target.id) return;
+    if (source.parentId !== target.parentId) {
+      setNotice({ kind: 'error', text: 'Baris hanya dapat diurutkan di dalam kelompok yang sama. Gunakan Ubah untuk mengganti induk.' });
+      return;
+    }
+    const siblings = rows.filter((candidate) => candidate.parentId === source.parentId);
+    const ordered = siblings.filter((candidate) => candidate.id !== source.id);
+    const targetIndex = ordered.findIndex((candidate) => candidate.id === target.id);
+    if (targetIndex < 0) return;
+    const edge = dropMark?.rowId === target.id
+      ? dropMark.edge
+      : event.clientY < event.currentTarget.getBoundingClientRect().top + event.currentTarget.offsetHeight / 2
+        ? 'before'
+        : 'after';
+    ordered.splice(targetIndex + (edge === 'after' ? 1 : 0), 0, source);
+    if (ordered.every((candidate, index) => candidate.id === siblings[index]?.id)) return;
+    await run(
+      'POST',
+      '/items/reorder',
+      { parentId: source.parentId, itemIds: ordered.map((candidate) => candidate.id) },
+      'Urutan pekerjaan berhasil diubah.',
+    );
+  }
+
   return (
     <div className="space-y-4">
       <section className="panel rab-header" aria-labelledby="rab-title">
@@ -319,6 +391,10 @@ export function RabEditor({
             Dokumen: {version.documentNumber ?? '–'}
             {version.documentDate && ` · ${formatDate(version.documentDate)}`}
             {version.approvedBy && ` · approved oleh ${version.approvedBy.name}`}
+            {' · '}
+            <Link className="link-button" href={`/projects/${projectId}/rab/${version.id}/history`}>
+              Riwayat &amp; snapshot
+            </Link>
           </p>
         </div>
         <dl className="calendar-preview">
@@ -383,6 +459,24 @@ export function RabEditor({
         </Alert>
       )}
 
+      {canReopen && (
+        <ReopenPanel
+          label={version.label}
+          busy={busy}
+          onReopen={async (text) => {
+            const result = await run(
+              'POST',
+              '/reopen',
+              { reason: text },
+              `RAB ${version.label} dibuka untuk koreksi; snapshot approved disimpan.`,
+            );
+            if (result.ok) setReason(text);
+            return result;
+          }}
+        />
+      )}
+      {reopened && <CorrectionPanel reason={reason} onReason={setReason} canEdit={canEdit} />}
+
       {draft && canEdit && (
         <DocumentForm
           key={version.id}
@@ -392,11 +486,24 @@ export function RabEditor({
         />
       )}
       {draft && <IssuesPanel errors={issues.errors} warnings={issues.warnings} />}
+      {draft && (canApprove || canEdit) && (
+        <ApprovalPanel
+          issues={issues}
+          reopened={reopened}
+          canApprove={canApprove}
+          canDiscard={canEdit && !reopened}
+          busy={busy}
+          onApprove={(acknowledgeWarnings) =>
+            run('POST', '/approve', { acknowledgeWarnings }, `RAB ${version.label} di-approve dan terkunci.`)
+          }
+          onDiscard={(text) => run('POST', '/discard', { reason: text }, `Draft ${version.label} dibatalkan.`)}
+        />
+      )}
 
       <p className="trace-hint">
         Klik nilai bergaris putus-putus untuk melihat rumus dan membuka sumbernya.
       </p>
-      <div className="toolbar">
+      <div className="toolbar rab-toolbar">
         <div className="rab-search">
           <label className="field-label" htmlFor="rab-search">
             Cari pekerjaan
@@ -409,42 +516,46 @@ export function RabEditor({
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <details className="column-picker">
-          <summary className="btn btn-secondary">Kolom</summary>
-          <fieldset>
-            <legend className="sr-only">Kolom yang ditampilkan</legend>
-            {RAB_COLUMNS.map((c) => (
-              <label key={c.key} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={columns.includes(c.key)}
-                  onChange={() => toggleColumn(c.key)}
-                />{' '}
-                {c.label}
-              </label>
-            ))}
-          </fieldset>
-        </details>
-        {groupIds.length > 0 && (
-          <>
-            <Button variant="secondary" onClick={() => saveCollapsed(new Set(groupIds))}>
-              Ciutkan semua
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={collapsed.size === 0}
-              onClick={() => saveCollapsed(new Set())}
-            >
-              Buka semua
-            </Button>
-          </>
-        )}
+        <div className="rab-toolbar-view" role="group" aria-label="Pengaturan tampilan tabel">
+          <span className="rab-toolbar-label">Tampilan tabel</span>
+          <details className="column-picker">
+            <summary className="btn btn-secondary">Kolom</summary>
+            <fieldset>
+              <legend className="sr-only">Kolom yang ditampilkan</legend>
+              {RAB_COLUMNS.map((c) => (
+                <label key={c.key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={columns.includes(c.key)}
+                    onChange={() => toggleColumn(c.key)}
+                  />{' '}
+                  {c.label}
+                </label>
+              ))}
+            </fieldset>
+          </details>
+          {groupIds.length > 0 && (
+            <div className="rab-view-actions" role="group" aria-label="Kelompok pekerjaan">
+              <Button variant="secondary" onClick={() => saveCollapsed(new Set(groupIds))}>
+                Ciutkan semua
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={collapsed.size === 0}
+                onClick={() => saveCollapsed(new Set())}
+              >
+                Buka semua
+              </Button>
+            </div>
+          )}
+        </div>
         {editable && (
           <Button
-            variant="secondary"
+            variant="primary"
+            className="rab-add-button"
             onClick={() => (setEditingId(undefined), setAdding({ parentId: null }))}
           >
-            Tambah baris teratas
+            + Tambah bagian / pekerjaan
           </Button>
         )}
       </div>
@@ -529,15 +640,63 @@ export function RabEditor({
                         />
                       </td>
                     </tr>
+                  ) : workItemFor === row.id && editable && version.previousVersionId ? (
+                    <tr key={row.id}>
+                      <td colSpan={shown.length + 3} className="rab-form-cell">
+                        <WorkItemForm
+                          projectId={projectId}
+                          previousVersionId={version.previousVersionId}
+                          row={row}
+                          usedWorkItemIds={new Set(rows.map((r) => r.workItemId).filter((id) => id !== null))}
+                          busy={busy}
+                          onCancel={() => setWorkItemFor(undefined)}
+                          onSubmit={async (workItemId) => {
+                            const result = await run(
+                              'POST',
+                              `/items/${row.id}/work-item`,
+                              { workItemId },
+                              'Identitas pekerjaan dikoreksi; pekerjaan lama tetap tersimpan.',
+                            );
+                            if (result.ok) setWorkItemFor(undefined);
+                          }}
+                        />
+                      </td>
+                    </tr>
                   ) : (
                     <tr
                       id={`rab-row-${row.id}`}
                       key={row.id}
-                      className={
-                        row.rowType === 'ITEM' ? '' : `rab-group rab-${row.rowType.toLowerCase()}`
-                      }
+                      className={[
+                        row.rowType === 'ITEM' ? '' : `rab-group rab-${row.rowType.toLowerCase()}`,
+                        draggingId === row.id ? 'rab-dragging' : '',
+                        dropMark?.rowId === row.id ? `rab-drop-${dropMark.edge}` : '',
+                      ].filter(Boolean).join(' ')}
+                      onDragOver={(event) => dragOverRow(event, row)}
+                      onDrop={(event) => void dropRow(event, row)}
                     >
-                      <td className="rab-sticky-no">{row.displayNumber}</td>
+                      <td className="rab-sticky-no">
+                        {editable && (
+                          <button
+                            type="button"
+                            className="rab-drag-handle"
+                            draggable={!busy}
+                            aria-label={`Seret ${row.description} untuk mengubah urutan`}
+                            title="Seret untuk mengubah urutan"
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = 'move';
+                              event.dataTransfer.setData('text/plain', row.id);
+                              setDraggingId(row.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingId(undefined);
+                              setDropMark(undefined);
+                            }}
+                          >
+                            <span aria-hidden="true">☰</span>
+                          </button>
+                        )}
+                        {row.displayNumber}
+                      </td>
                       <td
                         className="rab-sticky-desc"
                         style={{ paddingLeft: `${12 + row.depth * 18}px` }}
@@ -559,6 +718,7 @@ export function RabEditor({
                         )}
                         {row.description}
                         {row.workItemCode && <span className="rab-code">{row.workItemCode}</span>}
+                        <CorrectionBadge locator={row.sourceLocator} />
                       </td>
                       {shown.map((c) => (
                         <td
@@ -588,63 +748,39 @@ export function RabEditor({
                         </td>
                       ))}
                       {editable && (
-                        <td>
-                          <div className="row-actions">
-                            <Button
-                              variant="secondary"
-                              onClick={() => (setAdding(undefined), setEditingId(row.id))}
-                            >
-                              Ubah
-                            </Button>
-                            {row.rowType !== 'ITEM' && (
-                              <Button
-                                variant="secondary"
-                                onClick={() => (
-                                  setEditingId(undefined),
-                                  reveal(row.id),
-                                  setAdding({ parentId: row.id })
-                                )}
-                              >
-                                + Sub
-                              </Button>
-                            )}
-                            <Button
-                              variant="secondary"
-                              aria-label={`Naikkan ${row.description}`}
-                              onClick={() =>
-                                run(
-                                  'POST',
-                                  `/items/${row.id}/move`,
-                                  { direction: 'up' },
-                                  'Urutan diubah.',
-                                )
-                              }
-                            >
-                              ↑
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              aria-label={`Turunkan ${row.description}`}
-                              onClick={() =>
-                                run(
-                                  'POST',
-                                  `/items/${row.id}/move`,
-                                  { direction: 'down' },
-                                  'Urutan diubah.',
-                                )
-                              }
-                            >
-                              ↓
-                            </Button>
-                            <Button
-                              variant="danger"
-                              onClick={() =>
-                                window.confirm(`Hapus baris "${row.description}"?`) &&
-                                run('DELETE', `/items/${row.id}`, undefined, 'Baris dihapus.')
-                              }
-                            >
-                              Hapus
-                            </Button>
+                        <td className="rab-actions-cell">
+                          <div className="rab-row-actions">
+                            <ActionMenu
+                              label={`Tindakan ${row.description}`}
+                              items={[
+                                {
+                                  label: 'Ubah',
+                                  onSelect: () => (setAdding(undefined), setWorkItemFor(undefined), setEditingId(row.id)),
+                                },
+                                ...(row.rowType !== 'ITEM'
+                                  ? [{
+                                      label: '+ Sub-bagian',
+                                      onSelect: () => (
+                                        setEditingId(undefined),
+                                        reveal(row.id),
+                                        setAdding({ parentId: row.id })
+                                      ),
+                                    }]
+                                  : []),
+                                ...(row.rowType === 'ITEM' && version.previousVersionId
+                                  ? [{ label: 'Ganti WI', onSelect: () => (setEditingId(undefined), setWorkItemFor(row.id)) }]
+                                  : []),
+                                {
+                                  label: 'Hapus baris',
+                                  destructive: true,
+                                  separatorBefore: true,
+                                  onSelect: () => {
+                                    if (window.confirm(`Hapus baris "${row.description}"?`))
+                                      void run('DELETE', `/items/${row.id}`, undefined, 'Baris dihapus.');
+                                  },
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       )}
@@ -690,25 +826,6 @@ export function RabEditor({
         </div>
       )}
 
-      {draft && (canApprove || canEdit) && (
-        <ApprovalPanel
-          issues={issues}
-          canApprove={canApprove}
-          canDiscard={canEdit}
-          busy={busy}
-          onApprove={(acknowledgeWarnings) =>
-            run(
-              'POST',
-              '/approve',
-              { acknowledgeWarnings },
-              `RAB ${version.label} di-approve dan terkunci.`,
-            )
-          }
-          onDiscard={(reason) =>
-            run('POST', '/discard', { reason }, `Draft ${version.label} dibatalkan.`)
-          }
-        />
-      )}
     </div>
   );
 }
@@ -905,8 +1022,8 @@ function RowForm({
                   {row?.unitPrice}
                 </p>
                 <p className="field-hint">
-                  Mengikuti analisa {row?.analysis?.code ?? row?.analysis?.name}; ubah lewat
-                  impor/analisa.
+                  Mengikuti analisa {row?.analysis?.code ?? row?.analysis?.name}; koreksi harga
+                  dasar, koefisien, atau overhead pada analisa tersebut.
                 </p>
               </div>
             ) : (
@@ -938,6 +1055,7 @@ function RowForm({
 
 function ApprovalPanel({
   issues,
+  reopened,
   canApprove,
   canDiscard,
   busy,
@@ -945,6 +1063,7 @@ function ApprovalPanel({
   onDiscard,
 }: {
   issues: RabVersionDetailDto['issues'];
+  reopened: boolean;
   canApprove: boolean;
   canDiscard: boolean;
   busy: boolean;
@@ -973,8 +1092,9 @@ function ApprovalPanel({
       {canApprove && (
         <div className="space-y-2">
           <p className="text-sm text-slate-600">
-            Setelah di-approve, versi ini terkunci permanen. Nilai per baris dan total disimpan
-            sebagai snapshot.
+            {reopened
+              ? 'Approval ulang menjalankan seluruh pemeriksaan lagi, mengunci versi yang sama, dan menyimpan snapshot baru. Snapshot sebelumnya tetap tersimpan.'
+              : 'Setelah di-approve, versi ini terkunci. Nilai per baris, total, dan paket analisa disimpan sebagai snapshot.'}
           </p>
           {issues.warnings.length > 0 && (
             <label className="flex items-center gap-2 text-sm">
@@ -989,11 +1109,12 @@ function ApprovalPanel({
           <Button
             disabled={busy || blocked}
             onClick={() =>
-              window.confirm('Approve RAB ini? Versi akan terkunci permanen.') &&
-              onApprove(acknowledged)
+              window.confirm(
+                reopened ? 'Approve ulang RAB hasil koreksi ini?' : 'Approve RAB ini? Versi akan terkunci.',
+              ) && onApprove(acknowledged)
             }
           >
-            Approve RAB
+            {reopened ? 'Approve ulang' : 'Approve RAB'}
           </Button>
         </div>
       )}

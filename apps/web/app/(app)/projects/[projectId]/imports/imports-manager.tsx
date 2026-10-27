@@ -1,12 +1,12 @@
 'use client';
 
-import type { DocumentDto, RabImportSummaryDto, RabVersionType } from '@laporan-proyek/shared';
+import { MC_MAX_NUMBER, rabVersionLabel, type DocumentDto, type RabImportSummaryDto, type RabVersionType } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { Alert, Badge, Button, EmptyState, Select } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
-import { IMPORT_STATUS, VERSION_LABEL } from '@/lib/import-ui';
+import { IMPORT_STATUS } from '@/lib/import-ui';
 import { formatDate } from '@/lib/project-fields';
 
 type Choice = { role: 'RAB' | 'SUPPORT'; sheet: string };
@@ -31,6 +31,8 @@ export function ImportsManager({
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string }>();
   const [selected, setSelected] = useState<Record<string, Choice>>({});
   const [target, setTarget] = useState<RabVersionType>('CONTRACT');
+  /** Empty = lowest allowed MC number (D-069). */
+  const [mcNumber, setMcNumber] = useState('');
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,10 +57,25 @@ export function ImportsManager({
     setBusy(true);
     setNotice(undefined);
     try {
-      const run = await api<RabImportSummaryDto>('POST', `/projects/${projectId}/rab-imports`, { targetVersionType: target, sources });
+      const run = await api<RabImportSummaryDto>('POST', `/projects/${projectId}/rab-imports`, { targetVersionType: target, ...(target === 'MC' && mcNumber !== '' ? { targetRevisionNumber: Number(mcNumber) } : {}), sources });
       router.push(`/projects/${projectId}/imports/${run.id}`);
     } catch (err) {
       setNotice({ kind: 'error', text: errorMessage(err) });
+      setBusy(false);
+    }
+  }
+
+  async function removeImport(run: RabImportSummaryDto) {
+    if (!window.confirm('Hapus run impor ini dari daftar? File asli tetap tersimpan dan dapat dipakai membuat run baru dengan sheet yang benar.')) return;
+    setBusy(true);
+    setNotice(undefined);
+    try {
+      await api('DELETE', `/projects/${projectId}/rab-imports/${run.id}`);
+      setNotice({ kind: 'success', text: 'Run impor dihapus dari daftar. Pilih file dan sheet yang benar untuk membuat run baru.' });
+      router.refresh();
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorMessage(err) });
+    } finally {
       setBusy(false);
     }
   }
@@ -171,14 +188,32 @@ export function ImportsManager({
                 </label>
                 <Select id="target" value={target} onChange={(e) => setTarget(e.target.value as RabVersionType)}>
                   <option value="CONTRACT">Kontrak</option>
-                  <option value="MC0">MC-0</option>
-                  <option value="ADDENDUM">Addendum</option>
+                  <option value="MC">MC</option>
                 </Select>
               </div>
+              {target === 'MC' && (
+                <div className="w-44">
+                  <label htmlFor="mc-number" className="field-label">
+                    Nomor MC (0–{MC_MAX_NUMBER})
+                  </label>
+                  <input
+                    id="mc-number"
+                    className="field"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={MC_MAX_NUMBER}
+                    step={1}
+                    placeholder="Otomatis"
+                    value={mcNumber}
+                    onChange={(e) => setMcNumber(e.target.value)}
+                  />
+                </div>
+              )}
               <Button disabled={busy} onClick={createImport}>
                 Buat run impor ({Object.keys(selected).length} dokumen)
               </Button>
-              <p className="field-hint w-full">Hasil impor hanya draft untuk direview. Data resmi dibuat saat impor di-approve; RAB hasilnya tetap DRAFT sampai di-approve di tab RAB.</p>
+              <p className="field-hint w-full">Nomor MC memilih blok &ldquo;MC - n&rdquo; di sheet RAB; boleh meloncat asal lebih besar dari MC terakhir, kosong = nomor terkecil yang diizinkan. Hasil impor hanya draft untuk direview. Data resmi dibuat saat impor di-approve; RAB hasilnya tetap DRAFT sampai di-approve di tab RAB.</p>
             </div>
           )}
         </section>
@@ -207,7 +242,7 @@ export function ImportsManager({
                   {imports.map((r) => (
                     <tr role="row" key={r.id}>
                       <td role="cell" data-label="Versi" className="px-3 py-2 font-medium">
-                        {VERSION_LABEL[r.targetVersionType]}
+                        {rabVersionLabel({ versionType: r.targetVersionType, revisionNumber: r.targetRevisionNumber })}
                         {r.attemptNumber > 1 && <span className="block text-xs text-slate-500">percobaan {r.attemptNumber}</span>}
                       </td>
                       <td role="cell" data-label="Status" className="px-3 py-2">
@@ -227,6 +262,11 @@ export function ImportsManager({
                           <Link className="btn btn-secondary" href={`/projects/${projectId}/imports/${r.id}`}>
                             {r.status === 'NEEDS_REVIEW' ? 'Review' : 'Lihat'}
                           </Link>
+                          {canReview && !closed && !r.rabVersionId && ['FAILED', 'REJECTED', 'NEEDS_REVIEW'].includes(r.status) && (
+                            <Button variant="secondary" disabled={busy} onClick={() => removeImport(r)} aria-label={`Hapus run impor ${r.documents.map((d) => d.originalFilename).join(', ')}`}>
+                              Hapus
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

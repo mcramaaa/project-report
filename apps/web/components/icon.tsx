@@ -8,6 +8,7 @@ const paths = {
   user: 'M20 21v-2a7 7 0 0 0-14 0v2M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
   arrow: 'M5 12h14m-6-6 6 6-6 6',
   chevron: 'm9 5 7 7-7 7',
+  'chevron-left': 'm15 5-7 7 7 7',
   menu: 'M4 6h16M4 12h16M4 18h16',
   close: 'm6 6 12 12M6 18 18 6',
   lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4m-4 4v2',
@@ -15,6 +16,8 @@ const paths = {
   info: 'M12 8h.01M12 11v6M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0',
   folder: 'M3 7V4h6l3 3h9v13H3z',
   plus: 'M12 5v14M5 12h14',
+  logout: 'M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5m5 5H3',
+  'arrow-left': 'M19 12H5m6-6-6 6 6 6',
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7m13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
 } as const;
 

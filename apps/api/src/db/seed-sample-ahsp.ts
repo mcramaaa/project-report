@@ -43,7 +43,7 @@ async function main() {
           `item dicocokkan ${v.rowsChecked} (berbeda ${v.rowsMismatched}), total ${v.totalStatus ?? '–'}; overhead tidak dipakai: ${v.overheadUnused.join(', ') || '–'}`,
       );
     }
-    for (const [label, p] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['Addendum 1', report.addendum]] as const) {
+    for (const [label, p] of [['Kontrak', report.contract], ['MC-0', report.mc0], ['MC-1', report.mc1]] as const) {
       console.log(
         `Paket ${label} (${p.status}): ${p.packageAnalyses} analisa, ${p.packageComponents} komponen, ${p.packagePrices} harga; ` +
           `salinan ${JSON.stringify(p.copiedFrom)}; relasi keluar paket ${JSON.stringify(p.isolation)}; real cost ${p.realCost}`,

@@ -7,7 +7,7 @@ import { notFound } from 'next/navigation';
 import { ProjectTabs } from '@/components/project-tabs';
 import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
 import { Decimal } from '@laporan-proyek/calc';
-import { formatNumber, formatRounded } from '@/lib/project-fields';
+import { formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
 const CHANGE: Record<RabChangeType, { label: string; tone: 'slate' | 'blue' | 'green' | 'red' }> = {
@@ -25,7 +25,8 @@ const FILTERS: { key: string; label: string; match: (c: RabChangeType) => boolea
 
 /** target − base with Decimal (no floats), rounded for display. */
 function delta(base: string | null, target: string | null, scale: number): string {
-  const diff = new Decimal(target ?? 0).minus(base ?? 0);
+  // Sign follows the rounded value, so a hidden difference never shows as "+0,00"/"-0,00".
+  const diff = new Decimal(target ?? 0).minus(base ?? 0).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP);
   const shown = formatRounded(diff.abs().toFixed(), scale);
   return diff.isZero() ? shown : `${diff.isNegative() ? '-' : '+'}${shown}`;
 }
@@ -46,6 +47,12 @@ function trend(
   return cmp > 0 ? 'up' : cmp < 0 ? 'down' : null;
 }
 
+/** Delta arrows follow the rounded difference itself, including values across a rounding boundary. */
+function deltaTrend(base: string | null | undefined, target: string | null | undefined, scale: number) {
+  if (base == null || target == null) return null;
+  return trend('0', new Decimal(target).minus(base).toFixed(), scale);
+}
+
 /** Colour plus an arrow and screen-reader text, so the change is not shown by colour alone. */
 function Trend({ dir, children }: { dir: 'up' | 'down' | null; children: ReactNode }) {
   if (!dir) return <>{children}</>;
@@ -59,11 +66,7 @@ function Trend({ dir, children }: { dir: 'up' | 'down' | null; children: ReactNo
 }
 
 const value = (row: RabRowDto | null, key: 'volume' | 'unitPrice' | 'subtotal') =>
-  row
-    ? key === 'volume'
-      ? formatNumber(row[key], { trim: true })
-      : formatRounded(row[key], 2)
-    : '–';
+  row ? formatRounded(row[key], 2) : '–';
 
 export default async function RabComparePage({
   params,
@@ -117,9 +120,9 @@ export default async function RabComparePage({
       <ProjectTabs projectId={project.id} active="rab" permissions={project.permissions} />
       <Link
         href={`${projectPath}/rab`}
-        className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900"
+        className="page-back"
       >
-        ← Versi RAB
+        Versi RAB
       </Link>
       {cmpStatus === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat RAB.</Alert>
@@ -210,12 +213,12 @@ export default async function RabComparePage({
                         </td>
                         <td className="num">{linkedValue(r.base, 'volume')}</td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>
+                          <Trend dir={trend(r.base?.volume, r.target?.volume, 2)}>
                             {linkedValue(r.target, 'volume')}
                           </Trend>
                         </td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.volume, r.target?.volume)}>
+                          <Trend dir={deltaTrend(r.base?.volume, r.target?.volume, 2)}>
                             <SourceValue
                               title="Selisih volume"
                               formula="Nilai versi tujuan − nilai versi awal"
@@ -236,7 +239,7 @@ export default async function RabComparePage({
                                 },
                               ]}
                             >
-                              {delta(r.base?.volume ?? null, r.target?.volume ?? null, 4)}
+                              {delta(r.base?.volume ?? null, r.target?.volume ?? null, 2)}
                             </SourceValue>
                           </Trend>
                         </td>
@@ -253,7 +256,7 @@ export default async function RabComparePage({
                           </Trend>
                         </td>
                         <td className="num">
-                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>
+                          <Trend dir={deltaTrend(r.base?.subtotal, r.target?.subtotal, 2)}>
                             <SourceValue
                               title="Selisih jumlah"
                               formula="Nilai versi tujuan − nilai versi awal"

@@ -17,8 +17,8 @@ export default async function ImportReviewPage({ params }: { params: Promise<{ p
     <>
       <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
       <ProjectTabs projectId={project.id} active="imports" permissions={project.permissions} />
-      <Link href={`${base}/imports`} className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
-        ← Impor RAB
+      <Link href={`${base}/imports`} className="page-back">
+        Impor RAB
       </Link>
       {detail.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat impor.</Alert>

@@ -23,6 +23,7 @@ import { DocumentsService } from './documents/documents.service';
 import { RabImportsController } from './imports/rab-imports.controller';
 import { AI_CLIENT, RabImportsService } from './imports/rab-imports.service';
 import { RabController } from './rab/rab.controller';
+import { RabCorrectionsService } from './rab/corrections.service';
 import { RabService } from './rab/rab.service';
 
 @Module({
@@ -38,6 +39,7 @@ import { RabService } from './rab/rab.service';
     AdminAccessService,
     ProjectsService,
     RabService,
+    RabCorrectionsService,
     DocumentsService,
     RabImportsService,
     AhspService,

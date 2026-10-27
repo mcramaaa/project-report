@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Icon } from './icon';
 
 /** Navigation inside one RAB package. Project permissions are still enforced by the API. */
 export function RabTabs({
@@ -58,15 +59,16 @@ export function RabBackLinks({
 }) {
   const base = `/projects/${encodeURIComponent(projectId)}`;
   return (
-    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
-      <Link href={base} className="hover:text-blue-700">
-        ← Kembali ke proyek
+    <nav className="-mt-2 mb-5 flex flex-wrap items-center gap-2" aria-label="Keluar dari RAB">
+      <Link href={base} className="btn btn-ghost btn-compact">
+        <Icon name="arrow-left" size={14} />
+        Kembali ke proyek
       </Link>
       {permissions.includes('rab.read') && (
-        <Link href={`${base}/rab`} className="hover:text-blue-700">
+        <Link href={`${base}/rab`} className="btn btn-ghost btn-compact">
           Semua versi RAB
         </Link>
       )}
-    </div>
+    </nav>
   );
 }

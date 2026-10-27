@@ -3,19 +3,22 @@
 import { SourceValue } from '@/components/source-value';
 import { workbookSource } from '@/lib/value-source';
 
-import type {
-  DraftAnalysis,
-  DraftRow,
-  ImportIssue,
-  RabImportDetailDto,
-  RabImportSummaryDto,
+import {
+  rabVersionLabel,
+  type DraftAnalysis,
+  type DraftRow,
+  type ImportIssue,
+  type PackageReviewDto,
+  type RabImportDetailDto,
+  type RabImportSummaryDto,
+  type WorkItemSearchDto,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, EmptyState, Field } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
-import { CATEGORY_LABEL, IMPORT_STATUS, VERSION_LABEL } from '@/lib/import-ui';
+import { CATEGORY_LABEL, IMPORT_STATUS } from '@/lib/import-ui';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
 
 type Decision = { rowKey: string; kind: string; value: unknown; reason?: string };
@@ -102,41 +105,28 @@ export function ImportReview({
   const decide = (list: Decision[], success: string) =>
     run_('POST', '/decisions', { decisions: list }, success);
 
-  function acceptSingleCandidates() {
-    const list: Decision[] = [];
-    for (const r of items) {
-      const open = issuesByRow.get(r.key) ?? [];
-      if (open.some((i) => i.code === 'ANALYSIS_UNRESOLVED') && r.analysisCandidates.length === 1) {
-        const c = r.analysisCandidates[0]!;
-        list.push({
-          rowKey: r.key,
-          kind: 'ANALYSIS_LINK',
-          value: c.analysisVersionId
-            ? { analysisVersionId: c.analysisVersionId }
-            : { analysisKey: c.analysisKey },
-          reason: `Reviewer menerima kandidat tunggal: ${c.reason}`.slice(0, 1000),
-        });
-      }
-      if (open.some((i) => i.code === 'WORK_ITEM_UNDECIDED') && r.workItemCandidates.length === 1) {
-        list.push({
-          rowKey: r.key,
-          kind: 'WORK_ITEM_MATCH',
-          value: { workItemId: r.workItemCandidates[0]!.workItemId },
-          reason: 'Reviewer menerima kandidat tunggal (jalur kelompok + uraian sama).',
-        });
-      }
-    }
-    if (!list.length)
-      return setNotice({
-        kind: 'error',
-        text: 'Tidak ada baris dengan tepat satu kandidat yang masih terbuka.',
-      });
+  // D-065: the backend proposes and re-validates; nothing is recorded until this explicit confirmation.
+  function confirmPackage() {
+    const proposals = detail.packageReview?.proposals ?? [];
     if (
+      proposals.length &&
       window.confirm(
-        `Catat ${list.length} keputusan untuk baris yang hanya memiliki satu kandidat? Setiap keputusan tercatat atas nama Anda.`,
+        `Konfirmasi ${proposals.length} usulan paket? Keputusan dicatat atas nama Anda; baris lain tetap diputuskan per item.`,
       )
     ) {
-      void decide(list, `${list.length} keputusan dicatat.`);
+      void run_(
+        'POST',
+        '/confirm-proposals',
+        // The token binds the confirmation to the proposals shown; the backend refuses if they changed.
+        {
+          baseVersionId: detail.packageReview!.baseVersion?.id ?? null,
+          token: detail.packageReview!.token,
+        },
+        `${proposals.length} usulan dikonfirmasi.`,
+      ).then((out) => {
+        // Rejected (e.g. proposals changed): show the current proposals instead of the stale ones.
+        if (!out) api<RabImportDetailDto>('GET', base).then(setDetail, () => undefined);
+      });
     }
   }
 
@@ -145,7 +135,7 @@ export function ImportReview({
       <section className="panel rab-header" aria-labelledby="run-title">
         <div className="min-w-0">
           <h2 id="run-title" className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-            Impor {VERSION_LABEL[run.targetVersionType]}{' '}
+            Impor {rabVersionLabel({ versionType: run.targetVersionType, revisionNumber: run.targetRevisionNumber })}{' '}
             <Badge tone={IMPORT_STATUS[run.status].tone}>{IMPORT_STATUS[run.status].label}</Badge>
           </h2>
           <p className="text-sm text-slate-600">
@@ -359,12 +349,15 @@ export function ImportReview({
               ))}
             </ul>
           )}
-          {canReview && reviewable && (
-            <Button variant="secondary" disabled={busy} onClick={acceptSingleCandidates}>
-              Terima semua kandidat tunggal
-            </Button>
-          )}
         </section>
+      )}
+
+      {detail.packageReview && (
+        <PackageReview
+          review={detail.packageReview}
+          editable={canReview && reviewable && !busy}
+          onConfirm={confirmPackage}
+        />
       )}
 
       {draft && (
@@ -418,6 +411,7 @@ export function ImportReview({
                     <RowReview
                       key={r.key}
                       projectId={projectId}
+                      importPath={base}
                       row={r}
                       issues={issuesByRow.get(r.key) ?? []}
                       analysis={r.price.analysisKey ? analyses.get(r.price.analysisKey) : undefined}
@@ -464,7 +458,11 @@ export function ImportReview({
         </section>
       )}
 
-      {(canApprove || canReview) && (
+      {/* Only when an action or hint applies; an approved run otherwise rendered an empty card. */}
+      {(canApprove || canReview) &&
+        ((canApprove && reviewable) ||
+          (canReview && (run.status === 'FAILED' || run.status === 'REJECTED')) ||
+          (blocking.length > 0 && reviewable)) && (
         <section
           className="panel form-panel flex flex-wrap items-end gap-3"
           aria-label="Aksi impor"
@@ -514,8 +512,84 @@ export function ImportReview({
   );
 }
 
+function PackageReview({
+  review,
+  editable,
+  onConfirm,
+}: {
+  review: PackageReviewDto;
+  editable: boolean;
+  onConfirm: () => void;
+}) {
+  const { counts, proposals } = review;
+  return (
+    <section className="panel form-panel space-y-2" aria-labelledby="package-title">
+      <h2 id="package-title" className="text-base font-semibold">
+        Review paket terhadap {review.baseVersion?.label ?? 'versi approved terakhir'}
+      </h2>
+      <p className="text-sm text-slate-600">
+        {review.sourceHasAnalyses === null
+          ? 'Draft lama tanpa data blok analisa sumber: pewarisan analisa tidak diusulkan.'
+          : review.sourceHasAnalyses
+            ? 'Sumber memuat analisa: sumber baru menjadi dasar; analisa tidak diwariskan otomatis.'
+            : 'Sumber tidak memuat analisa: analisa dapat diwariskan sebagai salinan dari versi dasar.'}
+      </p>
+      <dl className="calendar-preview">
+        <div>
+          <dt>Item dengan analisa sumber</dt>
+          <dd>{counts.fromSource}</dd>
+        </div>
+        <div>
+          <dt>Item dengan usulan warisan analisa</dt>
+          <dd>{counts.inherit}</dd>
+        </div>
+        <div>
+          <dt>Item dengan usulan pekerjaan cocok</dt>
+          <dd>{counts.match}</dd>
+        </div>
+        <div>
+          <dt>Item baru tanpa pasangan</dt>
+          <dd>{counts.newItems}</dd>
+        </div>
+        <div>
+          <dt>Item masih bermasalah setelah konfirmasi</dt>
+          <dd>{counts.problems}</dd>
+        </div>
+      </dl>
+      {proposals.length > 0 ? (
+        <>
+          <details className="text-sm">
+            <summary>Lihat {proposals.length} usulan beserta buktinya</summary>
+            <ul className="mt-1 space-y-1">
+              {proposals.map((p) => (
+                <li key={p.rowKey}>
+                  <strong>{p.description}</strong>
+                  {p.workItem && <span className="block text-xs">Pekerjaan: {p.workItem.reason}</span>}
+                  {p.analysis && <span className="block text-xs">Analisa: {p.analysis.reason}</span>}
+                </li>
+              ))}
+            </ul>
+          </details>
+          {editable && (
+            <Button variant="secondary" onClick={onConfirm}>
+              Konfirmasi {proposals.length} usulan paket
+            </Button>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-slate-600">Tidak ada usulan paket yang terbuka.</p>
+      )}
+      <p className="field-hint">
+        Usulan AI, kandidat ganda, pekerjaan baru, konflik harga/satuan, dan perubahan analisa tetap
+        diputuskan per item di bawah. Approval impor tetap terpisah.
+      </p>
+    </section>
+  );
+}
+
 function RowReview({
   projectId,
+  importPath,
   row,
   issues,
   analysis,
@@ -524,6 +598,7 @@ function RowReview({
   onDecide,
 }: {
   projectId: string;
+  importPath: string;
   row: DraftRow;
   issues: ImportIssue[];
   analysis: DraftAnalysis | undefined;
@@ -706,21 +781,38 @@ function RowReview({
                 <Button
                   key={c.workItemId}
                   variant="secondary"
-                  title={`${c.groupPath} · ${c.description}`}
+                  title={`${c.groupPath} · ${c.description}${c.unit ? ` · ${c.unit}` : ''}${c.analysisCode ? ` · ${c.analysisCode}` : ''}${c.reason ? `\n${c.reason}` : ''}`}
                   onClick={() =>
                     onDecide(
                       {
                         rowKey: row.key,
                         kind: 'WORK_ITEM_MATCH',
                         value: { workItemId: c.workItemId },
+                        reason: c.reason,
                       },
                       `Dicocokkan ke ${c.code}.`,
                     )
                   }
                 >
                   Cocokkan {c.code}
+                  {c.reason ? ' (beda tanda baca)' : ''}
                 </Button>
               ))}
+              <WorkItemSearch
+                importPath={importPath}
+                row={row}
+                onPick={(item) =>
+                  onDecide(
+                    {
+                      rowKey: row.key,
+                      kind: 'WORK_ITEM_MATCH',
+                      value: { workItemId: item.workItemId },
+                      reason: `Dipilih manual dari pencarian: ${item.code} "${item.description}".`.slice(0, 1000),
+                    },
+                    `Dicocokkan ke ${item.code}.`,
+                  )
+                }
+              />
               <Button
                 variant="secondary"
                 onClick={() =>
@@ -884,6 +976,103 @@ function AnalysisDraft({ analysis: a, projectId }: { analysis: DraftAnalysis; pr
         </table>
       </div>
     </details>
+  );
+}
+
+/** D-067: explicit manual choice among the latest approved version's work items, also when no candidate exists. */
+function WorkItemSearch({
+  importPath,
+  row,
+  onPick,
+}: {
+  importPath: string;
+  row: DraftRow;
+  onPick: (item: WorkItemSearchDto['items'][number]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const [result, setResult] = useState<WorkItemSearchDto>();
+  const [error, setError] = useState<string>();
+  const search = (query: string, page: number) =>
+    api<WorkItemSearchDto>(
+      'GET',
+      `${importPath}/work-items?${new URLSearchParams({ q: query, page: String(page) })}`,
+    ).then(
+      (r) => {
+        setResult(r);
+        setError(undefined);
+      },
+      (e) => setError(errorMessage(e)),
+    );
+  if (!open)
+    return (
+      <Button
+        variant="secondary"
+        onClick={() => {
+          setOpen(true);
+          setQ(row.description);
+          search(row.description, 1);
+        }}
+      >
+        Cari pekerjaan lama
+      </Button>
+    );
+  const pages = result ? Math.ceil(result.total / result.pageSize) : 0;
+  return (
+    <div className="w-full space-y-1">
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          search(q, 1);
+        }}
+      >
+        <Field
+          id={`wi-search-${row.key}`}
+          label={`Cari di ${result?.baseVersion?.label ?? 'versi approved terakhir'} (uraian, WI, kode analisa)`}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <Button type="submit" variant="secondary">
+          Cari
+        </Button>
+        <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+          Tutup
+        </Button>
+      </form>
+      {error && <p className="field-error">{error}</p>}
+      {result && result.items.length === 0 && <p>Tidak ada pekerjaan yang cocok.</p>}
+      {result && result.items.length > 0 && (
+        <ul className="space-y-1">
+          {result.items.map((i) => (
+            <li key={i.workItemId} className="flex items-start gap-2">
+              <Button variant="secondary" onClick={() => onPick(i)}>
+                Pilih {i.code}
+              </Button>
+              <span>
+                {i.description}
+                <span className="block text-slate-500">
+                  {i.groupPath || '–'} · {i.unit ?? '–'} · analisa {i.analysisCode ?? '–'}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {pages > 1 && (
+        <div className="row-actions">
+          <Button variant="secondary" disabled={result!.page <= 1} onClick={() => search(q, result!.page - 1)}>
+            Sebelumnya
+          </Button>
+          <span>
+            Halaman {result!.page}/{pages} ({result!.total})
+          </span>
+          <Button variant="secondary" disabled={result!.page >= pages} onClick={() => search(q, result!.page + 1)}>
+            Berikutnya
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

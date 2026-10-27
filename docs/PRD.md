@@ -39,7 +39,7 @@ Role proyek bawaan (role sistem, permission dapat diatur):
 - aktivasi baseline
 - reopen laporan final dengan alasan
 - mengubah identitas, jadwal, dan status proyek (`project.update`)
-- pengelolaan Addendum
+- pengelolaan MC
 - preview/presentasi
 
 ### ADMIN (role proyek)
@@ -47,6 +47,16 @@ Role proyek bawaan (role sistem, permission dapat diatur):
 - review hasil ekstraksi AI
 
 Membuat proyek, pengelolaan user, dan konfigurasi sistem adalah wewenang super admin atau pemegang role administrasi yang sesuai.
+
+### Editor RAB dan koreksi approved (D-068)
+
+Role proyek `RAB_EDITOR` dapat membuka kembali versi approved yang sama
+dengan alasan, snapshot lama immutable, audit dan approval ulang. Berlaku
+hanya pada proyek yang ditugaskan. Nilai dikoreksi pada input asalnya
+(volume, harga dasar, koefisien atau analisa); jumlah/bobot/total dihitung
+ulang dalam paket itu saja. Versi lain dan dokumen asli tetap utuh.
+Rancangan dan batasan: `docs/RAB_CORRECTIONS.md`. Ketentuan ini menggantikan
+kunci permanen D-040 hanya melalui alur koreksi resmi tersebut.
 
 ### Akun User
 
@@ -93,7 +103,7 @@ Satu proyek memiliki versi RAB:
 
 Setiap versi disimpan terpisah dan tidak saling overwrite.
 
-Milestone 4: versi berstatus DRAFT → APPROVED (terkunci) atau DISCARDED; MC0/Addendum dibuat sebagai salinan versi approved terakhir; rumus mengikuti workbook kantor (D-043): nilai per item tanpa pembulatan, total REAL COST 2 desimal dan DIBULATKAN ke rupiah. Aktivasi baseline di Milestone 6.
+Milestone 4: versi berstatus DRAFT → APPROVED (terkunci) atau DISCARDED; MC (MC-0 … MC-100, D-069) dibuat sebagai salinan versi approved terakhir; rumus mengikuti workbook kantor (D-043): nilai per item tanpa pembulatan, total REAL COST 2 desimal dan DIBULATKAN ke rupiah. Aktivasi baseline di Milestone 6.
 
 Setiap versi dapat mengubah:
 
@@ -139,9 +149,10 @@ Maka:
 
 Jika baseline baru lebih kecil daripada realisasi aktual, sistem memberi error/warning sesuai kebijakan dan tidak menghapus realisasi.
 
-## 7. Tanggal Efektif Addendum
+## 7. Tanggal Efektif MC
 
-Setiap Addendum menyimpan:
+Addendum tidak lagi menjadi jenis versi (D-069); aturan tanggal efektifnya (D-020)
+berlaku untuk setiap MC, MC-0 … MC-100. Setiap MC menyimpan:
 
 - nomor
 - tanggal dokumen
@@ -499,8 +510,7 @@ Simpan file asli:
 
 - Kontrak
 - RAB Kontrak
-- MC0
-- Addendum
+- MC (MC-0 … MC-100)
 - AHSP
 - Schedule
 - template
@@ -562,6 +572,12 @@ AI tidak menjadi sumber kebenaran final.
 
 ## 30. AI Review
 
+Run impor yang gagal, ditolak, atau masih menunggu review dapat dihapus dari
+daftar untuk mengulang pemilihan dokumen/sheet (D-066). Penghapusan bersifat
+soft delete dengan audit; file asli, draft, keputusan, dan rantai retry tetap
+tersimpan. Run yang sedang diproses atau sudah menghasilkan data resmi tidak
+dapat dihapus.
+
 Layar review memperlihatkan:
 
 - file/sumber asli
@@ -593,6 +609,30 @@ Hasil:
 - REMOVED
 
 UNCERTAIN wajib diputuskan manusia.
+
+Pasangan pekerjaan (D-067): uraian yang hanya berbeda tanda baca berulang
+(mis. "Pas.." vs "Pas.") menjadi kandidat/usulan hanya bila kelompok, satuan,
+dan kode analisa sama; angka/ukuran berbeda tidak disamakan. Reviewer selalu
+dapat mencari dan memilih pekerjaan versi approved terakhir secara manual
+selain "Pekerjaan baru"; backend menolak pekerjaan di luar versi itu atau yang
+sudah dipilih baris lain.
+
+Review paket (D-065): reviewer tidak perlu memutuskan ratusan item satu per
+satu. Backend menyiapkan usulan dari versi RAB approved terakhir hanya bila
+buktinya jelas dan tervalidasi ulang di backend: pekerjaan permanen (tepat satu
+pasangan, jalur kelompok + uraian + satuan sama, tidak dipakai baris lain) dan
+pewarisan analisa (sumber tidak memuat analisa sama sekali, rantai harga
+berhenti di nilai dengan kode analisa atau harga literal dengan kode NO.
+ANALISA eksplisit, tepat satu analisa paket sebelumnya
+dengan kode, satuan, dan harga sama, dan tidak mengganti analisa pekerjaan
+yang sama di versi sebelumnya). Layar review menampilkan ringkasan jumlah
+analisa dari sumber, warisan, pekerjaan cocok, pekerjaan baru, dan masalah.
+Reviewer mengonfirmasi seluruh usulan sekaligus; keputusan baru tercatat atas
+nama reviewer saat konfirmasi itu. Konfirmasi ditolak bila versi dasar atau isi
+usulan berubah sejak ditampilkan. Kandidat ambigu, usulan AI, item baru
+tanpa pasangan, formula putus yang tidak terbukti, konflik harga/satuan, dan
+perubahan analisa tetap diputuskan eksplisit per item. Approval impor dan
+approval RAB tetap terpisah oleh manusia.
 
 ## 32. Output
 

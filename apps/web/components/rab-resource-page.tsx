@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation';
 import { RabBackLinks, RabTabs } from './rab-tabs';
 import { Alert, EmptyState, PageTitle } from './ui';
 import { formatRounded } from '@/lib/project-fields';
+import { canChangeVersion } from '@/lib/rab-ui';
+import { CorrectionBadge, CorrectionForm } from './corrections';
 import { serverGet } from '@/lib/server-api';
 
 const resources = {
@@ -34,6 +36,9 @@ export async function RabResourcePage({
   ]);
   if (status === 404 || prices.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
+  const owner = prices.data?.rabVersion;
+  const canCorrect =
+    project.status === 'ACTIVE' && !!owner && canChangeVersion(owner.status, project.permissions, 'ahsp.edit');
   return (
     <>
       <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
@@ -97,6 +102,7 @@ export async function RabResourcePage({
                         'Satuan',
                         'Harga satuan (Rp)',
                         'Sumber',
+                        ...(canCorrect ? ['Koreksi'] : []),
                       ].map((t) => (
                         <th role="columnheader" scope="col" key={t} className="px-3 py-2 text-left">
                           {t}
@@ -146,6 +152,7 @@ export async function RabResourcePage({
                             >
                               {formatRounded(p.price, 2)}
                             </SourceValue>
+                            <CorrectionBadge locator={p.sourceLocator} />
                           </td>
                           <td
                             role="cell"
@@ -158,6 +165,16 @@ export async function RabResourcePage({
                               <span className="block">Warisan {p.copiedFrom.rabVersion.label}</span>
                             )}
                           </td>
+                          {canCorrect && (
+                            <td role="cell" data-label="Koreksi" className="px-3 py-2">
+                              <CorrectionForm
+                                path={`${base}/rab-versions/${encodeURIComponent(versionId)}/price-items/${p.id}`}
+                                reopened={owner!.status === 'REOPENED'}
+                                title={`Koreksi harga ${p.name}`}
+                                fields={[{ name: 'price', label: 'Harga dasar (Rp)', value: p.price, hint: 'Analisa dan item RAB yang memakainya dihitung ulang dalam paket ini.' }]}
+                              />
+                            </td>
+                          )}
                         </tr>
                       );
                     })}

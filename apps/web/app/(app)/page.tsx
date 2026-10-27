@@ -18,21 +18,22 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
 
   return (
     <>
-      <PageTitle subtitle="Semua proyek Anda, dalam satu ruang kerja.">Proyek saya</PageTitle>
-      <section className="panel welcome-panel">
-        <div><span className="eyebrow">Selamat bekerja</span><h2 className="mt-2">Halo, {me?.name ?? 'rekan proyek'}.</h2><p>Pilih proyek untuk melihat informasi pekerjaan dan melanjutkan aktivitas bersama tim Anda.</p></div>
-        <span className="metric-icon"><Icon name="building" size={25} /></span>
-      </section>
-      <div className="section-caption"><h2>Daftar proyek</h2>{status === 200 && data && <span>{data.total} proyek tersedia</span>}</div>
-      <div className="toolbar mb-4">
-        <form className="flex min-w-0 flex-1 items-end gap-2" role="search" action="/">
-          <div className="w-full max-w-xs">
+      <PageTitle
+        eyebrow={`Halo, ${me?.name ?? 'rekan proyek'}`}
+        subtitle="Pilih proyek untuk melihat informasi pekerjaan dan melanjutkan aktivitas bersama tim Anda."
+        actions={canCreate && <Link href="/projects/new" className="btn btn-primary"><Icon name="plus" size={16} />Proyek baru</Link>}
+      >
+        Proyek saya
+      </PageTitle>
+      <div className="toolbar">
+        <form className="min-w-0 flex-1" role="search" action="/">
+          <div className="w-full sm:w-72">
             <label htmlFor="search" className="field-label">Cari kode atau nama proyek</label>
-            <input id="search" name="search" className="field" defaultValue={search} />
+            <input id="search" name="search" className="field" defaultValue={search} placeholder="Contoh: SDSerangan" />
           </div>
           <button type="submit" className="btn btn-secondary">Cari</button>
         </form>
-        {canCreate && <Link href="/projects/new" className="btn btn-primary">Proyek baru</Link>}
+        {status === 200 && data && <span className="text-sm text-slate-500">{data.total} proyek</span>}
       </div>
       {status !== 200 || !data ? (
         <Alert>Daftar proyek tidak dapat dimuat.</Alert>

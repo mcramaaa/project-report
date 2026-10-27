@@ -9,8 +9,8 @@ export default async function ProjectMembersPage({ params }: { params: Promise<{
   return (
     <>
       <AccessTabs me={me} active="projects" />
-      <Link href="/admin/projects" className="mb-4 inline-block text-sm text-slate-600 hover:text-slate-900">
-        ← Daftar proyek
+      <Link href="/admin/projects" className="page-back">
+        Daftar proyek
       </Link>
       <MembersAdmin projectId={projectId} canManage={can(me, 'assignments.manage')} selfId={me.isSystemAdmin ? undefined : me.id} />
     </>

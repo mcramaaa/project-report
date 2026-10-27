@@ -29,7 +29,7 @@ describe.skipIf(!available)('real workbooks SDN 2 Serangan (storage/temp)', () =
   }, 120_000);
 
   it('Kontrak: items trace to analyses, sub-analyses and prices come along, everything reconciles', () => {
-    expect(contract.stats).toEqual({ items: 416, analysesInWorkbook: 168, analysesImported: 110, subAnalyses: 5, components: 704, pricesImported: 162 });
+    expect(contract.stats).toMatchObject({ items: 416, analysesInWorkbook: 168, analysesImported: 110, subAnalyses: 5, components: 704, pricesImported: 162 });
     expect(contract.workbookTotals).toEqual({ value: '5121250896.4818', rounded: null, valueRaw: '5121250896.4818010' });
     const blocking = contract.issues.filter((i) => i.severity === 'BLOCKING');
     // Only the SMKK items stop at a literal price without breakdown; they need a reviewer decision.
@@ -80,7 +80,7 @@ describe.skipIf(!available)('real workbooks SDN 2 Serangan (storage/temp)', () =
   it('MC-0 from the weekly workbook: chains stop at the values-only recap; candidates come from official analyses', async () => {
     const official = contract.analyses.map((a, i) => ({ analysisVersionId: `v-${i}`, code: a.code, name: a.name, unit: a.unit, price: a.computed.price }));
     const mc0 = buildDraft([{ model: await model(mingguanPath, 'doc-04'), documentId: 'doc-04', filename: '04', sha256: 'y' }], {
-      targetVersionType: 'MC0',
+      targetVersionType: 'MC',
       officialAnalyses: official,
       previousItems: [],
     });
