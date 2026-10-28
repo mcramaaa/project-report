@@ -4,6 +4,48 @@ Dokumen ini tidak memuat password, token, atau isi `.env`.
 Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
 `docs/AI_ENGINEERING_STANDARDS.md` untuk standar kerja frontend/backend.
 
+## 0b. M6 baseline: status saat pulang (2026-10-28 sore) → lanjut di rumah
+
+**Keputusan:** D-071 (`docs/DECISIONS.md`), menutup OD-003 dan OD-006.
+- Hanya `baseline_assignments`; akhir periode dan segmen per minggu dihitung.
+- `NEXT_WEEK` = minggu proyek pertama setelah tanggal dokumen versi.
+- `EXACT_DATE` untuk tanggal pasti; Kontrak selalu mulai pada tanggal mulai
+  proyek.
+- Volume < realisasi: peringatan + konfirmasi (aktif saat M9 ada).
+- Izin `baseline.activate`: MANAGER + RAB_EDITOR.
+- Perubahan jadwal: Kontrak ikut, MC yang keluar rentang ditolak.
+
+**Sudah selesai (API):**
+- Migration `20261028120000_baseline_assignments`. Wajib `npx prisma migrate
+  deploy`; migration ini juga memberi `baseline.activate` ke role sistem
+  MANAGER dan RAB_EDITOR.
+- `apps/api/src/baselines/`: `GET/POST /projects/:id/baselines`, `POST
+  …/:assignmentId/revoke`. Respons berisi `assignments` (dengan
+  `effectiveTo`), `candidates` (pratinjau `nextWeek` dan `exactDefault`), dan
+  `weeks` (segmen per minggu).
+- Hook di `ProjectsService.changeSchedule` (`alignBaselinesWithSchedule`).
+- Shared: `packages/shared/src/baselines.ts`, permission, audit
+  `ACTIVATE_BASELINE` dan `REVOKE_BASELINE`.
+- Test `src/baselines/baselines.spec.ts` 5/5. Projects/admin/rab lulus (admin
+  sempat gagal acak sekali, lalu 39/39 dua kali).
+
+**Belum (lanjutkan dari sini):**
+1. **UI web baseline** di halaman `/projects/:id/rab` (daftar versi):
+   - garis waktu assignment: versi, berlaku dari–sampai, mode, alasan, oleh;
+   - tombol "Cabut" pada assignment terakhir, dengan form alasan inline (bukan
+     dialog);
+   - untuk kandidat berikutnya: form inline berisi pilihan mode "Minggu
+     berikutnya (minggu ke-N, tgl)" / "Tanggal pasti" (date input, default
+     `exactDefault`) dan alasan;
+   - ringkasan minggu: "Minggu 1–3: Kontrak; Minggu 4–: MC-0", minggu yang
+     terbelah ditandai;
+   - tampil hanya dengan `rab.read`; tombol hanya dengan `baseline.activate`
+     dan proyek ACTIVE.
+2. Dokumen: `docs/UI_UX.md` (bagian baseline), `docs/PERMISSIONS.md` (tambah
+   `baseline.activate`), ROADMAP/tabel progres M6.
+3. Data dev: belum ada baseline aktif. Coba aktifkan Kontrak lalu MC-0 dari UI
+   setelah selesai.
+
 ## 0a. Sesi PC kantor (WSL), 2026-10-28
 
 ### Yang berubah

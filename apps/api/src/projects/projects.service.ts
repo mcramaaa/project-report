@@ -15,6 +15,7 @@ import {
   type ReportPeriodDto,
   type UpdateProjectInput,
 } from '@laporan-proyek/shared';
+import { alignBaselinesWithSchedule } from '../baselines/baselines.service';
 import { writeAudit } from '../audit/audit';
 import { AccessService } from '../auth/access.service';
 import type { AuthUser } from '../auth/auth-context';
@@ -200,6 +201,7 @@ export class ProjectsService {
       const before = { weeks: await tx.projectWeek.count({ where: { projectId } }), periods: await tx.reportPeriod.count({ where: { projectId } }) };
       await tx.project.update({ where: { id: projectId }, data: { startDate: toDbDate(input.startDate), durationDays: input.durationDays } });
       const after = await syncProjectCalendar(tx, projectId, input.startDate, input.durationDays);
+      await alignBaselinesWithSchedule(tx, projectId, input.startDate, input.durationDays);
       await writeAudit(tx, {
         actorId: actor.id,
         action: 'CHANGE_PROJECT_SCHEDULE',

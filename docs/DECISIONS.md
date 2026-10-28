@@ -909,6 +909,52 @@ tidak jadi dapat dibatalkan tanpa approve ulang.
 - D-068 tetap berlaku: versi yang pernah approved tidak dapat di-discard.
   Pembatalan koreksi hanya kembali ke kondisi approved terakhir.
 
+
+## D-071 Aktivasi Baseline (M6)
+
+Tanggal: 2026-10-28. Diputuskan pengguna; menutup OD-003 dan OD-006, sebagian
+OD-008.
+
+1. **Sumber kebenaran (OD-006):** hanya `baseline_assignments`.
+   - Isinya proyek, versi RAB, `effective_from`, mode, alasan, pembuat, dan
+     waktu.
+   - `effective_to` tidak disimpan: berakhir H-1 sebelum assignment berikutnya
+     atau pada akhir proyek.
+   - Pembagian per minggu, termasuk pergantian versi di tengah minggu, dihitung
+     dari assignment. `week_baseline_segments` tidak dibuat.
+2. **Mode aktivasi (D-020, PRD §7):**
+   - `NEXT_WEEK` (default): mulai minggu proyek pertama yang `start_date`-nya
+     sesudah tanggal dokumen versi. Tanggal dokumen wajib ada.
+   - `EXACT_DATE`: tanggal yang dipilih, di dalam rentang proyek. Default-nya
+     tanggal dokumen.
+   - Kontrak memakai tanggal mulai proyek.
+3. **Urutan:** hanya versi APPROVED yang dapat diaktifkan.
+   - `effective_from` harus naik mengikuti urutan versi (Kontrak → MC-0 → … →
+     MC-100) dan lebih besar dari tanggal efektif assignment terakhir.
+   - Versi yang sudah pernah diaktifkan tidak diaktifkan dua kali.
+   - Assignment pertama wajib Kontrak.
+4. **Pencabutan:** hanya assignment terakhir, dengan alasan, dan diaudit.
+   Setelah M9/M13, pencabutan ditolak bila minggu yang terdampak sudah punya
+   progres final.
+5. **Volume baseline < realisasi (OD-003):**
+   - Peringatan per item (work item yang realisasi kumulatifnya sampai sebelum
+     `effective_from` melebihi volume baru), bukan error.
+   - Aktivasi butuh konfirmasi eksplisit, dan daftarnya disimpan di audit.
+   - Realisasi tidak dihapus; progres item tampil > 100% dengan tanda.
+   - Pemeriksaan aktif sejak data realisasi ada (M9). Sebelum itu daftarnya
+     kosong.
+6. **Izin (OD-008, bagian M6):** permission baru `baseline.activate` (aktifkan
+   dan cabut). Default untuk role MANAGER dan RAB_EDITOR. Melihat baseline
+   memakai `rab.read`.
+7. Koreksi (D-068) pada versi yang sedang berlaku berlaku untuk seluruh periode
+   efektif versi itu. Laporan yang sudah final tetap memakai snapshot-nya
+   (M13).
+8. **Perubahan jadwal proyek (D-038):**
+   - assignment Kontrak ikut pindah ke tanggal mulai yang baru;
+   - perubahan ditolak (`409`) bila tanggal efektif assignment lain tidak lagi
+     berada setelah tanggal mulai dan sampai tanggal selesai rencana. Cabut
+     aktivasinya dulu.
+
 ## Keputusan Terbuka
 
 
@@ -925,6 +971,8 @@ Sudah diputuskan: lihat D-048.
 Sudah diputuskan: lihat D-026.
 
 ### OD-003 Baseline baru lebih kecil dari realisasi
+
+**Ditutup 2026-10-28 oleh D-071 butir 5** (peringatan + konfirmasi, dicatat di audit).
 
 PRD §6: "sistem memberi error/warning sesuai kebijakan". Kebijakannya belum ada: error yang memblokir aktivasi, warning yang dapat disetujui dengan catatan, atau bergantung role?
 
@@ -944,6 +992,8 @@ Diputuskan sebelum: Milestone 11 (laporan harian) dan Milestone 12/13.
 
 ### OD-006 Sumber kebenaran baseline per tanggal
 
+**Ditutup 2026-10-28 oleh D-071 butir 1** (`baseline_assignments` saja; segmen dihitung).
+
 `baseline_assignments` (effective_from/to per proyek) dan `week_baseline_segments` (per minggu) sama-sama menyatakan baseline yang berlaku. Mana yang menjadi sumber kebenaran, dan apakah segment diturunkan dari assignment atau disimpan independen?
 
 Diputuskan sebelum: Milestone 6.
@@ -953,6 +1003,8 @@ Diputuskan sebelum: Milestone 6.
 Sudah diputuskan: lihat D-036, D-037, D-038.
 
 ### OD-008 Izin role proyek untuk fitur mendatang
+
+**Sebagian (2026-10-28):** izin aktivasi baseline diputuskan di D-071 butir 6. Fungsi FILLER pada MANAGER dan approver ekstraksi AI masih terbuka.
 
 Matriks di `docs/PERMISSIONS.md` mengikuti PRD §2. Belum jelas:
 

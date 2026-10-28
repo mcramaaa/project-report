@@ -26,23 +26,25 @@ model User {
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   sessions             AuthSession[]
-  memberships          ProjectUser[]       @relation("MembershipUser")
-  createdMemberships   ProjectUser[]       @relation("MembershipCreatedBy")
-  revokedMemberships   ProjectUser[]       @relation("MembershipRevokedBy")
-  globalRoles          UserGlobalRole[]    @relation("GlobalRoleUser")
-  createdGlobalRoles   UserGlobalRole[]    @relation("GlobalRoleCreatedBy")
-  revokedGlobalRoles   UserGlobalRole[]    @relation("GlobalRoleRevokedBy")
+  memberships          ProjectUser[]        @relation("MembershipUser")
+  createdMemberships   ProjectUser[]        @relation("MembershipCreatedBy")
+  revokedMemberships   ProjectUser[]        @relation("MembershipRevokedBy")
+  globalRoles          UserGlobalRole[]     @relation("GlobalRoleUser")
+  createdGlobalRoles   UserGlobalRole[]     @relation("GlobalRoleCreatedBy")
+  revokedGlobalRoles   UserGlobalRole[]     @relation("GlobalRoleRevokedBy")
   auditLogs            AuditLog[]
-  createdRabVersions   RabVersion[]        @relation("RabVersionCreatedBy")
-  approvedRabVersions  RabVersion[]        @relation("RabVersionApprovedBy")
-  discardedRabVersions RabVersion[]        @relation("RabVersionDiscardedBy")
+  createdRabVersions   RabVersion[]         @relation("RabVersionCreatedBy")
+  createdBaselines     BaselineAssignment[] @relation("BaselineCreatedBy")
+  revokedBaselines     BaselineAssignment[] @relation("BaselineRevokedBy")
+  approvedRabVersions  RabVersion[]         @relation("RabVersionApprovedBy")
+  discardedRabVersions RabVersion[]         @relation("RabVersionDiscardedBy")
   uploadedDocuments    ProjectDocument[]
-  createdImports       RabImport[]         @relation("ImportCreatedBy")
-  approvedImports      RabImport[]         @relation("ImportApprovedBy")
-  rejectedImports      RabImport[]         @relation("ImportRejectedBy")
+  createdImports       RabImport[]          @relation("ImportCreatedBy")
+  approvedImports      RabImport[]          @relation("ImportApprovedBy")
+  rejectedImports      RabImport[]          @relation("ImportRejectedBy")
   importDecisions      RabImportDecision[]
   createdPriceLists    PriceList[]
-  priceDecisions       RabVersionItem[]    @relation("ItemPriceDecidedBy")
+  priceDecisions       RabVersionItem[]     @relation("ItemPriceDecidedBy")
   approvedSnapshots    RabVersionSnapshot[] @relation("SnapshotApprovedBy")
   createdSnapshots     RabVersionSnapshot[] @relation("SnapshotCreatedBy")
 
@@ -90,16 +92,17 @@ model Project {
   createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
 
-  members       ProjectUser[]
-  auditLogs     AuditLog[]
-  weeks         ProjectWeek[]
-  reportPeriods ReportPeriod[]
-  rabVersions   RabVersion[]
-  workItems     WorkItem[]
-  documents     ProjectDocument[]
-  rabImports    RabImport[]
-  priceLists    PriceList[]
-  analyses      AhspAnalysis[]
+  members             ProjectUser[]
+  auditLogs           AuditLog[]
+  weeks               ProjectWeek[]
+  reportPeriods       ReportPeriod[]
+  rabVersions         RabVersion[]
+  baselineAssignments BaselineAssignment[]
+  workItems           WorkItem[]
+  documents           ProjectDocument[]
+  rabImports          RabImport[]
+  priceLists          PriceList[]
+  analyses            AhspAnalysis[]
 
   @@map("projects")
 }
@@ -294,21 +297,52 @@ model RabVersion {
   createdAt         DateTime         @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt         DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 
-  project         Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  previousVersion RabVersion?      @relation("RabVersionChain", fields: [previousVersionId], references: [id], onDelete: Restrict)
-  nextVersions    RabVersion[]     @relation("RabVersionChain")
-  createdByUser   User             @relation("RabVersionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
-  approvedByUser  User?            @relation("RabVersionApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
-  discardedByUser User?            @relation("RabVersionDiscardedBy", fields: [discardedBy], references: [id], onDelete: Restrict)
-  items           RabVersionItem[]
-  sourceImports   RabImport[]
+  project             Project              @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  previousVersion     RabVersion?          @relation("RabVersionChain", fields: [previousVersionId], references: [id], onDelete: Restrict)
+  nextVersions        RabVersion[]         @relation("RabVersionChain")
+  createdByUser       User                 @relation("RabVersionCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser      User?                @relation("RabVersionApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  discardedByUser     User?                @relation("RabVersionDiscardedBy", fields: [discardedBy], references: [id], onDelete: Restrict)
+  items               RabVersionItem[]
+  baselineAssignments BaselineAssignment[]
+  sourceImports       RabImport[]
   /// Analysis/price package owned by this version (D-056, D-057).
-  priceList       PriceList?
-  analyses        AhspAnalysis[]
-  snapshots       RabVersionSnapshot[]
+  priceList           PriceList?
+  analyses            AhspAnalysis[]
+  snapshots           RabVersionSnapshot[]
 
   @@index([projectId, status])
   @@map("rab_versions")
+}
+
+enum BaselineActivationMode {
+  NEXT_WEEK
+  EXACT_DATE
+}
+
+/// D-071: the RAB version in force from `effective_from` until the next live assignment (or the project end).
+/// The only source of truth for the baseline per date; week segments are computed. Revoked rows stay (history).
+model BaselineAssignment {
+  id             String                 @id @default(uuid(7)) @db.Char(36)
+  projectId      String                 @map("project_id") @db.Char(36)
+  rabVersionId   String                 @map("rab_version_id") @db.Char(36)
+  effectiveFrom  DateTime               @map("effective_from") @db.Date
+  activationMode BaselineActivationMode @map("activation_mode")
+  reason         String?                @db.Text
+  createdBy      String                 @map("created_by") @db.Char(36)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  revokedAt      DateTime?              @map("revoked_at") @db.DateTime(3)
+  revokedBy      String?                @map("revoked_by") @db.Char(36)
+  revokeReason   String?                @map("revoke_reason") @db.Text
+
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  rabVersion    RabVersion @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  createdByUser User       @relation("BaselineCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  revokedByUser User?      @relation("BaselineRevokedBy", fields: [revokedBy], references: [id], onDelete: Restrict)
+
+  @@index([projectId, effectiveFrom])
+  @@index([rabVersionId])
+  @@map("baseline_assignments")
 }
 
 /// Append-only archive of each approved state (D-068); never updated or deleted, never recomputed from live data.
@@ -440,31 +474,31 @@ enum RabImportStatus {
 
 /// One import run of a document package into one target RAB version (D-048).
 model RabImport {
-  id                String          @id @default(uuid(7)) @db.Char(36)
-  projectId         String          @map("project_id") @db.Char(36)
-  targetVersionType RabVersionType  @map("target_version_type")
+  id                   String          @id @default(uuid(7)) @db.Char(36)
+  projectId            String          @map("project_id") @db.Char(36)
+  targetVersionType    RabVersionType  @map("target_version_type")
   /// MC number the run imports (0 for CONTRACT), fixed at creation (D-069).
-  targetRevisionNumber Int          @default(0) @map("target_revision_number") @db.UnsignedSmallInt
-  status            RabImportStatus @default(UPLOADED)
-  attemptNumber     Int             @default(1) @map("attempt_number") @db.UnsignedSmallInt
-  previousImportId  String?         @map("previous_import_id") @db.Char(36)
-  guideVersion      String          @map("guide_version") @db.VarChar(40)
-  parserVersion     String          @map("parser_version") @db.VarChar(40)
+  targetRevisionNumber Int             @default(0) @map("target_revision_number") @db.UnsignedSmallInt
+  status               RabImportStatus @default(UPLOADED)
+  attemptNumber        Int             @default(1) @map("attempt_number") @db.UnsignedSmallInt
+  previousImportId     String?         @map("previous_import_id") @db.Char(36)
+  guideVersion         String          @map("guide_version") @db.VarChar(40)
+  parserVersion        String          @map("parser_version") @db.VarChar(40)
   /// Structured draft validated by the shared zod schema.
-  draft             Json?
-  errorMessage      String?         @map("error_message") @db.Text
-  createdBy         String          @map("created_by") @db.Char(36)
-  createdAt         DateTime        @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt         DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
-  processedAt       DateTime?       @map("processed_at") @db.DateTime(3)
-  approvedBy        String?         @map("approved_by") @db.Char(36)
-  approvedAt        DateTime?       @map("approved_at") @db.DateTime(3)
-  rejectedBy        String?         @map("rejected_by") @db.Char(36)
-  rejectedAt        DateTime?       @map("rejected_at") @db.DateTime(3)
-  rejectReason      String?         @map("reject_reason") @db.Text
-  deletedAt         DateTime?       @map("deleted_at") @db.DateTime(3)
-  rabVersionId      String?         @map("rab_version_id") @db.Char(36)
-  priceListId       String?         @unique @map("price_list_id") @db.Char(36)
+  draft                Json?
+  errorMessage         String?         @map("error_message") @db.Text
+  createdBy            String          @map("created_by") @db.Char(36)
+  createdAt            DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+  processedAt          DateTime?       @map("processed_at") @db.DateTime(3)
+  approvedBy           String?         @map("approved_by") @db.Char(36)
+  approvedAt           DateTime?       @map("approved_at") @db.DateTime(3)
+  rejectedBy           String?         @map("rejected_by") @db.Char(36)
+  rejectedAt           DateTime?       @map("rejected_at") @db.DateTime(3)
+  rejectReason         String?         @map("reject_reason") @db.Text
+  deletedAt            DateTime?       @map("deleted_at") @db.DateTime(3)
+  rabVersionId         String?         @map("rab_version_id") @db.Char(36)
+  priceListId          String?         @unique @map("price_list_id") @db.Char(36)
 
   project          Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
   previousImport   RabImport?            @relation("ImportRetry", fields: [previousImportId], references: [id], onDelete: Restrict)

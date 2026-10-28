@@ -286,6 +286,13 @@ activation_mode:
 - NEXT_WEEK
 - EXACT_DATE
 
+D-071 (diimplementasikan 2026-10-28, migration `20261028120000_baseline_assignments`):
+- `effective_to` **tidak disimpan**: dihitung sampai H-1 sebelum assignment
+  hidup berikutnya atau sampai tanggal selesai rencana.
+- Pencabutan memakai `revoked_at`, `revoked_by`, dan `revoke_reason`. Baris
+  yang dicabut tetap ada sebagai histori.
+- `week_baseline_segments` tidak dibuat; segmen per minggu dihitung (OD-006).
+
 ## 5. AHSP (D-050, D-051)
 
 Paket analisa dan harga dimiliki **versi RAB** (D-056, D-057; migration

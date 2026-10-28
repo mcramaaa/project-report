@@ -18,6 +18,8 @@ import { ProjectsService } from './projects/projects.service';
 import { AhspController } from './ahsp/ahsp.controller';
 import { AhspService } from './ahsp/ahsp.service';
 import { AiClient, readAiConfig } from './ai/ai.client';
+import { BaselinesController } from './baselines/baselines.controller';
+import { BaselinesService } from './baselines/baselines.service';
 import { DocumentsController } from './documents/documents.controller';
 import { DocumentsService } from './documents/documents.service';
 import { RabImportsController } from './imports/rab-imports.controller';
@@ -28,7 +30,7 @@ import { RabService } from './rab/rab.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -40,6 +42,7 @@ import { RabService } from './rab/rab.service';
     ProjectsService,
     RabService,
     RabCorrectionsService,
+    BaselinesService,
     DocumentsService,
     RabImportsService,
     AhspService,

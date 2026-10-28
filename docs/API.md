@@ -156,6 +156,9 @@ POST  /projects/:projectId/rab-versions/:versionId/approve      { acknowledgeWar
 POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }                       rab.edit (DRAFT saja; REOPENED 409)
 POST  /projects/:projectId/rab-versions/:versionId/reopen       { reason }                       rab.reopen (D-068)
 POST  /projects/:projectId/rab-versions/:versionId/cancel-correction { reason }                  rab.reopen (D-070)
+GET   /projects/:projectId/baselines                              —                                rab.read (D-071)
+POST  /projects/:projectId/baselines                              { rabVersionId, activationMode, effectiveFrom?, reason? }  baseline.activate
+POST  /projects/:projectId/baselines/:assignmentId/revoke         { reason }                       baseline.activate
 GET   /projects/:projectId/rab-versions/:versionId/history      -> { snapshots, events }         rab.read + ahsp.read
 GET   /projects/:projectId/rab-versions/:versionId/snapshots/:snapshotId -> { …, checksumValid, payload } rab.read + ahsp.read
 POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/work-item  { workItemId, reason? }  rab.edit

@@ -5,7 +5,7 @@ export interface AuditEntry {
   /** Acting user; null for seed/system actions. */
   actorId: string | null;
   action: AuditAction;
-  entityType: 'USER' | 'PROJECT' | 'PROJECT_MEMBER' | 'ROLE' | 'RAB_VERSION' | 'DOCUMENT' | 'RAB_IMPORT';
+  entityType: 'USER' | 'PROJECT' | 'PROJECT_MEMBER' | 'ROLE' | 'RAB_VERSION' | 'DOCUMENT' | 'RAB_IMPORT' | 'BASELINE_ASSIGNMENT';
   entityId?: string;
   projectId?: string;
   /** Safe-to-display fields only. Never passwords, hashes, tokens, or secrets (D-034). */

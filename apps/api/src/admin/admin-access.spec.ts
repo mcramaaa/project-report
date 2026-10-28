@@ -56,7 +56,7 @@ describe('roles', () => {
       expect.arrayContaining([
         ['FILLER', true, ['ahsp.read', 'project.read', 'rab.read']],
         ['REVIEWER', true, ['ahsp.read', 'project.read', 'rab.read']],
-        ['MANAGER', true, ['ahsp.read', 'document.read', 'document.upload', 'project.read', 'project.update', 'rab.approve', 'rab.edit', 'rab.read', 'rabImport.approve', 'rabImport.review']],
+        ['MANAGER', true, ['ahsp.read', 'baseline.activate', 'document.read', 'document.upload', 'project.read', 'project.update', 'rab.approve', 'rab.edit', 'rab.read', 'rabImport.approve', 'rabImport.review']],
         ['ADMIN', true, ['ahsp.read', 'document.read', 'document.upload', 'project.read', 'rab.edit', 'rab.read', 'rabImport.review']],
       ]),
     );
