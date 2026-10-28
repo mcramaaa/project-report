@@ -114,7 +114,21 @@ audit before/after. Migration baru non-destruktif; jangan seed/reset DB user.
   subanalisa EXACT/ROUNDED) ditolak agar tidak menebak rumus. Selama REOPENED,
   baris yang sudah ada saat approval terakhir tidak dapat dihapus (ubah
   isinya); baris yang ditambahkan selama koreksi boleh dihapus.
-- UI: tombol "Buka kembali" + alasan, panel alasan koreksi pada editor RAB,
-  "Ganti WI", "Approve ulang", tombol "Koreksi" pada tab Bahan/Upah/Alat dan
+- UI: tombol "Buka untuk koreksi" di kartu ringkasan RAB (form alasan inline);
+  alasan koreksi diisi di tempat perubahan dibuat (form ubah/tambah baris, data
+  dokumen, Ganti WI, form hapus di bawah baris, baris form
+  pensil di samping nilai yang mengubahnya menjadi input di sel itu), tanpa dialog dan bukan di satu panel global; "Ganti WI", "Approve ulang", tombol "Koreksi" pada tab Bahan/Upah/Alat dan
   detail analisa, badge "koreksi manual"/"dihitung ulang", halaman
   Riwayat & snapshot.
+
+## Batalkan koreksi (D-070)
+
+Versi REOPENED dapat dikembalikan ke snapshot approved terakhir lewat tombol
+"Batalkan koreksi" di kartu ringkasan RAB (form alasan inline).
+
+- Hasil pemulihan diverifikasi dengan checksum snapshot. Bila berbeda, tidak
+  ada yang berubah.
+- Baris tambahan selama koreksi dihapus.
+- Riwayat koreksi tetap ada.
+- Tidak perlu approve ulang.
+

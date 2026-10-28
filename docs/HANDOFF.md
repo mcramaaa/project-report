@@ -4,7 +4,69 @@ Dokumen ini tidak memuat password, token, atau isi `.env`.
 Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
 `docs/AI_ENGINEERING_STANDARDS.md` untuk standar kerja frontend/backend.
 
-## 0. Terbaru: sesi PC kantor (WSL), 2026-10-27 → lanjut di laptop
+## 0a. Sesi PC kantor (WSL), 2026-10-28
+
+### Yang berubah
+
+- **Pratinjau Excel**
+  - Cache 2 workbook terakhir di API.
+  - Tautan "Kembali ke RAB / review impor" (via `Referer`/`?from=`).
+  - Locator baris RAB membuka sel volume/uraian (`rab-parser@5`, impor baru
+    saja).
+- **Rekonsiliasi per item** tampil di dialog Harga + PPN dan Jumlah.
+- **Workspace RAB ditata ulang** (`docs/UI_UX.md`, "Penataan ulang
+  2026-10-28"):
+  - satu header (judul `RAB …` + badge status, tab di bawahnya);
+  - kartu ringkasan dokumen dan total;
+  - Pemeriksaan dan Approval berdampingan;
+  - daftar Analisa/Bahan/Alat/Upah dengan toolbar + pencarian, dan kartu
+    ringkas di HP.
+- **Koreksi tanpa dialog:**
+  - pensil di samping nilai mengubahnya menjadi input di sel itu (harga dasar,
+    koefisien, harga manual, overhead, pembulatan);
+  - alasan ada di sel tersebut;
+  - konfirmasi reopen/hapus memakai form inline.
+- **Satuan:** detail analisa menampilkan "dasar Rp X/satuan ÷ faktor →
+  /satuan", dengan tanda amber untuk satuan yang tidak konsisten. Konversi
+  tidak ditebak.
+- **Drag urutan** langsung tersimpan, juga saat REOPENED (tanpa alasan, tetap
+  diaudit; catatan di D-068).
+- **D-070 Batalkan koreksi:**
+  - `POST /rab-versions/:id/cancel-correction { reason }` mengembalikan versi
+    REOPENED persis ke snapshot approved terakhir (diverifikasi checksum),
+    lalu status APPROVED.
+  - Tombol ada di kartu ringkasan RAB.
+- **Penanda status** "koreksi manual / dihitung ulang / override / langsung"
+  menjadi ikon + tooltip (`components/info-hint.tsx`).
+- DTO detail analisa kini memuat `priceItem.unit`. Jalankan `npm run
+  build:packages` setelah pull.
+
+### Checks (2026-10-28)
+
+- API: typecheck dan lint bersih.
+  - `vitest` `src/rab` 33/33 dan `src/imports` lulus.
+  - Suite penuh sempat 4 gagal acak (error Prisma, berbeda tiap putaran) dan
+    lulus bila diulang.
+  - Test "baris approved tidak bisa dihapus" sesekali gagal karena cek waktu
+    pembuatan (`wasApproved`); sudah ada sebelum sesi ini.
+- Web: typecheck dan lint bersih. `next build` lulus di awal sesi, belum diulang
+  setelah perubahan UI (dev server hidup).
+- Playwright 1440/390 px: tanpa scroll horizontal dan tanpa error console.
+- Status data dev saat commit:
+  - RAB **Kontrak** SDSerangan sedang REOPENED (dikoreksi pengguna);
+  - MC-0 APPROVED.
+
+### Berikutnya
+
+1. `npm run build -w @laporan-proyek/web` (next build) setelah perubahan UI.
+2. Faktor konversi satuan dapat dikoreksi (pensil di "÷ 8"). Butuh perubahan
+   API dan aturan D-068, jadi tanyakan dulu.
+3. Edit RAB di HP: form ubah baris masih di dalam kotak tabel yang bisa
+   di-scroll.
+4. Lanjutkan daftar "Berikutnya" di §0 di bawah (seed sample-ahsp, impor MC-n,
+   audit §9 butir 5–8, M6).
+
+## 0. Sesi PC kantor (WSL), 2026-10-27 → lanjut di laptop
 
 ### Yang berubah di sesi ini
 
@@ -57,11 +119,14 @@ Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
 
 ### Berikutnya (urut prioritas)
 
-1. Jalankan `next build` web, dan seed `db:seed:sample-ahsp` dengan workbook
-   kantor untuk memverifikasi D-069 (kini membuat MC-1, bukan Addendum 1).
+Update 2026-10-28: `next build` web lulus; audit §9 butir 1–4 selesai
+(`rab-parser@5`). `storage/temp` di mesin ini kosong, jadi seed sample-ahsp
+belum bisa dijalankan.
+
+1. Seed `db:seed:sample-ahsp` dengan workbook kantor untuk memverifikasi D-069
+   (kini membuat MC-1, bukan Addendum 1).
 2. Uji impor MC bernomor selain 0 dengan workbook yang punya blok "MC - n".
-3. Sisa audit RAB di §9 (cache pratinjau Excel, tautan kembali, locator sel,
-   rekonsiliasi per item di dialog).
+3. Sisa audit RAB di §9 (butir 5–8; butir 4 selesai). UI koreksi: lihat §0a.
 4. Rapikan bagian dalam RAB editor & review impor ke komponen baru
    (`Section`, `PageTitle actions`); halaman lain sudah ikut token baru.
 5. M6 baseline per periode memakai D-069 (tanggal efektif MC), lalu M8–M9.
@@ -237,11 +302,14 @@ Jangan menyalin seluruh `~/.claude`, `~/.claude.json`, atau `~/.codex`, karena b
 
 RAB (sisa dari audit):
 
-1. Cache workbook untuk pratinjau Excel. Saat ini tiap buka membaca ulang file: workbook 00 ±0,37 dtk,
-   04 ±1,07 dtk, dan event loop API tertahan selama itu. Usulan: cache per dokumen yang dibatasi 1–2 file, atau worker thread.
-2. Pratinjau Excel belum punya tautan kembali ke versi RAB asal (hanya tombol Back browser).
-3. Locator item hanya menyimpan baris, sehingga pratinjau membuka kolom A, bukan sel volume/harga.
-4. Rekonsiliasi per item (D-063) tersimpan di `source_locator` item, tetapi belum tampil di dialog harga+PPN/jumlah grid RAB.
+1. ~~Cache workbook pratinjau Excel~~ selesai 2026-10-28: cache 2 file terakhir di proses API
+   (file 8 MB: 6 dtk → ±5 ms saat dibuka ulang). Pembukaan pertama masih menahan event loop; pindah ke worker bila sering.
+2. ~~Tautan kembali dari pratinjau Excel~~ selesai: memakai `Referer`/`?from=` (hanya path di proyek yang sama),
+   label "Kembali ke RAB" / "Kembali ke review impor".
+3. ~~Locator item hanya baris~~ selesai untuk impor baru (`rab-parser@5`): item membuka sel volume, judul membuka
+   sel uraian. Data impor lama tetap membuka kolom A sampai diimpor ulang.
+4. ~~Rekonsiliasi per item di dialog~~ selesai 2026-10-28: dialog Harga + PPN dan Jumlah item menampilkan nilai Excel
+   saat impor (cocok/berbeda, selisih, toleransi). Item tanpa data (impor lama) diberi catatan.
 5. Impor dengan `rab-parser@1` (data dev lama) tidak punya nilai cached item; rekonsiliasi per item "belum tersedia".
 6. Presisi 12 desimal (D-063) belum dimigrasi; isolasi paket dijaga backend, belum oleh constraint DB.
 7. Proyek lama `SDN2-SERANGAN-2026-AHSP`: 408 item MC-0 approved masih menautkan analisa Kontrak (legacy, tidak diubah).

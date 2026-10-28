@@ -846,6 +846,11 @@ yang ditugaskan. Menggantikan kunci approved permanen D-040 khusus alur ini.
   dengan audit. Faktor konversi dan override eksplisit tetap dihormati.
 - Urutan baseline mengikuti jenis/nomor versi, bukan tanggal approval ulang.
 - Koreksi identitas WI tersedia tanpa menghapus master/riwayat WI lama.
+- (2026-10-28) Mengubah urutan baris (drag) pada versi REOPENED tidak meminta
+  alasan dan tidak memberi tanda koreksi pada baris, karena tidak mengubah
+  nilai apa pun. Izin `rab.reopen` tetap diperlukan, perubahan tetap dicatat di
+  audit (`CORRECT_RAB_ITEM`, operation `REORDER`), dan versi tetap harus
+  di-approve ulang bersama koreksi lain.
 - Rancangan rinci, otorisasi, API/UI yang harus tersedia, dan skenario uji
   terdapat di `docs/RAB_CORRECTIONS.md`; implementasi harus mengikutinya.
 
@@ -878,6 +883,31 @@ Addendum n), D-058 dan D-065 (sebutan "MC0/Addendum" kini berarti MC).
   (`EXACT_DATE`, termasuk tengah minggu lewat segmen baseline harian) bila
   dokumen resmi mewajibkan. Minggu sebelum tanggal efektif tidak dihitung ulang.
   Disetujui pengguna 2026-10-27 (menutup OD-013); diterapkan saat baseline M6.
+
+
+## D-070 Batalkan Koreksi RAB (kembali ke snapshot approved)
+
+Tanggal: 2026-10-28. Melengkapi D-068 atas permintaan pengguna: koreksi yang
+tidak jadi dapat dibatalkan tanpa approve ulang.
+
+- `POST /rab-versions/:id/cancel-correction { reason }` hanya untuk versi
+  REOPENED. Izinnya sama dengan membuka koreksi (`rab.reopen`), dan alasan
+  wajib.
+- Versi dikembalikan persis ke snapshot approved terakhir:
+  - baris (nilai, induk, urutan, WI, provenance) dan data dokumen;
+  - harga dasar, analisa (overhead, pembulatan, nilai turunan), dan komponen
+    paket;
+  - status, total, serta approver dan waktu approval.
+- Baris yang ditambahkan selama koreksi dihapus. WI baru miliknya ikut
+  dihapus bila tidak dipakai di tempat lain.
+- Hasil pemulihan dihitung ulang menjadi payload snapshot dan dibandingkan
+  dengan checksum snapshot. Bila tidak sama persis, transaksi dibatalkan
+  (`409`) dan versi tetap REOPENED. Tidak ada pemulihan sebagian.
+- Tidak membuat snapshot baru. Event `CORRECT_*` tetap di riwayat, ditambah
+  `CANCEL_RAB_CORRECTION` (alasan, nomor snapshot, checksum, jumlah baris
+  dihapus).
+- D-068 tetap berlaku: versi yang pernah approved tidak dapat di-discard.
+  Pembatalan koreksi hanya kembali ke kondisi approved terakhir.
 
 ## Keputusan Terbuka
 

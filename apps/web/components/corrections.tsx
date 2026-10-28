@@ -7,8 +7,10 @@ import {
   type RabVersionDetailDto,
 } from '@laporan-proyek/shared';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Badge, Button, Field, Select } from './ui';
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { Icon } from './icon';
+import { InfoHint } from './info-hint';
+import { Alert, Button, Field, Select } from './ui';
 import { api, errorMessage } from '@/lib/api';
 import { formatDate } from '@/lib/project-fields';
 
@@ -23,80 +25,86 @@ export function CorrectionBadge({ locator }: { locator: unknown }) {
   const last = marks.at(-1);
   if (!last) return null;
   return (
-    <span className="ml-1" title={marks.map(correctionNote).join('\n')}>
-      <Badge tone={last.kind === 'MANUAL' ? 'red' : 'blue'}>
-        {last.kind === 'MANUAL' ? 'koreksi manual' : 'dihitung ulang'}
-      </Badge>
-    </span>
+    <InfoHint
+      label={last.kind === 'MANUAL' ? 'Koreksi manual' : 'Dihitung ulang'}
+      text={[
+        ...marks.map(
+          (m) =>
+            `${m.kind === 'MANUAL' ? 'Manual' : 'Dihitung ulang'} · ${m.by}, ${formatDate(m.at.slice(0, 10))}${m.reason ? `: ${m.reason}` : ''}`,
+        ),
+        'Bukan angka asli Excel; nilai sebelumnya ada di snapshot dan riwayat.',
+      ].join('\n')}
+      tone={last.kind === 'MANUAL' ? 'red' : 'blue'}
+      icon="edit"
+    />
   );
 }
 
-export function ReopenPanel({
-  label,
+/**
+ * Inline confirmation with a required reason, shown where the action starts (reopen, delete, reorder).
+ * Never a modal: the affected row or card stays visible next to it.
+ */
+export function InlineReasonForm({
+  id,
+  title,
+  description,
+  confirmLabel,
+  destructive,
   busy,
-  onReopen,
+  label = 'Alasan koreksi (wajib)',
+  onSubmit,
+  onCancel,
 }: {
-  label: string;
+  id: string;
+  title: string;
+  description: string;
+  label?: string;
+  confirmLabel: string;
+  destructive?: boolean;
   busy: boolean;
-  onReopen: (reason: string) => Promise<unknown>;
+  onSubmit: (reason: string) => void;
+  onCancel: () => void;
 }) {
+  const [error, setError] = useState<string>();
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const reason = String(new FormData(event.currentTarget).get('reason') ?? '');
-    if (
-      window.confirm(
-        `Buka kembali RAB ${label} untuk koreksi? Kondisi approved sekarang disimpan sebagai snapshot dan versi harus di-approve ulang.`,
-      )
-    )
-      void onReopen(reason);
+    const reason = String(new FormData(event.currentTarget).get('reason') ?? '').trim();
+    setError(reason ? undefined : 'Isi alasan terlebih dahulu.');
+    if (reason) onSubmit(reason);
   }
   return (
-    <details className="panel form-panel">
-      <summary className="font-semibold">Buka kembali untuk koreksi</summary>
-      <form onSubmit={submit} noValidate className="mt-3 space-y-2">
-        <p className="text-sm text-slate-600">
-          Versi yang sama dibuka kembali; snapshot approved, dokumen Excel asli, dan versi lain
-          tidak berubah. Selama koreksi, versi baru dan impor resmi ditahan.
-        </p>
-        <Field id="rab-reopen-reason" name="reason" label="Alasan koreksi (wajib)" required />
-        <Button type="submit" disabled={busy}>
-          Buka kembali
-        </Button>
-      </form>
-    </details>
+    <form
+      onSubmit={submit}
+      noValidate
+      className={`inline-confirm${destructive ? ' inline-confirm-danger' : ''}`}
+      aria-label={title}
+    >
+      <div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </div>
+      <div className="inline-confirm-fields">
+        <Field id={id} name="reason" label={label} required autoFocus error={error} />
+        <div className="row-actions">
+          <Button type="submit" variant={destructive ? 'danger' : 'primary'} disabled={busy}>
+            {confirmLabel}
+          </Button>
+          <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>
+            Batal
+          </Button>
+        </div>
+      </div>
+    </form>
   );
 }
 
-export function CorrectionPanel({
-  reason,
-  onReason,
-  canEdit,
-}: {
-  reason: string;
-  onReason: (reason: string) => void;
-  canEdit: boolean;
-}) {
+/** Reason input placed inside the form that makes the correction (D-068). */
+export function CorrectionReasonField({ id, error }: { id: string; error?: string }) {
   return (
-    <Alert kind="info">
-      <p>
-        Versi ini sedang <strong>dibuka untuk koreksi</strong>. Ubah nilai pada sumbernya: volume,
-        uraian, PPN, atau harga langsung di sini; harga dari analisa lewat tab Bahan/Upah/Alat dan
-        detail analisa. Setiap perubahan dicatat dengan alasan dan ditandai sebagai koreksi.
-      </p>
-      {canEdit ? (
-        <div className="mt-2 max-w-xl">
-          <Field
-            id="rab-correction-reason"
-            label="Alasan koreksi untuk perubahan berikutnya (wajib)"
-            value={reason}
-            required
-            onChange={(event) => onReason(event.target.value)}
-          />
-        </div>
-      ) : (
-        <p className="mt-1">Role Anda hanya dapat melihat versi ini selama koreksi.</p>
-      )}
-    </Alert>
+    <div className="max-w-xl">
+      <Field id={id} name="reason" label="Alasan koreksi (wajib)" required error={error} />
+      <p className="field-hint">Dicatat di riwayat dan pada nilai yang berubah.</p>
+    </div>
   );
 }
 
@@ -106,6 +114,7 @@ export function WorkItemForm({
   previousVersionId,
   row,
   usedWorkItemIds,
+  reopened,
   busy,
   onCancel,
   onSubmit,
@@ -114,9 +123,10 @@ export function WorkItemForm({
   previousVersionId: string;
   row: RabRowDto;
   usedWorkItemIds: Set<string>;
+  reopened: boolean;
   busy: boolean;
   onCancel: () => void;
-  onSubmit: (workItemId: string) => Promise<void>;
+  onSubmit: (workItemId: string, reason: string) => Promise<void>;
 }) {
   const [items, setItems] = useState<RabRowDto[]>();
   const [error, setError] = useState<string>();
@@ -136,11 +146,16 @@ export function WorkItemForm({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const id = String(new FormData(event.currentTarget).get('workItemId') ?? '');
-    if (id) void onSubmit(id);
+    const form = new FormData(event.currentTarget);
+    const id = String(form.get('workItemId') ?? '');
+    if (id) void onSubmit(id, String(form.get('reason') ?? '').trim());
   }
   return (
-    <form onSubmit={submit} className="panel form-panel space-y-3" aria-label="Koreksi identitas pekerjaan">
+    <form
+      onSubmit={submit}
+      className="panel form-panel space-y-3"
+      aria-label="Koreksi identitas pekerjaan"
+    >
       <h3 className="font-semibold">
         Ganti identitas pekerjaan · {row.description} ({row.workItemCode})
       </h3>
@@ -150,7 +165,12 @@ export function WorkItemForm({
         ditampilkan.
       </p>
       {error && <Alert>{error}</Alert>}
-      <Field id="wi-search" label="Cari pekerjaan" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <Field
+        id="wi-search"
+        label="Cari pekerjaan"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       <div>
         <label htmlFor="wi-select" className="field-label">
           Pekerjaan versi sebelumnya
@@ -163,8 +183,11 @@ export function WorkItemForm({
             </option>
           ))}
         </Select>
-        {items && options.length === 0 && <p className="field-hint">Tidak ada pekerjaan yang cocok dan belum dipakai.</p>}
+        {items && options.length === 0 && (
+          <p className="field-hint">Tidak ada pekerjaan yang cocok dan belum dipakai.</p>
+        )}
       </div>
+      {reopened && <CorrectionReasonField id="wi-reason" />}
       <div className="row-actions">
         <Button type="submit" disabled={busy || !options.length}>
           Simpan koreksi WI
@@ -177,92 +200,142 @@ export function WorkItemForm({
   );
 }
 
+/** The reason of the previous cell edit on this page, offered again (corrections usually share one). */
+let lastReason = '';
+
 /**
- * Small toggle form for one source edit (base price, coefficient, manual component price, overhead, rounding).
- * Only changed fields are sent; the API recalculates the dependents and refreshes the page data.
+ * In-place correction of one source value (D-068): a pencil next to the value turns it into an input in the
+ * same cell. Only that field is sent; the API recalculates the dependents and the page data is refreshed.
  */
-export function CorrectionForm({
+export function InlineEdit({
   path,
+  field,
+  value,
+  label,
   reopened,
-  title,
-  fields,
+  number,
+  hint,
+  editable = true,
+  children,
 }: {
+  /** False renders the value only (no pencil), e.g. an approved version. */
+  editable?: boolean;
   path: string;
+  field: string;
+  value: string;
+  label: string;
   reopened: boolean;
-  title: string;
-  fields: { name: string; label: string; value: string; hint?: string; number?: boolean }[];
+  /** Integer field (rounding scale); empty clears it. */
+  number?: boolean;
+  hint?: string;
+  children: ReactNode;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const id = useId();
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string[]>();
+  const [error, setError] = useState<string>();
+  const [reasonMissing, setReasonMissing] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const body: Record<string, string | number | null> = {};
-    for (const f of fields) {
-      const value = String(form.get(f.name) ?? '').trim();
-      if (value === f.value) continue;
-      body[f.name] = f.number ? (value === '' ? null : Number(value)) : value;
-    }
+    const next = String(form.get('value') ?? '').trim();
     const reason = String(form.get('reason') ?? '').trim();
-    if (reopened && !reason) {
-      setError(['Isi alasan koreksi terlebih dahulu sebelum menyimpan perubahan.']);
-      return;
-    }
-    if (reason) body.reason = reason;
+    if (next === value) return setEditing(false);
+    setReasonMissing(reopened && !reason);
+    if (reopened && !reason) return;
+    lastReason = reason;
     setBusy(true);
     setError(undefined);
     try {
-      await api('PATCH', path, body);
-      setOpen(false);
+      await api('PATCH', path, {
+        [field]: number ? (next === '' ? null : Number(next)) : next,
+        ...(reason ? { reason } : {}),
+      });
+      setEditing(false);
       router.refresh();
     } catch (err) {
       const details = (err as { details?: { errors?: { message: string }[] } }).details;
-      setError([errorMessage(err), ...(details?.errors ?? []).map((e) => e.message)]);
+      setError([errorMessage(err), ...(details?.errors ?? []).map((e) => e.message)].join(' '));
     } finally {
       setBusy(false);
     }
   }
 
-  if (!open)
+  if (!editable) return children;
+  if (!editing)
     return (
-      <Button variant="secondary" className="btn-compact" onClick={() => setOpen(true)}>
-        Koreksi
-      </Button>
+      <span className="inline-edit">
+        {children}
+        <button
+          type="button"
+          className="inline-edit-trigger"
+          aria-label={`Koreksi ${label}`}
+          title={`Koreksi ${label}`}
+          onClick={() => setEditing(true)}
+        >
+          <Icon name="edit" size={13} />
+        </button>
+      </span>
     );
   return (
-    <form onSubmit={submit} noValidate className="space-y-2 text-left" aria-label={title}>
-      {error && (
-        <Alert>
-          {error.map((m, i) => (
-            <span key={i} className="block">
-              {m}
-            </span>
-          ))}
-        </Alert>
-      )}
-      {fields.map((f) => (
-        <div key={f.name}>
-          <Field id={`${path}-${f.name}`} name={f.name} label={f.label} defaultValue={f.value} inputMode="decimal" />
-          {f.hint && <p className="field-hint">{f.hint}</p>}
-        </div>
-      ))}
-      <Field
-        id={`${path}-reason`}
-        name="reason"
-        label={reopened ? 'Alasan koreksi (wajib)' : 'Alasan (opsional pada draft)'}
-        required={reopened}
+    <form
+      className="inline-edit-form"
+      onSubmit={submit}
+      onKeyDown={(event) => event.key === 'Escape' && setEditing(false)}
+      noValidate
+      aria-label={`Koreksi ${label}`}
+    >
+      <input
+        name="value"
+        className="field"
+        defaultValue={value}
+        inputMode="decimal"
+        aria-label={label}
+        aria-describedby={`${id}-hint`}
+        title={`Sekarang ${value === '' ? '(kosong)' : value}${hint ? `. ${hint}` : ''}`}
+        autoFocus
+        onFocus={(event) => event.currentTarget.select()}
       />
-      <div className="row-actions">
-        <Button type="submit" className="btn-compact" disabled={busy}>
-          {busy ? 'Menyimpan…' : 'Simpan & hitung ulang'}
-        </Button>
-        <Button type="button" variant="secondary" disabled={busy} onClick={() => setOpen(false)}>
-          Batal
-        </Button>
-      </div>
+      <button
+        type="submit"
+        className="inline-edit-icon inline-edit-save"
+        disabled={busy}
+        aria-label="Simpan"
+        title="Simpan (Enter)"
+      >
+        <Icon name="check" size={14} />
+      </button>
+      <button
+        type="button"
+        className="inline-edit-icon"
+        disabled={busy}
+        aria-label="Batal"
+        title="Batal (Esc)"
+        onClick={() => (setEditing(false), setError(undefined))}
+      >
+        <Icon name="close" size={14} />
+      </button>
+      {reopened && (
+        <input
+          name="reason"
+          className="field inline-edit-reason"
+          defaultValue={lastReason}
+          placeholder={reasonMissing ? 'Isi alasan koreksi dulu' : 'Alasan koreksi (wajib)'}
+          aria-label={`Alasan koreksi ${label}`}
+          aria-invalid={reasonMissing}
+          autoFocus={reasonMissing}
+        />
+      )}
+      <span id={`${id}-hint`} className="sr-only">
+        Nilai sekarang {value === '' ? 'kosong' : value}. {hint}
+      </span>
+      {error && (
+        <p className="inline-edit-error" role="alert">
+          {error}
+        </p>
+      )}
     </form>
   );
 }

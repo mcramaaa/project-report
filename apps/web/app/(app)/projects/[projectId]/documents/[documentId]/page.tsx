@@ -1,5 +1,6 @@
 import type { ProjectDto, WorkbookPreviewDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
+import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { PageTitle, Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
@@ -9,11 +10,19 @@ export default async function DocumentPage({
   searchParams,
 }: {
   params: Promise<{ projectId: string; documentId: string }>;
-  searchParams: Promise<{ sheet?: string; cell?: string }>;
+  searchParams: Promise<{ sheet?: string; cell?: string; from?: string }>;
 }) {
   const [{ projectId, documentId }, query] = await Promise.all([params, searchParams]);
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const path = `${base}/documents/${encodeURIComponent(documentId)}`;
+  // The page that opened this preview (RAB, analysis, import review); kept while moving between cells.
+  const referer = (await headers()).get('referer');
+  const from = [
+    query.from,
+    referer && URL.canParse(referer)
+      ? new URL(referer).pathname + new URL(referer).search
+      : undefined,
+  ].find((p) => p?.startsWith(`${base}/`) && !p.startsWith(`${path}`) && !p.includes('//'));
   const qs = new URLSearchParams({
     ...(query.sheet ? { sheet: query.sheet } : {}),
     cell: query.cell ?? 'A1',
@@ -24,12 +33,19 @@ export default async function DocumentPage({
   ]);
   if (project.status === 404 || preview.status === 404) notFound();
   const d = preview.data;
-  const href = (sheet: string, cell: string) => `${path}?${new URLSearchParams({ sheet, cell })}`;
+  const href = (sheet: string, cell: string) =>
+    `${path}?${new URLSearchParams({ sheet, cell, ...(from ? { from } : {}) })}`;
   return (
     <>
       <PageTitle subtitle={project.data?.projectName}>Sumber dokumen</PageTitle>
-      <Link href={`${base}/imports`} className="page-back">
-        Dokumen &amp; impor
+      <Link href={from ?? `${base}/imports`} className="page-back">
+        {!from
+          ? 'Dokumen & impor'
+          : from.includes('/imports/')
+            ? 'Kembali ke review impor'
+            : /\/rab([/?]|$)/.test(from)
+              ? 'Kembali ke RAB'
+              : 'Kembali ke halaman asal'}
       </Link>
       {!d ? (
         <Alert>
@@ -54,6 +70,7 @@ export default async function DocumentPage({
               </a>
             </div>
             <form className="toolbar" action={path}>
+              {from && <input type="hidden" name="from" value={from} />}
               <div>
                 <label htmlFor="sheet" className="field-label">
                   Sheet

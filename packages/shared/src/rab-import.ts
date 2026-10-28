@@ -493,7 +493,7 @@ export interface AhspAnalysisDetailDto {
       coefficient: string;
       unitPrice: string;
       amount: string;
-      priceItem: { id: string; name: string; price: string } | null;
+      priceItem: { id: string; name: string; price: string; unit: string | null } | null;
       subAnalysis: {
         analysisId: string;
         versionId: string;

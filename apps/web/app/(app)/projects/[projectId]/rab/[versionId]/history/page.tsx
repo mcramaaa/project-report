@@ -13,6 +13,7 @@ const ACTION_LABEL: Record<string, string> = {
   APPROVE_RAB_VERSION: 'Approve',
   DISCARD_RAB_VERSION: 'Draft dibatalkan',
   REOPEN_RAB_VERSION: 'Dibuka kembali untuk koreksi',
+  CANCEL_RAB_CORRECTION: 'Koreksi dibatalkan (kembali ke snapshot approved)',
   CORRECT_RAB_ITEM: 'Koreksi baris RAB',
   CORRECT_RAB_WORK_ITEM: 'Koreksi identitas pekerjaan (WI)',
   CORRECT_PRICE_ITEM: 'Koreksi harga dasar',

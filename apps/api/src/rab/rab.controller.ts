@@ -197,6 +197,19 @@ export class RabController {
     return this.rab.reopen(auth.user, projectId, versionId, body.reason);
   }
 
+  /** D-070: back to the last approved snapshot; same right as opening the correction. */
+  @Post(':versionId/cancel-correction')
+  @RequireProjectPermission('rab.reopen')
+  @HttpCode(200)
+  cancelCorrection(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('versionId', uuid) versionId: string,
+    @Body(new ZodPipe(requiredReasonSchema)) body: RequiredReasonInput,
+  ) {
+    return this.rab.cancelCorrection(auth.user, projectId, versionId, body.reason);
+  }
+
   @Post(':versionId/discard')
   @RequireProjectPermission('rab.edit')
   @HttpCode(200)

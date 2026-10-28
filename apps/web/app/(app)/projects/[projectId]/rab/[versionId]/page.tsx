@@ -1,7 +1,7 @@
 import type { ProjectDto, RabVersionDetailDto } from '@laporan-proyek/shared';
 import { notFound } from 'next/navigation';
-import { RabBackLinks, RabTabs } from '@/components/rab-tabs';
-import { Alert, PageTitle } from '@/components/ui';
+import { RabWorkspaceHead } from '@/components/rab-tabs';
+import { Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { RabEditor } from './rab-editor';
 
@@ -21,28 +21,22 @@ export default async function RabVersionPage({
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
-        {project.projectName}
-      </PageTitle>
-      <RabBackLinks projectId={project.id} permissions={project.permissions} />
+      <RabWorkspaceHead
+        project={project}
+        versionId={versionId}
+        version={detail.data?.version}
+        active="recap"
+      />
       {detail.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat RAB.</Alert>
       ) : !detail.data ? (
         <Alert>Versi RAB tidak dapat dimuat.</Alert>
       ) : (
-        <>
-          <RabTabs
-            projectId={project.id}
-            versionId={versionId}
-            active="recap"
-            permissions={project.permissions}
-          />
-          <RabEditor
-            projectId={project.id}
-            initial={detail.data}
-            permissions={project.status === 'ACTIVE' ? project.permissions : []}
-          />
-        </>
+        <RabEditor
+          projectId={project.id}
+          initial={detail.data}
+          permissions={project.status === 'ACTIVE' ? project.permissions : []}
+        />
       )}
     </>
   );

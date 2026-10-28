@@ -5,8 +5,9 @@ import type {
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
-import { RabBackLinks, RabTabs } from '@/components/rab-tabs';
+import { Alert, Badge, EmptyState } from '@/components/ui';
+import { ListSearch } from '@/components/list-search';
+import { RabWorkspaceHead } from '@/components/rab-tabs';
 import { formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
@@ -30,133 +31,119 @@ export default async function AnalysesPage({
   ]);
   if (status === 404 || list.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
-  const versionLabel = versions.data?.find((v) => v.id === versionId)?.label ?? 'yang dipilih';
+  const version = versions.data?.find((v) => v.id === versionId);
+  const versionLabel = version?.label ?? 'yang dipilih';
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
-        {project.projectName}
-      </PageTitle>
-      <RabBackLinks projectId={project.id} permissions={project.permissions} />
-      <h2 className="mb-3 text-lg font-semibold">RAB {versionLabel}</h2>
-      <RabTabs
-        projectId={project.id}
+      <RabWorkspaceHead
+        project={project}
         versionId={versionId}
+        version={version}
         active="analyses"
-        permissions={project.permissions}
       />
-      <form
-        className="mb-4 flex flex-wrap items-end gap-2"
-        role="search"
-        action={`${rabBase}/analyses`}
-      >
-        <div className="w-full max-w-xs">
-          <label htmlFor="search" className="field-label">
-            Cari kode atau nama analisa
-          </label>
-          <input id="search" name="search" className="field" defaultValue={search} />
-        </div>
-        <button type="submit" className="btn btn-secondary">
-          Tampilkan
-        </button>
-      </form>
-      <p className="mb-4 text-sm text-slate-600">
-        Paket <strong>{versionLabel}</strong>: analisa, upah, bahan, alat, dan harga milik versi ini
-        saja; tidak dipakai bersama versi lain.
-      </p>
       {list?.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat analisa.</Alert>
       ) : !list?.data ? (
         <Alert>Daftar analisa tidak dapat dimuat.</Alert>
       ) : (
-        <div className="space-y-6">
-          <section className="space-y-3" aria-labelledby="analyses-title">
-            <h2 id="analyses-title" className="text-base font-semibold">
-              Analisa ({list.data.length})
-            </h2>
-            {list.data.length === 0 ? (
-              <EmptyState>
-                {search
-                  ? 'Tidak ada analisa yang cocok.'
-                  : 'Paket versi ini belum memiliki analisa.'}
-              </EmptyState>
-            ) : (
-              <div className="panel data-panel">
-                <table role="table" className="data-table">
-                  <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
-                    <tr role="row">
-                      <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                        Kode
-                      </th>
-                      <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                        Nama analisa
-                      </th>
-                      <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                        Harga satuan
-                      </th>
-                      <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                        Dipakai
-                      </th>
-                      <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                        Asal
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody role="rowgroup" className="divide-y divide-slate-100">
-                    {list.data.map((a) => (
-                      <tr role="row" key={a.id}>
-                        <td role="cell" data-label="Kode" className="px-3 py-2 font-mono">
-                          {a.code ?? '–'}
-                        </td>
-                        <td role="cell" data-label="Nama analisa" className="px-3 py-2">
-                          <Link className="link-button" href={`${rabBase}/analyses/${a.id}`}>
-                            {a.name}
-                          </Link>
-                          <span className="block text-xs text-slate-500">
-                            {a.latestVersion.components} komponen
-                          </span>
-                        </td>
-                        <td
-                          role="cell"
-                          data-label="Harga satuan"
-                          className="px-3 py-2 tabular-nums"
+        <section className="space-y-3" aria-labelledby="analyses-title">
+          <div className="list-toolbar">
+            <div className="list-toolbar-copy">
+              <h2 id="analyses-title">
+                Analisa <span className="list-count">{list.data.length}</span>
+              </h2>
+              <p>Analisa, harga, dan subanalisa milik paket {versionLabel} saja.</p>
+            </div>
+            <ListSearch
+              action={`${rabBase}/analyses`}
+              label="Cari kode atau nama analisa"
+              value={search}
+            />
+          </div>
+          {list.data.length === 0 ? (
+            <EmptyState>
+              {search ? 'Tidak ada analisa yang cocok.' : 'Paket versi ini belum memiliki analisa.'}
+            </EmptyState>
+          ) : (
+            <div className="panel data-panel">
+              <table role="table" className="data-table dense">
+                <thead role="rowgroup">
+                  <tr role="row">
+                    <th role="columnheader" scope="col">
+                      Kode
+                    </th>
+                    <th role="columnheader" scope="col">
+                      Nama analisa
+                    </th>
+                    <th role="columnheader" scope="col" className="num">
+                      Harga satuan (Rp)
+                    </th>
+                    <th role="columnheader" scope="col">
+                      Dipakai
+                    </th>
+                    <th role="columnheader" scope="col">
+                      Asal
+                    </th>
+                  </tr>
+                </thead>
+                <tbody role="rowgroup">
+                  {list.data.map((a) => (
+                    <tr role="row" key={a.id}>
+                      <td role="cell" data-label="Kode" className="font-mono whitespace-nowrap">
+                        {a.code ?? '–'}
+                      </td>
+                      <td role="cell" data-label="Nama analisa" className="cell-wide">
+                        <Link className="link-button" href={`${rabBase}/analyses/${a.id}`}>
+                          {a.name}
+                        </Link>
+                        <span className="cell-meta">{a.latestVersion.components} komponen</span>
+                      </td>
+                      <td
+                        role="cell"
+                        data-label="Harga satuan (Rp)"
+                        className="num whitespace-nowrap"
+                      >
+                        <Link
+                          className="source-value"
+                          href={`${rabBase}/analyses/${a.id}#analysis-version-${a.latestVersion.id}`}
+                          title="Buka perhitungan harga analisa"
                         >
-                          <Link
-                            className="source-value"
-                            href={`${rabBase}/analyses/${a.id}#analysis-version-${a.latestVersion.id}`}
-                            title="Buka perhitungan harga analisa"
+                          {formatRounded(a.latestVersion.price, 2)}
+                        </Link>
+                        <span className="cell-meta">per {a.unit ?? '–'}</span>
+                      </td>
+                      <td role="cell" data-label="Dipakai" className="whitespace-nowrap">
+                        {a.latestVersion.rabItems} item RAB
+                        {a.latestVersion.usedAsSub > 0 && (
+                          <span className="cell-meta">subanalisa {a.latestVersion.usedAsSub}×</span>
+                        )}
+                      </td>
+                      <td role="cell" data-label="Asal">
+                        {a.latestVersion.copiedFrom ? (
+                          <Badge tone="blue">
+                            Warisan {a.latestVersion.copiedFrom.rabVersion.label}
+                          </Badge>
+                        ) : (
+                          <Badge tone="green">Sumber baru</Badge>
+                        )}
+                        {a.latestVersion.source && (
+                          <span
+                            className="cell-meta cell-clamp"
+                            title={a.latestVersion.source.documents.join(', ')}
                           >
-                            Rp {formatRounded(a.latestVersion.price, 2)}/{a.unit}
-                          </Link>
-                        </td>
-                        <td role="cell" data-label="Dipakai" className="px-3 py-2 text-sm">
-                          {a.latestVersion.rabItems} item RAB
-                          {a.latestVersion.usedAsSub > 0 &&
-                            ` · subanalisa ${a.latestVersion.usedAsSub}×`}
-                        </td>
-                        <td role="cell" data-label="Asal" className="px-3 py-2 text-sm">
-                          {a.latestVersion.copiedFrom ? (
-                            <Badge tone="blue">
-                              Warisan {a.latestVersion.copiedFrom.rabVersion.label}
-                            </Badge>
-                          ) : (
-                            <Badge tone="green">Sumber baru</Badge>
-                          )}
-                          {a.latestVersion.source && (
-                            <span className="block text-xs text-slate-500">
-                              Impor {a.latestVersion.source.label}:{' '}
-                              {a.latestVersion.source.documents.join(', ')}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        </div>
+                            Impor {a.latestVersion.source.label}:{' '}
+                            {a.latestVersion.source.documents.join(', ')}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       )}
     </>
   );

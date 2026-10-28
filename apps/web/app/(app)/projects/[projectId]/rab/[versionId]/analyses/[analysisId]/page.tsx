@@ -2,21 +2,30 @@ import { SourceValue } from '@/components/source-value';
 import { workbookSource, rabRowHref } from '@/lib/value-source';
 import { Fragment } from 'react';
 import { Decimal } from '@laporan-proyek/calc';
-import { rabVersionLabel, type AhspAnalysisDetailDto, type ProjectDto, type RabVersionType } from '@laporan-proyek/shared';
+import {
+  rabVersionLabel,
+  type AhspAnalysisDetailDto,
+  type ProjectDto,
+  type RabVersionType,
+} from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { RabBackLinks, RabTabs } from '@/components/rab-tabs';
-import { Alert, Badge, PageTitle } from '@/components/ui';
+import { RabWorkspaceHead } from '@/components/rab-tabs';
+import { Alert, Badge } from '@/components/ui';
+import { Icon } from '@/components/icon';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 import { canChangeVersion } from '@/lib/rab-ui';
-import { CorrectionBadge, CorrectionForm } from '@/components/corrections';
+import { CorrectionBadge, InlineEdit } from '@/components/corrections';
 
 /** The route keeps the owning RAB explicit, including when following sub-analysis links. */
 /** No overhead in the price chain; a listed but unused overhead row (D-063) is named with its cells. */
 function noOverheadText(locator: unknown): string {
-  const u = (locator as { unusedOverhead?: { percent: string; overheadCell: string; directCell: string } } | null)
-    ?.unusedOverhead;
+  const u = (
+    locator as {
+      unusedOverhead?: { percent: string; overheadCell: string; directCell: string };
+    } | null
+  )?.unusedOverhead;
   return u
     ? `Overhead ${u.percent}% tercantum di ${u.overheadCell}, tetapi harga sumber merujuk biaya langsung D (${u.directCell}); tidak dipakai`
     : 'Tidak ada overhead pada sumber';
@@ -40,28 +49,20 @@ export default async function AnalysisPage({
   const a = detail.data;
   // D-068: source inputs of a DRAFT/REOPENED package are editable; derived values never are.
   const canCorrect =
-    project.status === 'ACTIVE' && !!a && canChangeVersion(a.rabVersion.status, project.permissions, 'ahsp.edit');
+    project.status === 'ACTIVE' &&
+    !!a &&
+    canChangeVersion(a.rabVersion.status, project.permissions, 'ahsp.edit');
   const reopened = a?.rabVersion.status === 'REOPENED';
   const versionPath = `${base}/rab-versions/${encodeURIComponent(version)}`;
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
-        {project.projectName}
-      </PageTitle>
-      <RabBackLinks projectId={project.id} permissions={project.permissions} />
-      <RabTabs
-        projectId={project.id}
+      <RabWorkspaceHead
+        project={project}
         versionId={version}
+        version={a?.rabVersion}
         active="analyses"
-        permissions={project.permissions}
       />
-      <Link
-        href={`${base}/rab/${encodeURIComponent(version)}/analyses`}
-        className="page-back"
-      >
-        Daftar analisa
-      </Link>
       {!a ? (
         <Alert>
           {detail.status === 403
@@ -69,14 +70,22 @@ export default async function AnalysisPage({
             : 'Analisa tidak dapat dimuat.'}
         </Alert>
       ) : (
-        <div className="space-y-6">
-          <h2 className="text-lg font-semibold">
-            <span className="font-mono">{a.code}</span> {a.name}
-          </h2>
-          <p className="text-sm text-slate-600">
-            Paket {a.rabVersion.label} — analisa, harga, dan subanalisa di bawah milik versi RAB ini
-            saja.
-          </p>
+        <div className="space-y-5">
+          <div className="list-toolbar">
+            <div className="list-toolbar-copy">
+              <Link
+                href={`${base}/rab/${encodeURIComponent(version)}/analyses`}
+                className="page-back"
+              >
+                <Icon name="arrow-left" size={14} />
+                Daftar analisa
+              </Link>
+              <h2>
+                <span className="font-mono">{a.code}</span> {a.name}
+              </h2>
+              <p>Analisa, harga, dan subanalisa di bawah milik paket {a.rabVersion.label} saja.</p>
+            </div>
+          </div>
           {a.versions.map((v) => (
             <section
               id={`analysis-version-${v.id}`}
@@ -112,17 +121,6 @@ export default async function AnalysisPage({
                     {v.priceList.period && ` · ${v.priceList.period}`}
                     <CorrectionBadge locator={v.sourceLocator} />
                   </p>
-                  {canCorrect && (
-                    <CorrectionForm
-                      path={`${versionPath}/analysis-versions/${v.id}`}
-                      reopened={reopened}
-                      title="Koreksi overhead dan pembulatan"
-                      fields={[
-                        { name: 'overheadPercent', label: 'Overhead & profit (%)', value: v.overheadPercent ?? '', hint: 'Kosongkan bila sumber tidak memakai overhead.' },
-                        { name: 'roundingScale', label: 'Pembulatan harga (desimal)', value: v.roundingScale === null ? '' : String(v.roundingScale), number: true, hint: 'Kosongkan bila sumber tidak membulatkan.' },
-                      ]}
-                    />
-                  )}
                 </div>
                 <dl className="calendar-preview">
                   <div>
@@ -217,10 +215,10 @@ export default async function AnalysisPage({
               >
                 <table className="analysis-sheet">
                   <caption>
-                    <span className="font-mono">{v.code}</span> {v.name}
-                    <span className="block text-sm font-normal">
-                      Satuan pekerjaan: {v.unit ?? '–'}
+                    <span className="sr-only">
+                      {v.code} {v.name}.{' '}
                     </span>
+                    Satuan pekerjaan: <strong>{v.unit ?? '–'}</strong>
                   </caption>
                   <thead>
                     <tr>
@@ -296,63 +294,77 @@ export default async function AnalysisPage({
                                   )
                                 )}
                                 <CorrectionBadge locator={c.sourceLocator} />
-                                {canCorrect && (
-                                  <CorrectionForm
-                                    path={`${versionPath}/components/${c.id}`}
-                                    reopened={reopened}
-                                    title={`Koreksi komponen ${c.description}`}
-                                    fields={[
-                                      { name: 'coefficient', label: 'Koefisien', value: c.coefficient },
-                                      // Linked prices follow the base price/sub-analysis; only a manual price is an input.
-                                      ...(c.priceItem || c.subAnalysis
-                                        ? []
-                                        : [{ name: 'unitPrice', label: 'Harga komponen manual (Rp)', value: c.unitPrice }]),
-                                    ]}
-                                  />
-                                )}
                               </td>
                               <td>{c.unit ?? '–'}</td>
                               <td className="num">
-                                <SourceValue
-                                  title={`Koefisien · ${c.description}`}
+                                <InlineEdit
+                                  editable={canCorrect}
+                                  path={`${versionPath}/components/${c.id}`}
+                                  field="coefficient"
                                   value={c.coefficient}
-                                  note="Koefisien yang tercatat pada komponen versi analisa ini."
-                                  sources={workbookSource(projectId, c.sourceLocator)}
+                                  label={`koefisien ${c.description}`}
+                                  reopened={reopened}
                                 >
-                                  {formatNumber(
-                                    new Decimal(c.coefficient).toFixed(
-                                      Math.max(4, new Decimal(c.coefficient).decimalPlaces()),
-                                    ),
-                                  )}
-                                </SourceValue>
+                                  <SourceValue
+                                    title={`Koefisien · ${c.description}`}
+                                    value={c.coefficient}
+                                    note="Koefisien yang tercatat pada komponen versi analisa ini."
+                                    sources={workbookSource(projectId, c.sourceLocator)}
+                                  >
+                                    {formatNumber(
+                                      new Decimal(c.coefficient).toFixed(
+                                        Math.max(4, new Decimal(c.coefficient).decimalPlaces()),
+                                      ),
+                                    )}
+                                  </SourceValue>
+                                </InlineEdit>
                               </td>
                               <td className="num" title={c.unitPrice}>
-                                <SourceValue
-                                  title={`Harga satuan · ${c.description}`}
+                                <InlineEdit
+                                  // Linked prices follow the base price/sub-analysis; only a manual price is an input.
+                                  editable={canCorrect && !c.priceItem && !c.subAnalysis}
+                                  path={`${versionPath}/components/${c.id}`}
+                                  field="unitPrice"
                                   value={c.unitPrice}
-                                  note="Harga efektif komponen mengikuti rumus sumber; bisa berbeda dari harga dasar bila ada faktor konversi (misalnya sewa per hari menjadi per jam)."
-                                  sources={[
-                                    ...(c.subAnalysis
-                                      ? [
-                                          {
-                                            label: `Subanalisa ${c.subAnalysis.code ?? c.subAnalysis.name} · ${c.subAnalysis.basis === 'EXACT' ? 'eksak' : 'dibulatkan'}`,
-                                            href: `${base}/rab/${version}/analyses/${c.subAnalysis.analysisId}#analysis-version-${c.subAnalysis.versionId}`,
-                                          },
-                                        ]
-                                      : c.priceItem
+                                  label={`harga komponen ${c.description}`}
+                                  reopened={reopened}
+                                >
+                                  <SourceValue
+                                    title={`Harga satuan · ${c.description}`}
+                                    value={c.unitPrice}
+                                    note="Harga efektif komponen mengikuti rumus sumber; bisa berbeda dari harga dasar bila ada faktor konversi (misalnya sewa per hari menjadi per jam)."
+                                    sources={[
+                                      ...(c.subAnalysis
                                         ? [
                                             {
-                                              label: `Harga dasar ${c.priceItem.name}`,
-                                              value: c.priceItem.price,
-                                              href: `${base}/rab/${version}/${{ LABOR: 'labor', MATERIAL: 'materials', EQUIPMENT: 'equipment' }[c.category]}#price-${c.priceItem.id}`,
+                                              label: `Subanalisa ${c.subAnalysis.code ?? c.subAnalysis.name} · ${c.subAnalysis.basis === 'EXACT' ? 'eksak' : 'dibulatkan'}`,
+                                              href: `${base}/rab/${version}/analyses/${c.subAnalysis.analysisId}#analysis-version-${c.subAnalysis.versionId}`,
                                             },
                                           ]
-                                        : []),
-                                    ...workbookSource(projectId, c.sourceLocator),
-                                  ]}
-                                >
-                                  {formatRounded(c.unitPrice, 2)}
-                                </SourceValue>
+                                        : c.priceItem
+                                          ? [
+                                              {
+                                                label: `Harga dasar ${c.priceItem.name}`,
+                                                value: c.priceItem.price,
+                                                href: `${base}/rab/${version}/${{ LABOR: 'labor', MATERIAL: 'materials', EQUIPMENT: 'equipment' }[c.category]}#price-${c.priceItem.id}`,
+                                              },
+                                            ]
+                                          : []),
+                                      ...workbookSource(projectId, c.sourceLocator),
+                                    ]}
+                                  >
+                                    {formatRounded(c.unitPrice, 2)}
+                                  </SourceValue>
+                                </InlineEdit>
+                                {c.priceItem && (
+                                  <PriceConversion
+                                    href={`${base}/rab/${version}/${{ LABOR: 'labor', MATERIAL: 'materials', EQUIPMENT: 'equipment' }[c.category]}#price-${c.priceItem.id}`}
+                                    price={c.priceItem.price}
+                                    priceUnit={c.priceItem.unit}
+                                    unit={c.unit}
+                                    locator={c.sourceLocator}
+                                  />
+                                )}
                               </td>
                               <td className="num" title={c.amount}>
                                 <SourceValue
@@ -440,16 +452,26 @@ export default async function AnalysisPage({
                       <th scope="row">E.</th>
                       <td>Overhead &amp; Profit</td>
                       <td colSpan={3} className="num">
-                        <SourceValue
-                          title="Persentase Overhead & Profit"
-                          value={v.overheadPercent}
-                          note="Persentase per versi analisa sesuai dokumen; bukan tarif global."
-                          sources={workbookSource(projectId, v.sourceLocator)}
+                        <InlineEdit
+                          editable={canCorrect}
+                          path={`${versionPath}/analysis-versions/${v.id}`}
+                          field="overheadPercent"
+                          value={v.overheadPercent ?? ''}
+                          label="persentase overhead & profit"
+                          reopened={reopened}
+                          hint="Kosongkan bila sumber tidak memakai overhead"
                         >
-                          {v.overheadPercent === null
-                            ? noOverheadText(v.sourceLocator)
-                            : `${formatNumber(v.overheadPercent)} % × D`}
-                        </SourceValue>
+                          <SourceValue
+                            title="Persentase Overhead & Profit"
+                            value={v.overheadPercent}
+                            note="Persentase per versi analisa sesuai dokumen; bukan tarif global."
+                            sources={workbookSource(projectId, v.sourceLocator)}
+                          >
+                            {v.overheadPercent === null
+                              ? noOverheadText(v.sourceLocator)
+                              : `${formatNumber(v.overheadPercent)} % × D`}
+                          </SourceValue>
+                        </InlineEdit>
                       </td>
                       <td className="num" title={v.overheadAmount}>
                         <SourceValue
@@ -502,10 +524,21 @@ export default async function AnalysisPage({
                     <tr className="analysis-final">
                       <td></td>
                       <td colSpan={4}>
-                        Harga satuan yang dipakai
-                        {v.roundingScale !== null
-                          ? ` · pembulatan ${v.roundingScale} desimal`
-                          : ' · tanpa pembulatan'}
+                        Harga satuan yang dipakai ·{' '}
+                        <InlineEdit
+                          editable={canCorrect}
+                          path={`${versionPath}/analysis-versions/${v.id}`}
+                          field="roundingScale"
+                          value={v.roundingScale === null ? '' : String(v.roundingScale)}
+                          label="pembulatan harga (desimal)"
+                          reopened={reopened}
+                          number
+                          hint="Jumlah desimal; kosongkan bila sumber tidak membulatkan"
+                        >
+                          {v.roundingScale !== null
+                            ? `pembulatan ${v.roundingScale} desimal`
+                            : 'tanpa pembulatan'}
+                        </InlineEdit>
                       </td>
                       <td className="num">
                         <SourceValue
@@ -554,7 +587,10 @@ export default async function AnalysisPage({
                         className="link-button"
                         href={rabRowHref(projectId, i.rabVersion.id, i.id)}
                       >
-                        {rabVersionLabel({ versionType: i.rabVersion.versionType as RabVersionType, revisionNumber: i.rabVersion.revisionNumber })}
+                        {rabVersionLabel({
+                          versionType: i.rabVersion.versionType as RabVersionType,
+                          revisionNumber: i.rabVersion.revisionNumber,
+                        })}
                       </Link>{' '}
                       — {i.displayNumber ? `${i.displayNumber}. ` : ''}
                       {i.description}{' '}
@@ -568,5 +604,57 @@ export default async function AnalysisPage({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Base price → component price. Analyses often price a component in another unit than the price list
+ * (sewa per hari → per jam); the conversion the source applied (`source_locator.factor`) is shown, and a
+ * unit difference without one is flagged instead of guessed.
+ */
+function PriceConversion({
+  href,
+  price,
+  priceUnit,
+  unit,
+  locator,
+}: {
+  href: string;
+  price: string;
+  priceUnit: string | null;
+  unit: string | null;
+  locator: unknown;
+}) {
+  const factor = (locator as { factor?: { op?: string; value?: string } } | null)?.factor;
+  const norm = (u: string | null) => (u ?? '').toLowerCase().replace(/[\s.]/g, '');
+  const differs = Boolean(priceUnit && unit && norm(priceUnit) !== norm(unit));
+  return (
+    <span className="price-conversion">
+      <Link href={href} title="Buka harga dasar (dapat dikoreksi di sana)">
+        dasar {formatRounded(price, 2)}/{priceUnit ?? '–'}
+      </Link>
+      {factor?.value && (
+        <span>
+          {' '}
+          {factor.op === '/' ? '÷' : '×'} {factor.value} → /{unit ?? '–'}
+        </span>
+      )}
+      {differs && !factor?.value && (
+        <span
+          className="price-conversion-warn"
+          title="Satuan harga dasar berbeda dengan satuan komponen, dan sumber tidak mencantumkan konversi; harga dipakai apa adanya."
+        >
+          satuan beda, tanpa konversi
+        </span>
+      )}
+      {!differs && factor?.value && (
+        <span
+          className="price-conversion-warn"
+          title="Sumber membagi/mengalikan harga dasar walau satuannya tertulis sama; kemungkinan satuan harga dasar sebenarnya berbeda (misalnya per batang 4 m)."
+        >
+          satuan tertulis sama
+        </span>
+      )}
+    </span>
   );
 }

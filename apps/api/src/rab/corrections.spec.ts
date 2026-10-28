@@ -30,7 +30,7 @@ async function ok(res: Promise<ApiResponse>, status = 200) {
   return r.body;
 }
 
-type Row = { id: string; description: string; unitPrice: string; volume: string; workItemId: string; workItemCode: string; analysisUnitPrice: string | null; sourceLocator: unknown };
+type Row = { id: string; description: string; unitPrice: string; volume: string; workItemId: string; workItemCode: string; analysisUnitPrice: string | null; sourceLocator: unknown; parentId: string | null };
 const row = (detail: { rows: Row[] }, description: string) => detail.rows.find((r) => r.description === description)!;
 
 /**
@@ -355,5 +355,56 @@ describe('corrections from the source (D-068)', () => {
     const added = await ok(admin.post(`${base}/${v.id}/items`, { rowType: 'ITEM', parentId: detail.rows[0].id, description: 'Baru', volume: '1', unit: 'ls', unitPrice: '1', taxPercent: '11', reason: 'Item tertinggal' }), 201);
     expect(row(added, 'Baru').sourceLocator).toMatchObject({ corrections: [{ kind: 'MANUAL', reason: 'Item tertinggal' }] });
     await ok(admin.delete(`${base}/${v.id}/items/${row(added, 'Baru').id}`, { reason: 'batal' }));
+  });
+
+  it('cancelling a correction restores the last approved snapshot exactly and keeps the history (D-070)', async () => {
+    const v = await packagedContract();
+    const [first] = (await ok(admin.get(`${base}/${v.id}/history`))).snapshots;
+    const approved = (await admin.get(`${base}/${v.id}`)).body;
+    expect((await admin.post(`${base}/${v.id}/cancel-correction`, { reason: 'Belum dibuka' })).status).toBe(409); // not reopened
+
+    await ok(reopen(v.id));
+    const open = (await admin.get(`${base}/${v.id}`)).body;
+    const parentId = row(open, 'Pekerjaan A').parentId;
+    const siblings = open.rows.filter((r: Row) => r.parentId === parentId).map((r: Row) => r.id);
+    await ok(admin.post(`${base}/${v.id}/items/reorder`, { parentId, itemIds: [...siblings].reverse() }));
+    await ok(admin.patch(`${base}/${v.id}/items/${row(open, 'Pekerjaan C').id}`, { volume: '3', description: 'Pekerjaan C ubah', reason: 'Ukur ulang' }));
+    await ok(admin.patch(`${base}/${v.id}`, { documentNumber: 'BARU/1', documentDate: '2026-11-01', reason: 'Nomor salah' }));
+    await ok(admin.patch(`${base}/${v.id}/price-items/${v.labor}`, { price: '110000', reason: 'Upah sesuai SK' }));
+    await ok(admin.patch(`${base}/${v.id}/components/${v.components.rent}`, { coefficient: '0.6', reason: 'Koefisien' }));
+    await ok(admin.patch(`${base}/${v.id}/analysis-versions/${v.main}`, { overheadPercent: '', reason: 'Tanpa overhead' }));
+    const added = await ok(admin.post(`${base}/${v.id}/items`, { rowType: 'ITEM', parentId, description: 'Baru', volume: '1', unit: 'ls', unitPrice: '1', taxPercent: '11', reason: 'Item tertinggal' }), 201);
+    const addedWorkItem = row(added, 'Baru').workItemId;
+
+    expect((await admin.post(`${base}/${v.id}/cancel-correction`, {})).status).toBe(400); // reason required
+    const restored = await ok(admin.post(`${base}/${v.id}/cancel-correction`, { reason: 'Tidak jadi dikoreksi' }));
+    expect(restored.version).toMatchObject({ status: 'APPROVED', documentNumber: approved.version.documentNumber, documentDate: approved.version.documentDate });
+    expect(restored.rows).toEqual(approved.rows);
+    expect(restored.totals).toEqual(approved.totals);
+    expect(await t.prisma.workItem.count({ where: { id: addedWorkItem } })).toBe(0);
+    expect((await t.prisma.priceItem.findUniqueOrThrow({ where: { id: v.labor } })).price.toString()).toBe('100000');
+    expect((await t.prisma.ahspAnalysisVersion.findUniqueOrThrow({ where: { id: v.main } })).overheadPercent?.toString()).toBe('10');
+
+    // No new snapshot; the corrections and the cancellation stay in the history.
+    const history = await ok(admin.get(`${base}/${v.id}/history`));
+    expect(history.snapshots.map((s: { id: string }) => s.id)).toEqual([first.id]);
+    expect(history.events.at(-1)).toMatchObject({ action: 'CANCEL_RAB_CORRECTION', reason: 'Tidak jadi dikoreksi', newValue: { restoredSnapshot: 1, removedRows: 1 } });
+    // Reopening again starts from the restored state.
+    await ok(reopen(v.id));
+    expect((await admin.get(`${base}/${v.id}`)).body.rows).toEqual(approved.rows);
+  });
+
+  it('reorders a reopened version without a reason: audited, no correction mark, still needs rab.reopen', async () => {
+    const v = await packagedContract();
+    await ok(reopen(v.id));
+    const detail = (await admin.get(`${base}/${v.id}`)).body;
+    const parentId = row(detail, 'Pekerjaan A').parentId;
+    const siblings = detail.rows.filter((r: { parentId: string | null }) => r.parentId === parentId).map((r: { id: string }) => r.id);
+    const reordered = await ok(admin.post(`${base}/${v.id}/items/reorder`, { parentId, itemIds: [...siblings].reverse() }));
+    const after = reordered.rows.filter((r: { parentId: string | null }) => r.parentId === parentId);
+    expect(after.map((r: { id: string }) => r.id)).toEqual([...siblings].reverse());
+    expect(after.every((r: { sourceLocator: { corrections?: unknown } | null }) => !r.sourceLocator?.corrections)).toBe(true);
+    const audit = await t.prisma.auditLog.findFirst({ where: { entityId: v.id, action: 'CORRECT_RAB_ITEM' }, orderBy: { createdAt: 'desc' } });
+    expect(audit?.newValue).toMatchObject({ operation: 'REORDER' });
   });
 });

@@ -155,6 +155,7 @@ POST  /projects/:projectId/rab-versions/:versionId/items/reorder     { parentId,
 POST  /projects/:projectId/rab-versions/:versionId/approve      { acknowledgeWarnings }          rab.approve
 POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }                       rab.edit (DRAFT saja; REOPENED 409)
 POST  /projects/:projectId/rab-versions/:versionId/reopen       { reason }                       rab.reopen (D-068)
+POST  /projects/:projectId/rab-versions/:versionId/cancel-correction { reason }                  rab.reopen (D-070)
 GET   /projects/:projectId/rab-versions/:versionId/history      -> { snapshots, events }         rab.read + ahsp.read
 GET   /projects/:projectId/rab-versions/:versionId/snapshots/:snapshotId -> { …, checksumValid, payload } rab.read + ahsp.read
 POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/work-item  { workItemId, reason? }  rab.edit
@@ -166,7 +167,8 @@ POST  /projects/:projectId/rab-versions/:versionId/activate     (Milestone 6)
 - `totals`: `{ beforeTax, tax, value, realCost, rounded }` — `realCost` = ROUND(value, 2), `rounded` = DIBULATKAN (dipotong ke rupiah)
 - MC menyalin versi approved terakhir menurut urutan domain Kontrak → MC-0 → MC-1 … MC-100 (D-069; `revisionNumber` opsional 0–100, boleh meloncat asal lebih besar dari MC terakhir; kosong = nomor terkecil yang diizinkan) (bukan waktu approval); urutan salah atau masih ada DRAFT/REOPENED: `409`
 - versi bukan DRAFT/REOPENED atau proyek CLOSED: `409` untuk semua perubahan
-- REOPENED (D-068): setiap perubahan (termasuk PATCH/POST/DELETE baris, move/reorder, data dokumen) butuh `rab.reopen` selain izin endpoint (`403`) dan `reason` di body (`400`); dicatat `CORRECT_*` dengan before/after dan ditandai di `sourceLocator.corrections`. Baris yang sudah ada saat approval terakhir tidak dapat dihapus (`409`). Harga item ANALYSIS tetap dari analisa (`409`)
+- REOPENED (D-068): setiap perubahan (termasuk PATCH/POST/DELETE baris, move/reorder, data dokumen) butuh `rab.reopen` selain izin endpoint (`403`) dan `reason` di body (`400`); dicatat `CORRECT_*` dengan before/after dan ditandai di `sourceLocator.corrections`. Baris yang sudah ada saat approval terakhir tidak dapat dihapus (`409`). Harga item ANALYSIS tetap dari analisa (`409`). Reorder tidak butuh `reason` dan tidak menandai baris (D-068, 2026-10-28)
+- `cancel-correction` (D-070): hanya REOPENED (`409`), memulihkan snapshot approved terakhir secara persis (diverifikasi checksum, `409` bila tidak sama), status kembali APPROVED tanpa snapshot baru; audit `CANCEL_RAB_CORRECTION`
 - approve versi REOPENED = approve ulang dengan seluruh validasi; setiap approval menambah snapshot (urutan, payload JSON kanonis, SHA-256). Reopen versi approved lama tanpa snapshot membekukan kondisinya lebih dulu
 - koreksi WI: `workItemId` harus item versi sebelumnya proyek ini (`400`), tidak dipakai item lain versi ini (`409`); WI lama tidak dihapus
 - baris: SECTION hanya di tingkat teratas; induk bukan ITEM dan dari versi yang sama: `400`; menghapus baris yang punya sub-baris: `409`

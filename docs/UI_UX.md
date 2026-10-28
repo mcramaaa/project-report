@@ -430,6 +430,8 @@ biasa; tombol ubah dan navigasi normal tetap dipertahankan.
   Hapus tetap berwarna danger dan meminta konfirmasi.
 - Saat versi editable, pegangan `☰` di kiri nomor baris dapat diseret untuk
   mengurutkan saudara dalam kelompok/induk yang sama. Drop ditandai garis biru.
+  Urutan langsung tersimpan saat dilepas, juga pada versi yang sedang
+  dikoreksi (tanpa alasan, tanpa tombol simpan).
   Perpindahan lintas induk tetap dilakukan lewat `Ubah`; urutan baris diubah
   dengan drag melalui pegangan tersebut.
 - Tombol `Koreksi` pada harga dasar dan komponen analisa memakai gaya sekunder
@@ -437,3 +439,68 @@ biasa; tombol ubah dan navigasi normal tetap dipertahankan.
   dan pesan validasi tampil di dekat form.
 - Pada layar kecil toolbar membungkus dengan urutan yang sama, tombol utama
   memenuhi lebar area, dan aksi baris tidak menutupi uraian pekerjaan.
+
+### Penataan ulang 2026-10-28 (Rekap, Analisa, Bahan, Alat, Upah)
+
+- **Satu header untuk semua tab:** judul halaman adalah versi (`RAB MC-0` +
+  badge status; "Dibuka untuk koreksi" berwarna amber). Kode dan nama proyek
+  tampil sebagai konteks di atasnya, dan "Semua versi RAB" menjadi tautan
+  kembali. Tab langsung di bawah judul.
+- **Rekap:** kartu ringkasan dokumen berisi nomor/tanggal dokumen (berupa form
+  saat draft/koreksi), tombol "Riwayat & snapshot" dan "Buka untuk koreksi" di
+  kanan, serta tiga total dalam satu strip.
+  - Pemeriksaan dan Approval berdampingan; daftar peringatan dilipat bila lebih
+    dari 3.
+  - Petunjuk "klik nilai bergaris" pindah ke toolbar.
+  - Kolom aksi `⋯` menempel di kanan tabel (desktop).
+- **Daftar Analisa/Bahan/Alat/Upah:** judul + jumlah + keterangan paket di kiri,
+  pencarian (ikon, tombol "Cari") di kanan.
+  - Angka rata kanan, satuan analisa sebagai "per m3".
+  - Sumber Excel menjadi tautan pratinjau.
+  - Di HP baris menjadi kartu dua kolom (nama penuh di atas, harga di kanan),
+    sekitar separuh tinggi kartu lama.
+- **Koreksi langsung di sel (tanpa dialog untuk input):**
+  - Nilai sumber yang boleh dikoreksi diberi ikon pensil di sampingnya:
+    - harga dasar Bahan/Alat/Upah;
+    - koefisien komponen dan harga komponen manual;
+    - persentase overhead (baris E) dan pembulatan (baris terakhir).
+  - Klik pensil mengubah nilai itu menjadi input di kolomnya sendiri, dengan
+    tombol ikon ✓ (Enter) dan ✕ (Esc) di baris yang sama, setinggi 28 px.
+  - Saat REOPENED ada satu baris tambahan untuk alasan, berisi alasan terakhir
+    di halaman itu. Alasan kosong ditandai dengan border merah, tanpa baris
+    pesan.
+  - "Sekarang …" ada di tooltip input dan dibacakan pembaca layar.
+  - Baris tabel hanya bertambah ±10–30 px saat diedit; draft tidak bertambah.
+  - Harga komponen yang tertaut harga dasar tidak diedit di analisa. Di bawah
+    harganya tampil "dasar Rp X/satuan", ditambah "÷ 8 → /OJ" bila sumber
+    memakai faktor. Tautannya menuju harga dasar, yang punya pensil sendiri.
+  - Tanda amber untuk satuan yang tidak konsisten:
+    - "satuan beda, tanpa konversi": satuan harga dasar ≠ satuan komponen dan
+      sumber tidak membagi/mengalikan;
+    - "satuan tertulis sama": satuan sama tetapi sumber membagi/mengalikan,
+      kemungkinan satuan harga dasar sebenarnya lain (per batang 4 m).
+    - Konversi tidak pernah ditebak dari nama satuan.
+  - Konfirmasi yang butuh alasan juga inline:
+    - "Buka untuk koreksi" di dalam kartu ringkasan.
+    - Hapus baris di bawah baris yang dihapus.
+    - Override harga sumber di review impor, di bawah tombolnya.
+  - Dialog hanya dipakai untuk melihat (asal nilai, menu akun, navigasi HP).
+  - Form ubah baris RAB tetap di baris itu dan menggulir dirinya agar tombol
+    Simpan terlihat.
+  - Harga yang mengikuti analisa ditampilkan sebagai field hanya-baca (garis
+    putus-putus).
+
+### Penanda status nilai (2026-10-28)
+
+- Badge teks "koreksi manual", "dihitung ulang", "override", dan "langsung"
+  diganti ikon bulat kecil di samping nilai:
+  - pensil merah: koreksi manual;
+  - pensil biru: dihitung ulang dari koreksi sumber;
+  - info amber: harga override atau harga langsung.
+- Penjelasannya muncul sebagai tooltip saat kursor diarahkan atau saat difokus
+  dengan keyboard (Esc menutup).
+  - Isinya satu baris per koreksi (jenis, oleh siapa, tanggal, alasan),
+    ditambah satu catatan "bukan angka asli Excel".
+  - Tooltip digambar di lapisan tetap sehingga tidak terpotong tabel yang
+    di-scroll.
+  - Pembaca layar membaca teks yang sama.

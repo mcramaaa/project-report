@@ -124,7 +124,7 @@ export class AhspService {
             components: {
               orderBy: { sortOrder: 'asc' },
               include: {
-                priceItem: { select: { id: true, name: true, price: true } },
+                priceItem: { select: { id: true, name: true, price: true, unit: true } },
                 subAnalysisVersion: {
                   select: { id: true, analysisId: true, code: true, name: true },
                 },
@@ -181,7 +181,7 @@ export class AhspService {
           unitPrice: num(c.unitPrice)!,
           amount: num(c.amount)!,
           priceItem: c.priceItem
-            ? { id: c.priceItem.id, name: c.priceItem.name, price: num(c.priceItem.price)! }
+            ? { id: c.priceItem.id, name: c.priceItem.name, price: num(c.priceItem.price)!, unit: c.priceItem.unit }
             : null,
           subAnalysis: c.subAnalysisVersion
             ? {

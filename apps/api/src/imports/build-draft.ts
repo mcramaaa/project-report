@@ -12,12 +12,12 @@ import type {
 } from '@laporan-proyek/shared';
 import { GUIDE_VERSION } from './guide/rab-import-guide';
 import { analysisHeaderIn, blockColumns, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock } from './workbook/analysis-block';
-import { formatAddress, type FormulaNode } from './workbook/formula';
+import { columnLetters, formatAddress, type FormulaNode } from './workbook/formula';
 import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-sheet';
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
 import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
-export const PARSER_VERSION = 'rab-parser@4'; // @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069)
+export const PARSER_VERSION = 'rab-parser@5'; // @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
 
 export interface DraftSource {
   model: WorkbookModel;
@@ -199,7 +199,13 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
         displayNumber: r.displayNumber,
         description: r.description,
         groupPath: pathOf(r.parentRow),
-        locator: { documentId: src.documentId, sheet: sheet.sheet, row: r.row },
+        // Items open on their volume cell, headings on their description (source preview, audit §9.3).
+        locator: {
+          documentId: src.documentId,
+          sheet: sheet.sheet,
+          row: r.row,
+          cell: `${columnLetters(r.rowType === 'ITEM' ? sheet.columns.volume : sheet.columns.description)}${r.row}`,
+        },
         volume: r.volume,
         unit: r.unit,
         taxPercent: r.taxPercent,

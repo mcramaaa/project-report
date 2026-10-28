@@ -38,7 +38,7 @@ import {
 import { writeAudit } from '../audit/audit';
 import { AccessService } from '../auth/access.service';
 import type { AuthUser } from '../auth/auth-context';
-import type { Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { copyAnalysesIntoPackage, ensurePackage } from '../ahsp/package';
 import { PrismaService } from '../prisma/prisma.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
@@ -685,7 +685,8 @@ export class RabService {
     input: ReorderRabItemsInput,
   ): Promise<RabVersionDetailDto> {
     await this.prisma.$transaction(async (tx) => {
-      const version = await this.lockEditable(tx, actor, projectId, versionId, input.reason);
+      // Order changes no value, so a reopened version takes it without a reason (still rab.reopen + audited).
+      const version = await this.lockEditable(tx, actor, projectId, versionId, input.reason, false);
       const siblings = await tx.rabVersionItem.findMany({
         where: { rabVersionId: versionId, parentItemId: input.parentId },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
@@ -704,20 +705,7 @@ export class RabService {
         const current = siblings.find((item) => item.id === id)!;
         const nextOrder = sortOrders[index]!;
         if (current.sortOrder !== nextOrder) {
-          await tx.rabVersionItem.update({
-            where: { id },
-            data: {
-              sortOrder: nextOrder,
-              ...(version.status === 'REOPENED'
-                ? {
-                    sourceLocator: withCorrection(
-                      current.sourceLocator,
-                      this.mark(actor, input.reason, { sortOrder: [current.sortOrder, nextOrder] }),
-                    ),
-                  }
-                : {}),
-            },
-          });
+          await tx.rabVersionItem.update({ where: { id }, data: { sortOrder: nextOrder } });
         }
       }
       if (version.status === 'REOPENED')
@@ -1139,7 +1127,7 @@ export class RabService {
 
   /**
    * Locks a DRAFT or REOPENED version for a change. A REOPENED version also needs the correction right
-   * (`rab.reopen`) and a reason: `rab.edit` alone never reaches an approved baseline (D-068).
+   * (`rab.reopen`) and, for value changes, a reason: `rab.edit` alone never reaches an approved baseline (D-068).
    */
   async lockEditable(
     tx: Db,
@@ -1147,12 +1135,13 @@ export class RabService {
     projectId: string,
     versionId: string,
     reason: string | undefined,
+    reasonRequired = true,
   ): Promise<EditableVersion> {
     const version = await this.lockVersion(tx, projectId, versionId);
     if (version.status === 'REOPENED') {
       if (!(await this.access.hasProjectPermission(actor, projectId, 'rab.reopen')))
         throw new ForbiddenException('Mengubah RAB yang sedang dikoreksi memerlukan izin koreksi RAB (rab.reopen).');
-      if (!reason?.trim()) throw new BadRequestException('Alasan koreksi wajib diisi.');
+      if (reasonRequired && !reason?.trim()) throw new BadRequestException('Alasan koreksi wajib diisi.');
     }
     return version;
   }
@@ -1188,6 +1177,28 @@ export class RabService {
    * work items and copy relations, and the package (prices, analyses, components) with provenance (D-068).
    */
   private async archive(tx: Db, actor: AuthUser, projectId: string, versionId: string) {
+    const stored = await this.snapshotPayload(tx, projectId, versionId);
+    const last = await tx.rabVersionSnapshot.aggregate({
+      where: { rabVersionId: versionId },
+      _max: { sequence: true },
+    });
+    return tx.rabVersionSnapshot.create({
+      data: {
+        rabVersionId: versionId,
+        sequence: (last._max.sequence ?? 0) + 1,
+        approvedBy: stored.version.approvedBy,
+        approvedAt: stored.version.approvedAt ? new Date(stored.version.approvedAt) : null,
+        totalValue: stored.totals.value,
+        payload: stored as unknown as Prisma.InputJsonObject,
+        checksum: checksumOf(stored),
+        createdBy: actor.id,
+      },
+      select: { sequence: true, checksum: true },
+    });
+  }
+
+  /** The current state of a version as stored in a snapshot: parsed canonical JSON, so checksums compare. */
+  private async snapshotPayload(tx: Db, projectId: string, versionId: string): Promise<RabSnapshotPayload> {
     const { version, rows, totals } = await this.detail(tx, projectId, versionId);
     const v = await tx.rabVersion.findUniqueOrThrow({
       where: { id: versionId },
@@ -1281,24 +1292,151 @@ export class RabService {
       },
     };
     // Stored as parsed canonical JSON: no undefined, and the checksum covers exactly what is stored.
-    const stored = JSON.parse(canonicalJson(payload)) as Prisma.InputJsonObject;
-    const last = await tx.rabVersionSnapshot.aggregate({
-      where: { rabVersionId: versionId },
-      _max: { sequence: true },
+    return JSON.parse(canonicalJson(payload)) as RabSnapshotPayload;
+  }
+
+  /**
+   * D-070: abandons a correction. The REOPENED version gets back exactly its last approved snapshot (rows,
+   * package values, document data, approval) and is APPROVED again; the corrections stay in the audit history.
+   * The result is checked against the snapshot checksum, so an incomplete restore never commits.
+   */
+  async cancelCorrection(actor: AuthUser, projectId: string, versionId: string, reason: string): Promise<RabVersionDetailDto> {
+    await this.prisma.$transaction(async (tx) => {
+      const { status } = await this.lockVersion(tx, projectId, versionId);
+      if (status !== 'REOPENED')
+        throw new ConflictException('Hanya versi yang sedang dikoreksi yang dapat dibatalkan koreksinya.');
+      const snapshot = await tx.rabVersionSnapshot.findFirst({
+        where: { rabVersionId: versionId },
+        orderBy: { sequence: 'desc' },
+        select: { sequence: true, payload: true, checksum: true },
+      });
+      if (!snapshot) throw new ConflictException('Snapshot approved tidak ditemukan; koreksi tidak dapat dibatalkan.');
+      const target = snapshot.payload as unknown as RabSnapshotPayload;
+      const current = await this.snapshotPayload(tx, projectId, versionId);
+      const json = (value: unknown) => (value ?? Prisma.DbNull) as Prisma.InputJsonValue;
+      const differs = <T extends { id: string }>(was: T[], want: T[]) => {
+        const before = new Map(was.map((x) => [x.id, canonicalJson(x)]));
+        return want.filter((x) => before.get(x.id) !== canonicalJson(x));
+      };
+
+      // Rows added during the correction go, deepest first; a work item created for them and used nowhere else too.
+      const keep = new Set(target.rows.map((r) => r.id));
+      const added = current.rows.filter((r) => !keep.has(r.id)).sort((a, b) => b.depth - a.depth);
+      for (const r of added) await tx.rabVersionItem.delete({ where: { id: r.id } });
+      const addedWorkItems = added.flatMap((r) => (r.workItemId ? [r.workItemId] : []));
+      if (addedWorkItems.length)
+        await tx.workItem.deleteMany({ where: { id: { in: addedWorkItems }, versionItems: { none: {} } } });
+
+      // Work items are unique per version: free the changed ones before writing them back.
+      const changedRows = differs(current.rows, target.rows);
+      await tx.rabVersionItem.updateMany({
+        where: { id: { in: changedRows.map((r) => r.id) } },
+        data: { workItemId: null },
+      });
+      const position = new Map<string, number>();
+      const siblings = new Map<string | null, number>();
+      for (const r of target.rows) {
+        const n = (siblings.get(r.parentId) ?? 0) + 1;
+        siblings.set(r.parentId, n);
+        position.set(r.id, n);
+      }
+      const reordered = new Set(current.rows.filter((r, i) => target.rows[i]?.id !== r.id).map((r) => r.id));
+      for (const r of target.rows) {
+        if (!changedRows.includes(r) && !reordered.has(r.id)) continue;
+        await tx.rabVersionItem.update({
+          where: { id: r.id },
+          data: {
+            parentItemId: r.parentId,
+            sortOrder: position.get(r.id)!,
+            rowType: r.rowType,
+            workItemId: r.workItemId,
+            displayNumber: r.displayNumber,
+            description: r.description,
+            volume: r.volume,
+            unit: r.unit,
+            analysisCode: r.analysisCode,
+            unitPrice: r.unitPrice,
+            taxPercent: r.taxPercent,
+            unitPriceWithTax: r.unitPriceWithTax,
+            subtotal: r.subtotal,
+            previousVersionItemId: r.previousVersionItemId,
+            analysisVersionId: r.analysis?.versionId ?? null,
+            priceSource: r.priceSource,
+            sourceUnitPrice: r.sourceUnitPrice,
+            analysisUnitPrice: r.analysisUnitPrice,
+            priceNote: r.priceNote,
+            priceDecidedAt: r.priceDecidedAt ? new Date(r.priceDecidedAt) : null,
+            sourceLocator: json(r.sourceLocator),
+          },
+        });
+      }
+
+      for (const p of differs(current.package.priceItems, target.package.priceItems))
+        await tx.priceItem.update({
+          where: { id: p.id },
+          data: { name: p.name, unit: p.unit, price: p.price, sourceLocator: json(p.sourceLocator) },
+        });
+      const strip = (a: RabSnapshotPayload['package']['analyses'][number]) => ({ ...a, components: [] });
+      for (const a of differs(current.package.analyses.map(strip), target.package.analyses.map(strip)))
+        await tx.ahspAnalysisVersion.update({
+          where: { id: a.id },
+          data: {
+            code: a.code,
+            name: a.name,
+            unit: a.unit,
+            overheadPercent: a.overheadPercent,
+            roundingScale: a.roundingScale,
+            directCost: a.directCost,
+            overheadAmount: a.overheadAmount,
+            priceExact: a.priceExact,
+            price: a.price,
+            sourceLocator: json(a.sourceLocator),
+          },
+        });
+      const components = (pkg: RabSnapshotPayload['package']) => pkg.analyses.flatMap((a) => a.components);
+      for (const c of differs(components(current.package), components(target.package)))
+        await tx.ahspComponent.update({
+          where: { id: c.id },
+          data: {
+            sortOrder: c.sortOrder,
+            description: c.description,
+            unit: c.unit,
+            coefficient: c.coefficient,
+            unitPrice: c.unitPrice,
+            amount: c.amount,
+            sourceLocator: json(c.sourceLocator),
+          },
+        });
+
+      await tx.rabVersion.update({
+        where: { id: versionId },
+        data: {
+          status: 'APPROVED',
+          documentNumber: target.version.documentNumber,
+          documentDate: target.version.documentDate ? toDbDate(target.version.documentDate) : null,
+          totalBeforeTax: target.totals.beforeTax,
+          totalTax: target.totals.tax,
+          totalValue: target.totals.value,
+          approvedBy: target.version.approvedBy,
+          approvedAt: target.version.approvedAt ? new Date(target.version.approvedAt) : null,
+        },
+      });
+      if (checksumOf(await this.snapshotPayload(tx, projectId, versionId)) !== snapshot.checksum)
+        throw new ConflictException(
+          'Kondisi hasil pemulihan tidak sama persis dengan snapshot approved terakhir; koreksi tidak dibatalkan. Selesaikan koreksi lalu approve ulang.',
+        );
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'CANCEL_RAB_CORRECTION',
+        entityType: 'RAB_VERSION',
+        entityId: versionId,
+        projectId,
+        reason,
+        oldValue: { status: 'REOPENED' },
+        newValue: { status: 'APPROVED', restoredSnapshot: snapshot.sequence, checksum: snapshot.checksum, removedRows: added.length },
+      });
     });
-    return tx.rabVersionSnapshot.create({
-      data: {
-        rabVersionId: versionId,
-        sequence: (last._max.sequence ?? 0) + 1,
-        approvedBy: v.approvedBy,
-        approvedAt: v.approvedAt,
-        totalValue: totals.value,
-        payload: stored,
-        checksum: checksumOf(stored),
-        createdBy: actor.id,
-      },
-      select: { sequence: true, checksum: true },
-    });
+    return this.get(projectId, versionId);
   }
 
   private async findVersion(projectId: string, versionId: string): Promise<void> {

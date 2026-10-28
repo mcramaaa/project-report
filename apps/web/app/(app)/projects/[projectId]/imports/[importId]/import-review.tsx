@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
+import { InlineReasonForm } from '@/components/corrections';
 import { Alert, Badge, Button, EmptyState, Field } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { CATEGORY_LABEL, IMPORT_STATUS } from '@/lib/import-ui';
@@ -611,6 +612,7 @@ function RowReview({
   const price = decided('PRICE_CHOICE');
   const direct = decided('DIRECT_PRICE');
   const work = decided('WORK_ITEM_MATCH');
+  const [overriding, setOverriding] = useState(false);
   return (
     <tr>
       <td className="rab-sticky-no">{row.displayNumber}</td>
@@ -757,23 +759,35 @@ function RowReview({
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => {
-                  const reason = window.prompt('Alasan override harga sumber (wajib):')?.trim();
-                  if (reason)
-                    onDecide(
-                      {
-                        rowKey: row.key,
-                        kind: 'PRICE_CHOICE',
-                        value: { source: 'SOURCE_OVERRIDE' },
-                        reason,
-                      },
-                      'Harga sumber dipertahankan.',
-                    );
-                }}
+                aria-expanded={overriding}
+                onClick={() => setOverriding((open) => !open)}
               >
                 Override harga sumber
               </Button>
             </div>
+          )}
+          {editable && overriding && (has('PRICE_MISMATCH') || has('PRICE_SCALE')) && (
+            <InlineReasonForm
+              id={`override-${row.key}`}
+              title="Pertahankan harga sumber"
+              description="Harga di dokumen sumber dipakai walau berbeda dengan analisa; alasan dicatat bersama keputusan."
+              label="Alasan override (wajib)"
+              confirmLabel="Pertahankan harga sumber"
+              busy={false}
+              onCancel={() => setOverriding(false)}
+              onSubmit={(reason) => {
+                setOverriding(false);
+                onDecide(
+                  {
+                    rowKey: row.key,
+                    kind: 'PRICE_CHOICE',
+                    value: { source: 'SOURCE_OVERRIDE' },
+                    reason,
+                  },
+                  'Harga sumber dipertahankan.',
+                );
+              }}
+            />
           )}
           {editable && has('WORK_ITEM_UNDECIDED') && (
             <div className="row-actions">

@@ -36,8 +36,17 @@ export const documentPath = (projectId: string, storedFilename: string) =>
 
 const USER_REF = { select: { id: true, name: true } } as const;
 
+/** Parsed workbooks kept for the preview; documents are immutable, so entries never go stale. */
+const PREVIEW_CACHE_SIZE = 2;
+
 @Injectable()
 export class DocumentsService {
+  // shortcut: in-process cache of the last 2 files (parse still blocks the event loop on a miss); move parsing to a worker if misses become frequent.
+  private readonly previewCache = new Map<
+    string,
+    Promise<{ filename: string; model: WorkbookModel }>
+  >();
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -153,23 +162,42 @@ export class DocumentsService {
       throw new BadRequestException('Alamat sel tidak valid. Gunakan contoh A1.');
     if (sheet !== undefined && typeof sheet !== 'string')
       throw new BadRequestException('Sheet tidak valid.');
-    const file = await this.read(projectId, documentId);
-    const workbook = new ExcelJS.Workbook();
-    try {
-      await workbook.xlsx.load(file.data as unknown as ArrayBuffer);
-    } catch {
-      throw new BadRequestException('Dokumen Excel tidak dapat dibaca.');
-    }
-    const model = new WorkbookModel(documentId, file.filename, workbook);
+    const { filename, model } = await this.previewModel(projectId, documentId);
     const name = sheet === undefined ? model.sheetNames()[0] : model.sheetName(sheet);
     if (!name) throw new NotFoundException('Sheet tidak ditemukan.');
     return {
       documentId,
-      filename: file.filename,
+      filename,
       sheets: model.sheetNames(),
       sheet: name,
       ...previewWindow(model, name, cell.toUpperCase()),
     };
+  }
+
+  private previewModel(projectId: string, documentId: string) {
+    const key = `${projectId}/${documentId}`;
+    let entry = this.previewCache.get(key);
+    if (entry) this.previewCache.delete(key);
+    else
+      entry = (async () => {
+        const file = await this.read(projectId, documentId);
+        const workbook = new ExcelJS.Workbook();
+        try {
+          await workbook.xlsx.load(file.data as unknown as ArrayBuffer);
+        } catch {
+          throw new BadRequestException('Dokumen Excel tidak dapat dibaca.');
+        }
+        return {
+          filename: file.filename,
+          model: new WorkbookModel(documentId, file.filename, workbook),
+        };
+      })();
+    // Most recently used goes last; failures are not kept.
+    this.previewCache.set(key, entry);
+    entry.catch(() => this.previewCache.get(key) === entry && this.previewCache.delete(key));
+    while (this.previewCache.size > PREVIEW_CACHE_SIZE)
+      this.previewCache.delete(this.previewCache.keys().next().value!);
+    return entry;
   }
 
   async read(
