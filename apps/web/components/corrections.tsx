@@ -214,6 +214,7 @@ export function InlineEdit({
   label,
   reopened,
   number,
+  text,
   hint,
   editable = true,
   children,
@@ -227,6 +228,8 @@ export function InlineEdit({
   reopened: boolean;
   /** Integer field (rounding scale); empty clears it. */
   number?: boolean;
+  /** Free text (unit label, "/8"), not a decimal. */
+  text?: boolean;
   hint?: string;
   children: ReactNode;
 }) {
@@ -289,9 +292,9 @@ export function InlineEdit({
     >
       <input
         name="value"
-        className="field"
+        className={`field${text ? ' inline-edit-text' : ''}`}
         defaultValue={value}
-        inputMode="decimal"
+        inputMode={text ? 'text' : 'decimal'}
         aria-label={label}
         aria-describedby={`${id}-hint`}
         title={`Sekarang ${value === '' ? '(kosong)' : value}${hint ? `. ${hint}` : ''}`}

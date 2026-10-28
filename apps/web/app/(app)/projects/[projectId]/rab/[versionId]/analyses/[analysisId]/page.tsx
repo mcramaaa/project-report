@@ -363,6 +363,15 @@ export default async function AnalysisPage({
                                     priceUnit={c.priceItem.unit}
                                     unit={c.unit}
                                     locator={c.sourceLocator}
+                                    factorEdit={
+                                      canCorrect
+                                        ? {
+                                            path: `${versionPath}/components/${c.id}`,
+                                            reopened,
+                                            label: `faktor konversi ${c.description}`,
+                                          }
+                                        : undefined
+                                    }
                                   />
                                 )}
                               </td>
@@ -618,12 +627,15 @@ function PriceConversion({
   priceUnit,
   unit,
   locator,
+  factorEdit,
 }: {
   href: string;
   price: string;
   priceUnit: string | null;
   unit: string | null;
   locator: unknown;
+  /** Set when the version is open: the conversion becomes a correctable value (D-068). */
+  factorEdit?: { path: string; reopened: boolean; label: string };
 }) {
   const factor = (locator as { factor?: { op?: string; value?: string } } | null)?.factor;
   const norm = (u: string | null) => (u ?? '').toLowerCase().replace(/[\s.]/g, '');
@@ -633,12 +645,25 @@ function PriceConversion({
       <Link href={href} title="Buka harga dasar (dapat dikoreksi di sana)">
         dasar {formatRounded(price, 2)}/{priceUnit ?? '–'}
       </Link>
-      {factor?.value && (
+      <InlineEdit
+        editable={Boolean(factorEdit)}
+        path={factorEdit?.path ?? ''}
+        field="factor"
+        value={factor?.value ? `${factor.op === '/' ? '/' : '×'}${factor.value}` : ''}
+        label={factorEdit?.label ?? 'faktor konversi'}
+        reopened={factorEdit?.reopened ?? false}
+        text
+        hint="Contoh /8, ÷ 4 atau ×2; kosongkan bila tanpa konversi. Harga komponen dihitung ulang dari harga dasar"
+      >
         <span>
           {' '}
-          {factor.op === '/' ? '÷' : '×'} {factor.value} → /{unit ?? '–'}
+          {factor?.value
+            ? `${factor.op === '/' ? '÷' : '×'} ${factor.value} → /${unit ?? '–'}`
+            : factorEdit
+              ? 'tanpa konversi'
+              : ''}
         </span>
-      )}
+      </InlineEdit>
       {differs && !factor?.value && (
         <span
           className="price-conversion-warn"

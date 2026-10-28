@@ -136,7 +136,7 @@ export interface AnalysisPackage {
 /** One source input edit (D-068); derived values are never edited directly. */
 export type PackageEdit =
   | { kind: 'PRICE_ITEM'; priceItemId: string; price: string }
-  | { kind: 'COMPONENT'; componentId: string; coefficient?: string; unitPrice?: string }
+  | { kind: 'COMPONENT'; componentId: string; coefficient?: string; unitPrice?: string; factor?: PriceFactor | null }
   | { kind: 'ANALYSIS'; analysisVersionId: string; overheadPercent?: string | null; roundingScale?: number | null };
 
 export interface PackageRecalculation {
@@ -186,7 +186,16 @@ export function recalculatePackage(pkg: AnalysisPackage, edit: PackageEdit): Pac
     if (!c) throw new RangeError('Komponen tidak ada di paket ini.');
     if (edit.unitPrice !== undefined && (c.priceItemId || c.subAnalysisVersionId))
       throw new RangeError('Harga komponen ini mengikuti harga dasar/subanalisa; koreksi sumbernya.');
-    setComponent(c, edit.unitPrice ?? c.unitPrice, edit.coefficient ?? c.coefficient);
+    let unitPrice = edit.unitPrice ?? c.unitPrice;
+    if (edit.factor !== undefined) {
+      // The conversion re-derives the price from its source: base price or sub-analysis price, then the factor.
+      const sub = c.subAnalysisVersionId ? analyses.get(c.subAnalysisVersionId)! : null;
+      const base = c.priceItemId ? prices.get(c.priceItemId)! : sub ? (c.subPriceBasis === 'EXACT' ? sub.priceExact : sub.price) : null;
+      if (base === null) throw new RangeError('Faktor konversi hanya untuk komponen yang memakai harga dasar atau subanalisa.');
+      c.factor = edit.factor;
+      unitPrice = applyPriceFactor(base, edit.factor);
+    }
+    setComponent(c, unitPrice, edit.coefficient ?? c.coefficient);
   } else {
     const a = analyses.get(edit.analysisVersionId);
     if (!a) throw new RangeError('Analisa tidak ada di paket ini.');

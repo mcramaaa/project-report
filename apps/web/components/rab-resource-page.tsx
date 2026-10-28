@@ -117,7 +117,18 @@ export async function RabResourcePage({
                           {p.name}
                         </td>
                         <td role="cell" data-label="Satuan">
-                          {p.unit ?? '–'}
+                          <InlineEdit
+                            editable={canCorrect}
+                            path={`${pricePath}/${p.id}`}
+                            field="unit"
+                            value={p.unit ?? ''}
+                            label={`satuan ${p.name}`}
+                            reopened={owner?.status === 'REOPENED'}
+                            text
+                            hint="Label saja; harga dan perhitungan tidak berubah"
+                          >
+                            {p.unit ?? '–'}
+                          </InlineEdit>
                         </td>
                         <td
                           role="cell"

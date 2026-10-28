@@ -281,6 +281,38 @@ describe('corrections from the source (D-068)', () => {
     expect(audit.newValue).toMatchObject({ overheadPercent: null });
   });
 
+  it('corrects a base price unit (label only) and a component conversion factor (recalculated)', async () => {
+    const v = await packagedContract();
+    await ok(reopen(v.id));
+    // Unit only: nothing is recalculated, the label is marked as a manual correction.
+    const before = (await admin.get(`${base}/${v.id}`)).body;
+    const unit = await ok(admin.patch(`${base}/${v.id}/price-items/${v.rent}`, { unit: 'hari (8 jam)', reason: 'Satuan sewa' }));
+    expect(unit.rows).toEqual(before.rows);
+    const rent = await t.prisma.priceItem.findUniqueOrThrow({ where: { id: v.rent } });
+    expect([rent.unit, rent.price.toString()]).toEqual(['hari (8 jam)', '800000']);
+    expect(rent.sourceLocator).toMatchObject({ corrections: [{ kind: 'MANUAL', changes: { unit: ['hari', 'hari (8 jam)'] } }] });
+
+    // Rent 800000/day ÷ 8 → ÷ 10: 80000 × 0.5 = 40000; MAIN D = 3000.6 + 1500 + 40000 + 7000 = 51500.6,
+    // F = 56650.66 (rounded to 2) → item A follows.
+    expect((await admin.patch(`${base}/${v.id}/components/${v.components.rent}`, { factor: 'bagi 10', reason: 'x' })).status).toBe(400);
+    expect((await admin.patch(`${base}/${v.id}/components/${v.components.manual}`, { factor: '/2', reason: 'x' })).status).toBe(409);
+    const detail = await ok(admin.patch(`${base}/${v.id}/components/${v.components.rent}`, { factor: '÷ 10', reason: 'Sewa per jam 10 jam' }));
+    const comp = await t.prisma.ahspComponent.findUniqueOrThrow({ where: { id: v.components.rent } });
+    expect([comp.unitPrice.toString(), comp.amount.toString()]).toEqual(['80000', '40000']);
+    expect(comp.sourceLocator).toMatchObject({ cell: 'E3', factor: { op: '/', value: '10' }, corrections: [{ kind: 'MANUAL', changes: { factor: ['/8', '/10'] } }] });
+    expect(row(detail, 'Pekerjaan A').unitPrice).toBe('56650.66');
+    // Empty = no conversion: the base price as it is.
+    await ok(admin.patch(`${base}/${v.id}/components/${v.components.rent}`, { factor: '', reason: 'Tanpa konversi' }));
+    const plain = await t.prisma.ahspComponent.findUniqueOrThrow({ where: { id: v.components.rent } });
+    expect(plain.unitPrice.toString()).toBe('800000');
+    expect((plain.sourceLocator as { factor?: unknown }).factor).toBeUndefined();
+    // Cancelling the correction brings the original unit and factor back.
+    await ok(admin.post(`${base}/${v.id}/cancel-correction`, { reason: 'Kembali ke approved' }));
+    const back = await t.prisma.ahspComponent.findUniqueOrThrow({ where: { id: v.components.rent } });
+    expect([(back.sourceLocator as { factor?: unknown }).factor, back.unitPrice.toString()]).toEqual([{ op: '/', value: '8' }, '100000']);
+    expect((await t.prisma.priceItem.findUniqueOrThrow({ where: { id: v.rent } })).unit).toBe('hari');
+  });
+
   it('refuses cycles and relations outside the package', async () => {
     const v = await packagedContract();
     await ok(reopen(v.id));

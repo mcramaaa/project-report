@@ -186,8 +186,9 @@ paket versi itu (selain itu 404).
 GET /projects/:projectId/rab-versions/:versionId/analyses?search=         ahsp.read -> daftar gabungan paket versi RAB
 GET /projects/:projectId/rab-versions/:versionId/analyses/:analysisId     ahsp.read -> komponen, sumber/provenance, item RAB versi itu
 GET /projects/:projectId/rab-versions/:versionId/price-list?search=       ahsp.read -> harga upah/bahan/alat paket (null bila belum ada)
-PATCH /projects/:projectId/rab-versions/:versionId/price-items/:priceItemId              { price, reason? }                         ahsp.edit (D-068)
-PATCH /projects/:projectId/rab-versions/:versionId/components/:componentId               { coefficient?, unitPrice?, reason? }      ahsp.edit
+PATCH /projects/:projectId/rab-versions/:versionId/price-items/:priceItemId              { price?, unit?, reason? }                 ahsp.edit (D-068)
+PATCH /projects/:projectId/rab-versions/:versionId/components/:componentId               { coefficient?, unitPrice?, factor?, reason? } ahsp.edit
+- `unit` harga dasar adalah label: tidak menghitung ulang apa pun, tetapi tetap ditandai koreksi dan diaudit. `factor` komponen ditulis seperti `/8`, `÷ 4`, `×2` (kosong = tanpa konversi; format lain `400`). Hanya untuk komponen bertaut harga dasar/subanalisa (`409` untuk komponen manual). Harga komponen dihitung ulang dari sumbernya × faktor, disimpan di `source_locator.factor`, lalu analisa dan item RAB ikut dihitung ulang.
 PATCH /projects/:projectId/rab-versions/:versionId/analysis-versions/:analysisVersionId  { overheadPercent?, roundingScale?, reason? } ahsp.edit
 ```
 

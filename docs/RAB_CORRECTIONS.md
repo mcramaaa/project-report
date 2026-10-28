@@ -132,3 +132,14 @@ Versi REOPENED dapat dikembalikan ke snapshot approved terakhir lewat tombol
 - Riwayat koreksi tetap ada.
 - Tidak perlu approve ulang.
 
+## Satuan harga dasar dan faktor konversi (2026-10-28)
+
+- **Satuan harga dasar** dapat dikoreksi sebagai label. Angka dan perhitungan
+  tidak berubah.
+- **Faktor konversi komponen** (`source_locator.factor`) dapat dikoreksi atau
+  dihapus.
+  - Harga komponen diturunkan ulang dari harga dasar/subanalisa × faktor, lalu
+    analisa dan item RAB dihitung ulang seperti koreksi lain.
+  - Komponen manual tidak memiliki faktor (`409`).
+- Keduanya dikembalikan oleh "Batalkan koreksi" (D-070).
+

@@ -471,6 +471,9 @@ biasa; tombol ubah dan navigasi normal tetap dipertahankan.
     pesan.
   - "Sekarang …" ada di tooltip input dan dibacakan pembaca layar.
   - Baris tabel hanya bertambah ±10–30 px saat diedit; draft tidak bertambah.
+  - Satuan harga dasar (kolom Satuan di Bahan/Alat/Upah) dan faktor konversi
+    komponen ("÷ 8 → /OJ" di bawah harga komponen) juga memakai pensil. Faktor
+    ditulis `/8`, `÷ 4`, atau `×2`; kosong berarti tanpa konversi.
   - Harga komponen yang tertaut harga dasar tidak diedit di analisa. Di bawah
     harganya tampil "dasar Rp X/satuan", ditambah "÷ 8 → /OJ" bila sumber
     memakai faktor. Tautannya menuju harga dasar, yang punya pensil sendiri.

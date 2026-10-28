@@ -154,24 +154,47 @@ export const reorderRabItemsSchema = z
   });
 export type ReorderRabItemsInput = z.infer<typeof reorderRabItemsSchema>;
 
-const required = <T>(v: T | null | undefined) => v != null;
 const reasonOf = { reason: correctionReason };
 
 /** Base price of the version's package (D-068). */
-export const correctPriceItemSchema = z.object({
-  price: decimal('Harga dasar', 28, 12).refine(required, { message: 'Harga dasar wajib diisi.' }),
-  ...reasonOf,
-});
+/** Base price and/or its unit label; a unit change is a label only and recalculates nothing. */
+export const correctPriceItemSchema = z
+  .object({
+    price: decimal('Harga dasar', 28, 12).refine((v) => v !== null, { message: 'Harga dasar wajib diisi.' }),
+    unit: optionalText(30),
+    ...reasonOf,
+  })
+  .refine((v) => v.price !== undefined || v.unit !== undefined, { message: 'Tidak ada perubahan.' });
 export type CorrectPriceItemInput = z.infer<typeof correctPriceItemSchema>;
 
-/** Coefficient, or the price of a component that has no base price/sub-analysis behind it. */
+/**
+ * Unit conversion of a linked price as typed by a reviewer: "/8", "÷ 8", ":8", "*0.5", "x 2", "×2";
+ * empty = no conversion. Parsed to the `{ op, value }` the source formula evidence uses (D-063).
+ */
+export const priceFactorSchema = z
+  .string()
+  .trim()
+  .transform((v, ctx) => {
+    if (v === '') return null;
+    const m = /^([/÷:*x×])\s*(\d{1,9}(?:\.\d{1,12})?)$/i.exec(v.replace(',', '.'));
+    if (!m || Number(m[2]) === 0) {
+      ctx.addIssue({ code: 'custom', message: 'Faktor konversi ditulis seperti /8, ÷ 4 atau ×2 (angka > 0); kosongkan bila tanpa konversi.' });
+      return z.NEVER;
+    }
+    return { op: '/:÷'.includes(m[1]!) ? ('/' as const) : ('*' as const), value: m[2]! };
+  });
+
+/** Coefficient, the price of a component without base price/sub-analysis, or the conversion of a linked price. */
 export const correctComponentSchema = z
   .object({
     coefficient: decimal('Koefisien', 18, 12).refine((v) => v !== null, { message: 'Koefisien wajib diisi.' }),
     unitPrice: decimal('Harga komponen', 28, 12).refine((v) => v !== null, { message: 'Harga komponen wajib diisi.' }),
+    factor: priceFactorSchema.optional(),
     ...reasonOf,
   })
-  .refine((v) => v.coefficient !== undefined || v.unitPrice !== undefined, { message: 'Tidak ada perubahan.' });
+  .refine((v) => v.coefficient !== undefined || v.unitPrice !== undefined || v.factor !== undefined, {
+    message: 'Tidak ada perubahan.',
+  });
 export type CorrectComponentInput = z.infer<typeof correctComponentSchema>;
 
 /** Overhead % (empty = no overhead) and the rounding of the analysis price (null = no rounding). */

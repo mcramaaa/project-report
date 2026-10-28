@@ -41,10 +41,11 @@ export class RabCorrectionsService {
     return this.correct(actor, projectId, versionId, input.reason, 'CORRECT_PRICE_ITEM', async (tx) => {
       const item = await tx.priceItem.findFirst({ where: { id: priceItemId, priceList: { rabVersionId: versionId } } });
       if (!item) throw new NotFoundException('Harga dasar tidak ditemukan di paket versi RAB ini.');
+      // A unit change is a label only: the price edit then repeats the current price and recalculates nothing.
       return {
-        edit: { kind: 'PRICE_ITEM', priceItemId, price: input.price! },
+        edit: { kind: 'PRICE_ITEM', priceItemId, price: input.price ?? num(item.price)! },
         target: { priceItemId, name: item.name },
-        changes: changedFields({ price: num(item.price) }, { price: input.price! }),
+        changes: changedFields({ price: num(item.price), unit: item.unit }, { price: input.price ?? undefined, unit: input.unit }),
       };
     });
   }
@@ -53,12 +54,17 @@ export class RabCorrectionsService {
     return this.correct(actor, projectId, versionId, input.reason, 'CORRECT_AHSP_COMPONENT', async (tx) => {
       const c = await tx.ahspComponent.findFirst({ where: { id: componentId, analysisVersion: { analysis: { rabVersionId: versionId } } } });
       if (!c) throw new NotFoundException('Komponen analisa tidak ditemukan di paket versi RAB ini.');
+      const factorText = (f: PriceFactor | null | undefined) => (f ? `${f.op}${f.value}` : null);
       return {
-        edit: { kind: 'COMPONENT', componentId, coefficient: input.coefficient ?? undefined, unitPrice: input.unitPrice ?? undefined },
+        edit: { kind: 'COMPONENT', componentId, coefficient: input.coefficient ?? undefined, unitPrice: input.unitPrice ?? undefined, factor: input.factor },
         target: { componentId, analysisVersionId: c.analysisVersionId, description: c.description },
         changes: changedFields(
-          { coefficient: num(c.coefficient), unitPrice: num(c.unitPrice) },
-          { coefficient: input.coefficient ?? undefined, unitPrice: input.unitPrice ?? undefined },
+          { coefficient: num(c.coefficient), unitPrice: num(c.unitPrice), factor: factorText(factorOf(c.sourceLocator)) },
+          {
+            coefficient: input.coefficient ?? undefined,
+            unitPrice: input.unitPrice ?? undefined,
+            factor: input.factor === undefined ? undefined : factorText(input.factor),
+          },
         ),
       };
     });
@@ -176,13 +182,36 @@ export class RabCorrectionsService {
       const recalculated: Prisma.InputJsonObject[] = [];
       if (edit.kind === 'PRICE_ITEM') {
         const p = await tx.priceItem.findUniqueOrThrow({ where: { id: edit.priceItemId }, select: { sourceLocator: true } });
-        await tx.priceItem.update({ where: { id: edit.priceItemId }, data: { price: edit.price, sourceLocator: withCorrection(p.sourceLocator, mark('MANUAL', changes)) } });
+        await tx.priceItem.update({
+          where: { id: edit.priceItemId },
+          data: {
+            price: edit.price,
+            ...(changes.unit ? { unit: changes.unit[1] as string | null } : {}),
+            sourceLocator: withCorrection(p.sourceLocator, mark('MANUAL', changes)),
+          },
+        });
+      }
+      // A corrected conversion is stored where the import keeps it: `source_locator.factor` of the component.
+      const factorEdit = edit.kind === 'COMPONENT' && edit.factor !== undefined ? edit.factor : undefined;
+      const withFactor = (locator: unknown) => {
+        const rest: Record<string, unknown> = { ...((locator ?? {}) as Record<string, unknown>) };
+        delete rest.factor;
+        return factorEdit ? { ...rest, factor: factorEdit } : rest;
+      };
+      if (factorEdit !== undefined && !result.components.has(directComponent!)) {
+        const old = pkg.components.get(directComponent!)!;
+        await tx.ahspComponent.update({
+          where: { id: directComponent! },
+          data: { sourceLocator: withCorrection(withFactor(old.sourceLocator), mark('MANUAL', changes)) },
+        });
       }
       for (const [id, next] of result.components) {
         const old = pkg.components.get(id)!;
         const diff = changedFields({ coefficient: num(old.coefficient), unitPrice: num(old.unitPrice), amount: num(old.amount) }, next);
         const kind = id === directComponent ? 'MANUAL' : 'RECALCULATED';
-        await tx.ahspComponent.update({ where: { id }, data: { ...next, sourceLocator: withCorrection(old.sourceLocator, mark(kind, diff)) } });
+        const locator = id === directComponent && factorEdit !== undefined ? withFactor(old.sourceLocator) : old.sourceLocator;
+        const marked = id === directComponent && changes.factor ? { ...diff, factor: changes.factor } : diff;
+        await tx.ahspComponent.update({ where: { id }, data: { ...next, sourceLocator: withCorrection(locator, mark(kind, marked)) } });
         recalculated.push({ componentId: id, description: old.description, kind, changes: diff });
       }
       for (const [id, next] of result.analyses) {

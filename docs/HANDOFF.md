@@ -59,8 +59,10 @@ Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
 ### Berikutnya
 
 1. `npm run build -w @laporan-proyek/web` (next build) setelah perubahan UI.
-2. Faktor konversi satuan dapat dikoreksi (pensil di "÷ 8"). Butuh perubahan
-   API dan aturan D-068, jadi tanyakan dulu.
+2. ~~Faktor konversi dan satuan harga dasar dapat dikoreksi~~ selesai
+   2026-10-28 (pensil di kolom Satuan dan di "÷ 8 → /OJ"). Data belum
+   dikoreksi: Pipa PVC AW 4" (XXIII.6) dan Sock 20 mm (XXII.12) perlu dicek di
+   workbook asli (satuan beda tanpa konversi).
 3. Edit RAB di HP: form ubah baris masih di dalam kotak tabel yang bisa
    di-scroll.
 4. Lanjutkan daftar "Berikutnya" di §0 di bawah (seed sample-ahsp, impor MC-n,

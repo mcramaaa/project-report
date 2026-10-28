@@ -573,6 +573,7 @@ td:not(.num) > .inline-edit-form, td:not(.num) .inline-edit-form { margin-left: 
 .inline-edit-form .field { min-height: 28px !important; height: 28px; padding: 3px 8px !important; border-radius: 7px !important; font-size: var(--fs-md) !important; }
 .inline-edit-form .field[aria-invalid='true'] { border-color: #d9677a !important; background: #fff8f9 !important; }
 .inline-edit-form input[name='value'] { text-align: right; font-variant-numeric: tabular-nums; }
+.inline-edit-form input[name='value'].inline-edit-text { text-align: left; }
 .inline-edit-form .inline-edit-reason { grid-column: 1 / -1; font-size: var(--fs-sm); }
 .inline-edit-icon { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; color: #53657e; cursor: pointer; }
 .inline-edit-icon:hover:not(:disabled) { border-color: #bcd2f5; background: var(--blue-wash); color: var(--blue); }

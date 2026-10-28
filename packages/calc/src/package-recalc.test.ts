@@ -40,6 +40,20 @@ describe('recalculatePackage (D-068)', () => {
     expect([...r.analyses.keys()]).toEqual(['MAIN']);
   });
 
+  it('a corrected conversion factor re-derives the component price from its base price', () => {
+    // Rent 800000 per day ÷ 8 → 100000/hour; ÷ 10 → 80000: amount 0.5 × 80000 = 40000, D = 51500.6.
+    const r = recalculatePackage(pkg(), { kind: 'COMPONENT', componentId: 'main-rent', factor: { op: '/', value: '10' } });
+    expect(r.components.get('main-rent')).toEqual({ coefficient: '0.5', unitPrice: '80000', amount: '40000' });
+    expect(r.analyses.get('MAIN')).toMatchObject({ directCost: '51500.6', price: '56650.66' });
+    // No factor: the base price as it is.
+    const none = recalculatePackage(pkg(), { kind: 'COMPONENT', componentId: 'main-rent', factor: null });
+    expect(none.components.get('main-rent')).toMatchObject({ unitPrice: '800000', amount: '400000' });
+    // A sub-analysis price can be converted too; a manual component has nothing to convert.
+    const sub = recalculatePackage(pkg(), { kind: 'COMPONENT', componentId: 'main-exact', factor: { op: '*', value: '2' } });
+    expect(sub.components.get('main-exact')).toMatchObject({ unitPrice: '3000.6', amount: '6001.2' });
+    expect(() => recalculatePackage(pkg(), { kind: 'COMPONENT', componentId: 'main-manual', factor: { op: '/', value: '2' } })).toThrow(RangeError);
+  });
+
   it('propagates a base price through EXACT and ROUNDED sub-analysis prices', () => {
     const r = recalculatePackage(pkg(), { kind: 'PRICE_ITEM', priceItemId: 'p-labor', price: '110000' });
     // SUB: 0.015003 × 110000 = 1650.33 → rounded 1650.
