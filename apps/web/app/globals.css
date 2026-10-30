@@ -286,14 +286,21 @@ textarea { min-height: 96px; resize: vertical; }
 
 /* ---------- RAB grid ---------- */
 .rab-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; padding: 17px 19px; }
-.rab-grid-wrap { max-height: 70vh; padding: 0; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-surface); container-type: inline-size; }
-.rab-grid { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-md); }
+.rab-grid-wrap { contain: paint; max-height: 70vh; padding: 0; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-surface); container-type: inline-size; }
+.rab-grid { width: 100%; border-collapse: separate; border-spacing: 0; font-size: var(--fs-md); zoom: var(--grid-zoom, 1); }
 .rab-grid th, .rab-grid td { padding: 9px 11px; border-bottom: 1px solid var(--line); background: var(--surface-solid); text-align: left; white-space: nowrap; }
 .rab-grid thead th { position: sticky; top: 0; z-index: 2; border-bottom-color: #d7e3f2; background: #f2f6fc; color: #64748b; font-size: var(--fs-sm); font-weight: 600; }
 .rab-grid tbody tr:hover td { background: #f7faff; }
 .rab-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
 .rab-grid .rab-sticky-no { position: sticky; left: 0; z-index: 1; width: 82px; min-width: 82px; }
 .rab-grid .rab-sticky-desc { position: sticky; left: 82px; z-index: 1; min-width: 260px; max-width: 420px; white-space: normal; box-shadow: 1px 0 0 var(--line); }
+/* !important: wins over the parent's space-y gap so the tools sit on the grid. */
+.grid-tools { display: flex; justify-content: flex-end; gap: 4px; margin-block-end: 6px !important; }
+.grid-tools-btn { min-width: 32px; height: 30px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; color: #53657e; font-size: var(--fs-sm); font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.grid-tools-btn:hover:not(:disabled) { border-color: #b9cbe2; color: var(--blue); }
+.grid-tools-btn:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.grid-tools-btn:disabled { opacity: .45; cursor: default; }
+.grid-tools-value { min-width: 56px; }
 /* !important: the global input rule (38px, width 100%) is more specific than a class. */
 .rab-grid .schedule-cell { width: 92px !important; min-height: 30px !important; height: 30px; padding: 3px 6px !important; text-align: right; font-variant-numeric: tabular-nums; }
 .rab-grid .schedule-cell[aria-invalid='true'] { border-color: #d9677a !important; background: #fff8f9 !important; }
@@ -551,7 +558,9 @@ section:target { outline: 2px solid #a9c8f5; outline-offset: 6px; }
   .rab-doc-form > .btn { width: 100%; margin-top: 0; }
   .rab-totals { grid-template-columns: minmax(0, 1fr); }
   .rab-totals > div + div { border-top: 1px solid #dce9fd; border-left: 0; }
-  .rab-grid .rab-sticky-desc { min-width: 11rem; }
+  /* Phones: only No stays pinned, so the value columns are not hidden behind the description. */
+  .rab-grid .rab-sticky-no { width: 52px; min-width: 52px; }
+  .rab-grid .rab-sticky-desc { position: static; min-width: 11rem; box-shadow: none; }
   .rab-grid .rab-actions-cell { right: auto; box-shadow: none; }
   .rab-grid tbody .rab-actions-cell { position: static; }
   /* Long price/analysis lists: two-column cards instead of one labelled line per field. */

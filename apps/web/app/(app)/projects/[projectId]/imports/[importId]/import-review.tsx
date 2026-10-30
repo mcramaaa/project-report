@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
 import { Alert, Badge, Button, EmptyState, Field } from '@/components/ui';
+import { GridTools } from '@/components/grid-tools';
 import { api, errorMessage } from '@/lib/api';
 import { CATEGORY_LABEL, IMPORT_STATUS } from '@/lib/import-ui';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
@@ -212,7 +213,7 @@ export function ImportReview({
       {reconciliation && (
         <section className="panel form-panel" aria-labelledby="recon-title">
           <h2 id="recon-title" className="text-base font-semibold">
-            Rekonsiliasi total (D-043)
+            Rekonsiliasi total
           </h2>
           <p className="text-sm">
             Aplikasi: Rp{' '}
@@ -287,7 +288,7 @@ export function ImportReview({
           </p>
           {reconciliation.rowsChecked > 0 ? (
             <p className="text-sm">
-              Item dicocokkan dengan nilai cached workbook (toleransi Rp 0,000001, D-054):{' '}
+              Item dicocokkan dengan nilai cached workbook (toleransi Rp 0,000001):{' '}
               {reconciliation.rowsChecked} item,{' '}
               <Badge tone={reconciliation.rowsMismatched ? 'red' : 'green'}>
                 {reconciliation.rowsMismatched
@@ -387,6 +388,8 @@ export function ImportReview({
           {shown.length === 0 ? (
             <EmptyState>Tidak ada item pada filter ini.</EmptyState>
           ) : (
+            <>
+            <GridTools />
             <div className="panel rab-grid-wrap">
               <table className="rab-grid">
                 <thead>
@@ -424,6 +427,7 @@ export function ImportReview({
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </section>
       )}

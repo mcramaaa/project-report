@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectTabs } from '@/components/project-tabs';
 import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
+import { GridTools } from '@/components/grid-tools';
 import { Decimal } from '@laporan-proyek/calc';
 import { formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
@@ -151,6 +152,8 @@ export default async function RabComparePage({
           {data.rows.filter((r) => filter.match(r.change)).length === 0 ? (
             <EmptyState>Tidak ada pekerjaan pada filter ini.</EmptyState>
           ) : (
+            <>
+            <GridTools />
             <div className="panel rab-grid-wrap">
               <table className="rab-grid">
                 <thead>
@@ -286,6 +289,7 @@ export default async function RabComparePage({
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
       )}

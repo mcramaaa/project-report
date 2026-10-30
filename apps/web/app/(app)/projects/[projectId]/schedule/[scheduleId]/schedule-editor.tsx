@@ -5,6 +5,7 @@ import type { DocumentDto, ScheduleDetailDto } from '@laporan-proyek/shared';
 import { useMemo, useState, type FormEvent } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
 import { Alert, Badge, Button, Field, Section, Select } from '@/components/ui';
+import { GridTools, useLeaveWarning } from '@/components/grid-tools';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { formatDate, formatRounded } from '@/lib/project-fields';
 import { SCHEDULE_STATUS_BADGE } from '@/lib/rab-ui';
@@ -36,6 +37,7 @@ export function ScheduleEditor({
   const [notice, setNotice] = useState<string>();
   const [reopening, setReopening] = useState(false);
   const [focused, setFocused] = useState<string>();
+  useLeaveWarning(dirty);
 
   const base = `/projects/${projectId}/schedules/${data.id}`;
   const editable = canEdit && data.status !== 'APPROVED';
@@ -114,7 +116,7 @@ export function ScheduleEditor({
         }
         description={
           <>
-            % bobot proyek per kelompok pekerjaan per minggu (D-072).
+            % bobot proyek per kelompok pekerjaan per minggu, seperti sheet Master Curva S.
             {data.sourceDocument && ` Impor terakhir: ${data.sourceDocument.filename}.`}
             {data.approvedBy && data.approvedAt && ` Approved oleh ${data.approvedBy.name}, ${formatDate(data.approvedAt.slice(0, 10))}.`}
           </>
@@ -219,6 +221,7 @@ export function ScheduleEditor({
         </form>
       )}
 
+      <GridTools />
       <div className="rab-grid-wrap">
         <table className="rab-grid">
           <thead>
@@ -260,7 +263,7 @@ export function ScheduleEditor({
                       <td key={w.weekNumber} className="num">
                         {editable ? (
                           <input
-                            className="field schedule-cell"
+                            className="field schedule-cell grid-input"
                             inputMode="decimal"
                             aria-label={`${g.displayNumber ?? g.description} minggu ${w.weekNumber}`}
                             aria-invalid={invalid.has(k)}

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { CorrectionBadge } from '@/components/corrections';
 import { RabBackLinks } from '@/components/rab-tabs';
 import { Alert, Badge, PageTitle } from '@/components/ui';
+import { GridTools } from '@/components/grid-tools';
 import { formatNumber, formatRounded, formatRupiah } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
@@ -46,6 +47,7 @@ export default async function RabSnapshotPage({
         {formatRupiah(p.totals.rounded)}). Arsip ini hanya-baca dan tidak mengikuti data sekarang.
       </p>
 
+      <GridTools />
       <div className="panel rab-grid-wrap mb-6">
         <table className="rab-grid">
           <thead>

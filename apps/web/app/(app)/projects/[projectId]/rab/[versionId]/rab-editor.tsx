@@ -17,6 +17,7 @@ import { Alert, Badge, Button, Field, Select } from '@/components/ui';
 import { ActionMenu } from '@/components/action-menu';
 import { Icon } from '@/components/icon';
 import { InfoHint } from '@/components/info-hint';
+import { GridTools } from '@/components/grid-tools';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { formatDate, formatNumber, formatRounded } from '@/lib/project-fields';
 import { canChangeVersion, RAB_COLUMNS, RAB_ROW_TYPE_LABEL, type RabColumn } from '@/lib/rab-ui';
@@ -696,6 +697,8 @@ export function RabEditor({
           {editable ? 'Mulai dengan menambah bagian (SECTION) atau item pekerjaan.' : ''}
         </p>
       ) : (
+        <>
+        <GridTools />
         <div className="panel rab-grid-wrap">
           <table className="rab-grid">
             <thead>
@@ -1003,6 +1006,7 @@ export function RabEditor({
             </tfoot>
           </table>
         </div>
+        </>
       )}
     </div>
   );
