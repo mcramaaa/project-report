@@ -102,21 +102,21 @@ describe('actualCurve (D-076)', () => {
   it('weights each week by volume share of the item and accumulates; unknown items count nothing', () => {
     // Total 1000: item A subtotal 600 (60%) over 10 m3, item B 400 (40%) over 4 m3.
     const items = [
-      { workItemId: 'A', volume: '10', subtotal: '600' },
-      { workItemId: 'B', volume: '4', subtotal: '400' },
+      { workItemId: 'A', volume: '10', subtotal: '600', groupId: 'G1' },
+      { workItemId: 'B', volume: '4', subtotal: '400', groupId: 'G2' },
       { workItemId: 'Z', volume: '0', subtotal: '0' },
     ];
-    expect(
-      actualCurve(items, [
+    const { weeks, groups } = actualCurve(items, [
         { workItemId: 'A', weekNumber: 1, volume: '5' },
         { workItemId: 'B', weekNumber: 2, volume: '1' },
         { workItemId: 'X', weekNumber: 2, volume: '99' },
         { workItemId: 'Z', weekNumber: 2, volume: '1' },
-      ], '1000', 3),
-    ).toEqual([
+      ], '1000', 3);
+    expect(weeks).toEqual([
       { weekNumber: 1, actual: '30', cumulative: '30' },
       { weekNumber: 2, actual: '10', cumulative: '40' },
       { weekNumber: 3, actual: '0', cumulative: '40' },
     ]);
+    expect(Object.fromEntries(groups)).toEqual({ G1: ['30', '0', '0'], G2: ['0', '10', '0'] });
   });
 });

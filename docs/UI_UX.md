@@ -542,3 +542,10 @@ rencana (jingga putus-putus) dan realisasi (biru) digambar di atas kolom minggu
 dengan skala 0–100% di kanan. Tinggi dibatasi (header dan baris bawah tetap
 terlihat), zoom memakai tombol grid, angka minggu yang ditunjuk kursor tampil di
 baris info di atas tabel. Di HP kolom kiri tidak dibekukan.
+
+Di bawah Kurva S ada kartu **Analisis keterlambatan** (D-077): pilihan minggu
+analisis (bawaan: laporan terakhir), lima angka (realisasi & deviasi, sisa
+pekerjaan, kebutuhan per minggu, laju 4 minggu terakhir, prakiraan selesai) dan
+tabel deviasi per kelompok (paling terlambat dulu, 8 teratas, bisa tampilkan
+semua) dengan bilah progres kelompok vs posisi rencana. Kelompok terlambat
+ditandai merah di sheet Kurva S.

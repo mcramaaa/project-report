@@ -270,7 +270,8 @@ GET /projects/:projectId/schedules/s-curve
 `rab.read`. D-076: versi acuan = baseline di akhir minggu berjalan; per minggu
 `planned`, `plannedCumulative` (null tanpa jadwal APPROVED), `actual`,
 `actualCumulative`, `deviation` (null untuk minggu yang belum dimulai), plus
-`currentWeek`.
+`currentWeek`. `rows`: baris sheet Curva S (judul SECTION `weight` null) dengan
+`planned` dan `actual` per minggu per kelompok (D-077).
 
 ## 11. Daily Allocation
 

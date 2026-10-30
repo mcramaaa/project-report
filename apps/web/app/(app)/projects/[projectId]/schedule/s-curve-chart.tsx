@@ -3,6 +3,7 @@
 import type { SCurveDto } from '@laporan-proyek/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { formatDate, formatRounded } from '@/lib/project-fields';
+import { defaultAnalysisWeek, groupDeviations } from './schedule-analysis';
 
 // Validated pair (dataviz validator, light surface): plan is also dashed, so identity never rests on color alone.
 const PLAN = '#d97706';
@@ -58,6 +59,15 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
   const [pointer, setPointer] = useState<{ x: number; y: number; row?: number }>();
   const [full, setFull] = useState(false);
   const n = data.weeks.length;
+  // D-077 butir 2: groups behind plan at the last reported week are marked in the sheet.
+  const [behind] = useState(
+    () =>
+      new Set(
+        groupDeviations(data, defaultAnalysisWeek(data))
+          .filter((g) => g.deviation.lt(0))
+          .map((g) => g.row.id),
+      ),
+  );
   const base = detail ? DETAIL : FIT;
   const desc = sizes.desc ?? base.desc;
   const cols = {
@@ -321,7 +331,9 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
                 <tr
                   key={r.id}
                   data-row={ri}
-                  className={r.weight === null ? 's-heading' : undefined}
+                  className={
+                    r.weight === null ? 's-heading' : behind.has(r.id) ? 's-behind' : undefined
+                  }
                 >
                   <td>{r.displayNumber ?? ''}</td>
                   <td className="s-desc" title={r.description}>

@@ -195,7 +195,7 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M8 Schedule + Weeks (D-072)                                                            | jadwal per kelompok RAB: grid, impor Master Curva S, approve/reopen; Kurva S rencana   |
 | M9 Weekly Progress (D-073)                                                             | grid per minggu, mode volume / % kumulatif, validasi baseline, peringatan D-071 butir 5 |
 | M10 Daily Allocation (D-075)                                                           | faktor hari default kantor, 4 desimal + sisa ke hari terakhir, alokasi manual per item |
-| M12 Kurva S (D-076)                                                                    | rencana vs realisasi vs deviasi di tab Jadwal; laporan mingguan/4 minggu belum           |
+| M12 Kurva S (D-076)                                                                    | rencana vs realisasi vs deviasi di tab Jadwal + analisis keterlambatan (D-077)          |
 | M11–M16 (laporan harian, finalisasi, export, deploy)                                   | belum dimulai; M11 perlu OD-005                                                        |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap

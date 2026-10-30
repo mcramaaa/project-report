@@ -95,26 +95,40 @@ export function scaleScheduleToWeights(
 }
 
 /**
- * D-076: realised % of project weight per week. Each item counts volume ÷ item volume × subtotal ÷ RAB total × 100;
- * items missing from `items` or with volume 0 count nothing.
+ * D-076/D-077: realised % of project weight per week, in total and per group. Each item counts
+ * volume ÷ item volume × subtotal ÷ RAB total × 100; items missing from `items` or with volume 0 count nothing.
  */
 export function actualCurve(
-  items: { workItemId: string; volume: string; subtotal: string }[],
+  items: { workItemId: string; volume: string; subtotal: string; groupId?: string | null }[],
   progress: { workItemId: string; weekNumber: number; volume: string }[],
   totalValue: string,
   weekCount: number,
-): { weekNumber: number; actual: string; cumulative: string }[] {
-  const perUnit = new Map<string, Decimal>();
+): { weeks: { weekNumber: number; actual: string; cumulative: string }[]; groups: Map<string, string[]> } {
+  const perUnit = new Map<string, { f: Decimal; groupId: string | null }>();
   if (new D(totalValue).gt(0))
-    for (const i of items) if (new D(i.volume).gt(0)) perUnit.set(i.workItemId, new D(i.subtotal).div(totalValue).times(100).div(i.volume));
-  const perWeek = Array.from({ length: weekCount }, () => new D(0));
+    for (const i of items)
+      if (new D(i.volume).gt(0)) perUnit.set(i.workItemId, { f: new D(i.subtotal).div(totalValue).times(100).div(i.volume), groupId: i.groupId ?? null });
+  const zeros = () => Array.from({ length: weekCount }, () => new D(0));
+  const perWeek = zeros();
+  const byGroup = new Map<string, Decimal[]>();
   for (const p of progress) {
-    const f = perUnit.get(p.workItemId);
-    if (f && p.weekNumber >= 1 && p.weekNumber <= weekCount) perWeek[p.weekNumber - 1] = perWeek[p.weekNumber - 1]!.plus(f.times(p.volume));
+    const u = perUnit.get(p.workItemId);
+    if (!u || p.weekNumber < 1 || p.weekNumber > weekCount) continue;
+    const v = u.f.times(p.volume);
+    perWeek[p.weekNumber - 1] = perWeek[p.weekNumber - 1]!.plus(v);
+    if (u.groupId) {
+      const g = byGroup.get(u.groupId) ?? zeros();
+      g[p.weekNumber - 1] = g[p.weekNumber - 1]!.plus(v);
+      byGroup.set(u.groupId, g);
+    }
   }
+  const round = (d: Decimal) => d.toDecimalPlaces(12, D.ROUND_HALF_UP).toFixed();
   let cumulative = new D(0);
-  return perWeek.map((actual, i) => {
-    cumulative = cumulative.plus(actual);
-    return { weekNumber: i + 1, actual: actual.toDecimalPlaces(12, D.ROUND_HALF_UP).toFixed(), cumulative: cumulative.toDecimalPlaces(12, D.ROUND_HALF_UP).toFixed() };
-  });
+  return {
+    weeks: perWeek.map((actual, i) => {
+      cumulative = cumulative.plus(actual);
+      return { weekNumber: i + 1, actual: round(actual), cumulative: round(cumulative) };
+    }),
+    groups: new Map([...byGroup].map(([id, w]) => [id, w.map(round)])),
+  };
 }

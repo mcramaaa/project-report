@@ -1103,6 +1103,28 @@ O dan `Master Curva S` baris 84–86); melengkapi PRD §23 dan D-072 butir 6.
    realisasi yang tampil.
 6. Melihat Kurva S memakai `rab.read`.
 
+## D-077 Deviasi per Kelompok dan Kalkulator Kejar Target
+
+Tanggal: 2026-10-30. Melengkapi D-076; tidak ada data baru yang disimpan.
+
+1. **Realisasi per kelompok** = Σ item di bawah kelompok jadwal (D-072) dari
+   volume ÷ volume item × bobot item, pada versi acuan D-076. Rencana per
+   kelompok = isian jadwal kelompok itu. Keduanya dalam % bobot proyek;
+   deviasi kelompok = realisasi kumulatif − rencana kumulatif.
+2. **Minggu analisis:** bawaannya minggu terakhir yang sudah punya realisasi
+   (minggu berjalan yang belum diisi akan membesar-besarkan keterlambatan);
+   pengguna dapat memilih minggu lain yang sudah dimulai. Kelompok diurutkan
+   dari yang paling terlambat dan yang terlambat ditandai di sheet Kurva S.
+3. **Kejar target** (s.d. minggu analisis):
+   - sisa = 100 − realisasi kumulatif;
+   - minggu tersisa = minggu sesudah minggu analisis s.d. minggu terakhir;
+   - kebutuhan rata-rata per minggu = sisa ÷ minggu tersisa;
+   - pembanding: realisasi mingguan tertinggi dan rata-rata 4 minggu terakhir
+     s.d. minggu analisis;
+   - prakiraan selesai dengan laju rata-rata itu = minggu analisis +
+     ⌈sisa ÷ laju⌉ (tidak ditampilkan bila laju 0).
+   Ini angka bantu, bukan janji atau jadwal resmi.
+
 ## Keputusan Terbuka
 
 

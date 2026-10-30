@@ -66,13 +66,25 @@ export class SchedulesService {
     const version = assignment?.rabVersion;
     const [items, progress, plan] = await Promise.all([
       version
-        ? this.prisma.rabVersionItem.findMany({ where: { rabVersionId: version.id, rowType: 'ITEM', workItemId: { not: null } }, select: { workItemId: true, volume: true, subtotal: true } })
+        ? this.prisma.rabVersionItem.findMany({
+            where: { rabVersionId: version.id },
+            select: { id: true, parentItemId: true, rowType: true, workItemId: true, volume: true, subtotal: true },
+          })
         : Promise.resolve([]),
       this.prisma.weeklyProgress.findMany({ where: { projectId }, select: { workItemId: true, actualVolume: true, week: { select: { weekNumber: true } } } }),
       version?.schedule?.status === 'APPROVED' ? loadSchedule(this.prisma, projectId, version.schedule.id) : Promise.resolve(null),
     ]);
-    const actual = actualCurve(
-      items.map((i) => ({ workItemId: i.workItemId!, volume: i.volume?.toString() ?? '0', subtotal: i.subtotal?.toString() ?? '0' })),
+    // D-077: each item's schedule group is its nearest ancestor that is a group.
+    const groupIds = scheduleGroupIds(items.map((i) => ({ id: i.id, parentId: i.parentItemId, rowType: i.rowType })));
+    const parentOf = new Map(items.map((i) => [i.id, i.parentItemId]));
+    const groupOf = (id: string) => {
+      for (let p: string | null | undefined = id; p; p = parentOf.get(p)) if (groupIds.has(p)) return p;
+      return null;
+    };
+    const { weeks: actual, groups: actualByGroup } = actualCurve(
+      items
+        .filter((i) => i.rowType === 'ITEM' && i.workItemId)
+        .map((i) => ({ workItemId: i.workItemId!, volume: i.volume?.toString() ?? '0', subtotal: i.subtotal?.toString() ?? '0', groupId: groupOf(i.id) })),
       progress.map((p) => ({ workItemId: p.workItemId, weekNumber: p.week.weekNumber, volume: p.actualVolume.toString() })),
       version?.totalValue?.toString() ?? '0',
       weeks.length,
@@ -82,7 +94,11 @@ export class SchedulesService {
     for (const e of plan?.entries ?? []) cells.set(`${e.groupId}:${e.weekNumber}`, e.weight);
     return {
       baseline: version ? { rabVersionId: version.id, label: rabVersionLabel(version) } : null,
-      rows: (plan?.outline ?? []).map((r) => ({ ...r, planned: weeks.map((w) => cells.get(`${r.id}:${w.weekNumber}`) ?? null) })),
+      rows: (plan?.outline ?? []).map((r) => ({
+        ...r,
+        planned: weeks.map((w) => cells.get(`${r.id}:${w.weekNumber}`) ?? null),
+        actual: r.weight === null ? weeks.map(() => null) : weeks.map((w, i) => (w.startDate <= now ? (actualByGroup.get(r.id)?.[i] ?? '0') : null)),
+      })),
       schedule: version?.schedule ?? null,
       currentWeek: current.weekNumber,
       weeks: weeks.map((w, i) => {

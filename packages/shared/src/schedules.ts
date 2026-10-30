@@ -59,7 +59,15 @@ export interface SCurveDto {
   /** The reference version's schedule; the plan is shown only when APPROVED. */
   schedule: { id: string; status: ScheduleStatus } | null;
   /** Curva S sheet rows (SECTION headings have weight null) with the planned % per week; empty without an approved plan. */
-  rows: { id: string; displayNumber: string | null; description: string; weight: string | null; planned: (string | null)[] }[];
+  rows: {
+    id: string;
+    displayNumber: string | null;
+    description: string;
+    weight: string | null;
+    planned: (string | null)[];
+    /** D-077: realised % of project weight per week from this group's items; null for headings and weeks not started. */
+    actual: (string | null)[];
+  }[];
   /** Week the project is in now (clamped to the project), for the "today" marker. */
   currentWeek: number;
   weeks: {

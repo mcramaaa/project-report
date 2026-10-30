@@ -6,7 +6,15 @@ import { useState } from 'react';
 import { Button } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 
-export function CreateSchedule({ projectId, rabVersionId, label }: { projectId: string; rabVersionId: string; label: string }) {
+export function CreateSchedule({
+  projectId,
+  rabVersionId,
+  label,
+}: {
+  projectId: string;
+  rabVersionId: string;
+  label: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -15,7 +23,9 @@ export function CreateSchedule({ projectId, rabVersionId, label }: { projectId: 
     setBusy(true);
     setError(undefined);
     try {
-      const created = await api<ScheduleDetailDto>('POST', `/projects/${projectId}/schedules`, { rabVersionId });
+      const created = await api<ScheduleDetailDto>('POST', `/projects/${projectId}/schedules`, {
+        rabVersionId,
+      });
       router.push(`/projects/${projectId}/schedule/${created.id}`);
     } catch (err) {
       setError(errorMessage(err));
