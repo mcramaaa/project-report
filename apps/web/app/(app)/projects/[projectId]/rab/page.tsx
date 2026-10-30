@@ -1,4 +1,4 @@
-import type { ProjectDto, RabVersionSummaryDto } from '@laporan-proyek/shared';
+import type { ProjectBaselinesDto, ProjectDto, RabVersionSummaryDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectTabs } from '@/components/project-tabs';
@@ -6,6 +6,7 @@ import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
 import { formatDate, formatRupiah } from '@/lib/project-fields';
 import { RAB_STATUS_BADGE } from '@/lib/rab-ui';
 import { serverGet } from '@/lib/server-api';
+import { BaselinePanel } from './baseline-panel';
 import { CreateRabVersion } from './create-rab-version';
 
 export default async function RabVersionsPage({
@@ -15,13 +16,15 @@ export default async function RabVersionsPage({
 }) {
   const { projectId } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, versions] = await Promise.all([
+  const [{ status, data: project }, versions, baselines] = await Promise.all([
     serverGet<ProjectDto>(base),
     serverGet<RabVersionSummaryDto[]>(`${base}/rab-versions`),
+    serverGet<ProjectBaselinesDto>(`${base}/baselines`),
   ]);
   if (status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const canEdit = project.permissions.includes('rab.edit') && project.status === 'ACTIVE';
+  const canActivate = project.permissions.includes('baseline.activate') && project.status === 'ACTIVE';
 
   return (
     <>
@@ -35,6 +38,11 @@ export default async function RabVersionsPage({
         <Alert>Versi RAB tidak dapat dimuat.</Alert>
       ) : (
         <div className="mt-4 space-y-4">
+          {baselines.data ? (
+            <BaselinePanel projectId={project.id} initial={baselines.data} canActivate={canActivate} />
+          ) : (
+            <Alert>Baseline tidak dapat dimuat.</Alert>
+          )}
           {canEdit && <CreateRabVersion projectId={project.id} versions={versions.data} />}
           {versions.data.length === 0 ? (
             <EmptyState>Belum ada versi RAB. Mulai dengan RAB Kontrak.</EmptyState>

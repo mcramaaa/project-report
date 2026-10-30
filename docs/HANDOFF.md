@@ -191,7 +191,7 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M4 RAB manual (versi, hierarki, grid, compare, approval)                               | selesai                                                                                |
 | M5 Upload/ekstraksi/review impor RAB (deterministik + AI 9router sebagai kandidat)     | selesai                                                                                |
 | M7 AHSP (analisa, harga bahan/upah/alat, paket per versi RAB)                          | selesai                                                                                |
-| M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode belum     |
+| M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode: API + UI (D-071) |
 | M8–M16 (jadwal lanjutan, progres, alokasi harian, laporan, finalisasi, export, deploy) | belum dimulai                                                                          |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap

@@ -42,8 +42,9 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `rabImport.review` | PROJECT | Impor RAB | buat run impor, retry, catat keputusan reviewer |
 | `rabImport.approve` | PROJECT | Impor RAB | approve/reject impor → analisa/harga resmi + RAB DRAFT |
 | `ahsp.read` | PROJECT | AHSP | lihat daftar analisa, komponen, harga |
+| `baseline.activate` | PROJECT | Baseline | aktifkan versi RAB approved sebagai baseline mulai tanggal tertentu, cabut assignment terakhir (alasan wajib) (D-071) |
 
-Rencana (ditambahkan saat milestone terkait; `rab.*` sudah ditambahkan di M4, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `baseline.activate`, `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
+Rencana (ditambahkan saat milestone terkait; `rab.*` sudah ditambahkan di M4, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
 
 ¹ **Reviewer tidak boleh memfinalisasi laporan yang ia input sendiri**, termasuk super admin. Aturan domain ini diimplementasikan dan diuji di backend saat fitur laporan dibuat (`docs/ACCEPTANCE_TESTS.md` bagian I).
 
@@ -55,8 +56,8 @@ FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2), RAB_EDITOR (D-
 |---|---|
 | FILLER, REVIEWER | `project.read`, `rab.read`, `ahsp.read` |
 | ADMIN | `project.read`, `rab.read`, `rab.edit`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review` |
-| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve` |
-| RAB_EDITOR (Editor RAB) | `project.read`, `rab.read`, `rab.edit`, `rab.approve`, `rab.reopen`, `ahsp.read`, `ahsp.edit`, `document.read` |
+| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve`, `baseline.activate` |
+| RAB_EDITOR (Editor RAB) | `project.read`, `rab.read`, `rab.edit`, `rab.approve`, `rab.reopen`, `ahsp.read`, `ahsp.edit`, `document.read`, `baseline.activate` |
 
 Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
 

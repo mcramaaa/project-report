@@ -274,6 +274,13 @@ CONTRACT
 
 Tampilkan effective period.
 
+Implementasi M6 (D-071), panel "Baseline berlaku" di halaman daftar versi RAB (`/projects/:id/rab`):
+- riwayat assignment: versi, berlaku dari–sampai (akhir dihitung), mode, alasan, oleh;
+- "Cabut" hanya pada assignment terakhir, dengan form alasan inline (bukan dialog);
+- form aktivasi kandidat berikutnya: versi, mulai berlaku "Minggu berikutnya (minggu ke-N, tgl)" atau "Tanggal pasti" (default tanggal dokumen), alasan opsional; Kontrak selalu mulai tanggal mulai proyek;
+- ringkasan per minggu ("Minggu 1–3: Kontrak"), minggu yang terbelah ditandai;
+- panel tampil dengan `rab.read`; form dan tombol hanya dengan `baseline.activate` dan proyek ACTIVE.
+
 ## 12. Weekly Progress Grid
 
 Header:
