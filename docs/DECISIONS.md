@@ -1049,6 +1049,39 @@ Tanggal: 2026-10-30. Diputuskan pengguna; melengkapi D-072 butir 4. Sheet
    pengguna dan disimpan di audit `IMPORT_SCHEDULE`.
 5. Isian manual di grid tidak diskalakan; validasi D-072 tetap berlaku.
 
+## D-075 Alokasi Harian (M10)
+
+Tanggal: 2026-10-30. Diputuskan pengguna; menutup OD-004 dan melengkapi PRD §15.
+
+1. **Hari:** hari minggu proyek, Hari 1–7 dari `start_date` minggu (D-011).
+   Minggu terakhir yang lebih pendek hanya punya hari sampai tanggal selesai
+   proyek (D-037), jadi tidak ada hari di luar masa proyek.
+2. **Faktor:** faktor default kantor 0,80 / 1,20 / 1,10 / 1,15 / 1,00 / 0,85 /
+   0,90 untuk Hari 1–7, sama untuk semua proyek. Faktor per proyek belum
+   dapat diubah; hari yang tidak dikerjakan (mis. libur) diisi lewat alokasi
+   manual.
+3. **Hari aktif:** hari minggu itu dengan faktor > 0.
+4. **Rumus DAILY_FACTOR:** volume hari = volume minggu × faktor ÷ jumlah faktor
+   hari aktif, dibulatkan HALF_UP ke 4 desimal. Hari aktif terakhir mendapat
+   sisanya (volume minggu − hari lain), sehingga total harian tepat sama
+   dengan volume minggu (yang bisa sampai 12 desimal). Bila pembulatan ke
+   atas membuat jumlah melewati volume minggu (hanya pada volume sangat kecil),
+   hari berikutnya dipotong agar tidak ada nilai negatif.
+5. **Dihitung, bukan disimpan:** alokasi DAILY_FACTOR dihitung dari
+   `weekly_progress` setiap kali dibaca, jadi selalu mengikuti progres
+   terbaru. Laporan final (M13) yang membekukan angkanya.
+6. **MANUAL:** per work item per minggu, pengguna mengisi volume setiap hari
+   (≥ 0, maks. 12 desimal); jumlahnya wajib tepat sama dengan volume minggu.
+   Disimpan di `daily_allocations`; `weekly_progress.daily_method` menjadi
+   `MANUAL`. "Kembali ke faktor" mengubah method saja; baris manual tidak
+   dihapus. Bila progres minggu itu berubah setelah diisi manual, alokasi
+   ditandai "tidak sama dengan volume minggu" sampai diperbaiki.
+7. **Izin:** mengubah alokasi memakai `progress.input`, hanya pada minggu
+   terbuka (D-073 butir 6). Melihat memakai `rab.read`. Perubahan diaudit
+   (`UPDATE_DAILY_ALLOCATION`).
+8. **Metode SCHEDULE** (PRD §15) belum dibuat: jadwal D-072 hanya per minggu,
+   jadi belum ada dasar pembagian harian. Diputuskan bila dibutuhkan.
+
 ## Keputusan Terbuka
 
 
@@ -1073,6 +1106,8 @@ PRD §6: "sistem memberi error/warning sesuai kebijakan". Kebijakannya belum ada
 Diputuskan sebelum: Milestone 6 (aktivasi baseline) dan Milestone 9 (validasi progres).
 
 ### OD-004 Presisi rounding dan "hari aktif" pada alokasi harian
+
+**Ditutup 2026-10-30 oleh D-075.**
 
 PRD §15: total harian harus sama dengan volume mingguan; selisih ke "hari aktif terakhir". Belum ditetapkan: jumlah desimal (mis. mengikuti `DECIMAL(18,4)`), rounding mode, dan definisi hari aktif (faktor > 0? hari libur? hari di luar masa proyek pada minggu terakhir?).
 

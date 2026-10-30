@@ -78,3 +78,34 @@ export interface BaselineVolumeWarningDto {
   reported: string;
   newVolume: string;
 }
+
+/** D-075: DAILY_FACTOR = computed from the office factors; MANUAL = volumes typed per day. */
+export const DAILY_ALLOCATION_METHODS = ['DAILY_FACTOR', 'MANUAL'] as const;
+export type DailyAllocationMethod = (typeof DAILY_ALLOCATION_METHODS)[number];
+
+/** One work item of one week; MANUAL sends one volume per day of the week, adding up to the week's volume. */
+export const saveDailyAllocationSchema = z.discriminatedUnion('method', [
+  z.object({ method: z.literal('DAILY_FACTOR') }),
+  z.object({ method: z.literal('MANUAL'), volumes: z.array(volume).min(1).max(7) }),
+]);
+export type SaveDailyAllocationInput = z.infer<typeof saveDailyAllocationSchema>;
+
+export interface DailyAllocationRowDto {
+  workItemId: string;
+  workItemCode: string | null;
+  description: string;
+  unit: string | null;
+  weekVolume: string;
+  method: DailyAllocationMethod;
+  /** One per day of the week. */
+  volumes: string[];
+  /** MANUAL volumes no longer add up to the week's volume (progress changed afterwards). */
+  mismatch: boolean;
+}
+
+export interface DailyAllocationDto {
+  week: ProgressWeekSummaryDto;
+  days: { date: string; day: number; factor: string }[];
+  /** Work items with progress this week, in baseline order. */
+  rows: DailyAllocationRowDto[];
+}

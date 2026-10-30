@@ -440,6 +440,7 @@ D-073: volume realisasi per minggu per work item; tidak pernah dihapus.
 - input_mode — VOLUME_WEEK | PERCENT_CUMULATIVE
 - input_percentage DECIMAL(9,6) nullable — persen kumulatif yang diketik
 - actual_volume DECIMAL(30,12) — volume minggu ini (fakta)
+- daily_method — DAILY_FACTOR | MANUAL (D-075)
 - note nullable
 - entered_by, entered_at
 - updated_by, updated_at
@@ -451,22 +452,21 @@ Unique:
 
 ### daily_allocations
 
+D-075: hanya menyimpan alokasi MANUAL. Alokasi DAILY_FACTOR dihitung dari
+`weekly_progress` saat dibaca. Metode yang berlaku ada di
+`weekly_progress.daily_method` (DAILY_FACTOR | MANUAL, default DAILY_FACTOR).
+Baris tidak dihapus saat kembali ke DAILY_FACTOR.
+
 - id
 - weekly_progress_id
-- work_item_id
-- work_date
-- volume
-- allocation_method
-- factor
-- is_manual_override
-- baseline_version_id
+- work_date DATE
+- volume DECIMAL(30,12)
+- updated_by
 - created_at
 - updated_at
 
-allocation_method:
-- DAILY_FACTOR
-- SCHEDULE
-- MANUAL
+Unique:
+- weekly_progress_id + work_date
 
 ### daily_reports
 

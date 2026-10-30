@@ -264,10 +264,17 @@ Contoh:
 ## 11. Daily Allocation
 
 ```text
-GET  /weeks/:weekId/daily-allocations
-POST /weeks/:weekId/daily-allocations/generate
-PUT  /weeks/:weekId/daily-allocations
+GET /projects/:projectId/progress/weeks/:weekNumber/daily
+PUT /projects/:projectId/progress/weeks/:weekNumber/daily/:workItemId
 ```
+
+- GET (`rab.read`): hari minggu itu dengan faktor, dan per work item yang punya
+  progres minggu itu: volume minggu, `method`, `volumes` per hari, `mismatch`.
+- PUT (`progress.input`, minggu terbuka): `{ "method": "DAILY_FACTOR" }` atau
+  `{ "method": "MANUAL", "volumes": ["50", "50", "0", …] }` (satu per hari,
+  jumlahnya tepat sama dengan volume minggu; `400` bila tidak). `404` bila
+  work item belum punya progres minggu itu. Mengembalikan isi GET.
+- Alokasi DAILY_FACTOR dihitung saat dibaca (D-075); tidak ada endpoint generate.
 
 ## 12. Daily Reports
 

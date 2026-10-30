@@ -171,3 +171,51 @@ describe('weekly progress (D-073)', () => {
     expect(await t.prisma.weeklyProgress.count()).toBe(2); // nothing lost
   });
 });
+
+describe('daily allocation (D-075)', () => {
+  type DailyRow = { workItemId: string; weekVolume: string; method: string; volumes: string[]; mismatch: boolean };
+  const daily = (week: number) => ok(admin.get(`${base}/${week}/daily`));
+  const rowOf = (body: { rows: DailyRow[] }, id: string) => body.rows.find((r) => r.workItemId === id)!;
+
+  it('splits by the office factors, takes manual volumes that add up, and flags them after progress changes', async () => {
+    await contractBaseline();
+    await ok(save(1, [{ workItemId: galian, mode: 'VOLUME_WEEK', volume: '100' }]));
+    const week1 = await daily(1);
+    expect(week1.days.map((d: { date: string; factor: string }) => [d.date, d.factor])).toEqual([
+      ['2026-01-05', '0.80'], ['2026-01-06', '1.20'], ['2026-01-07', '1.10'], ['2026-01-08', '1.15'], ['2026-01-09', '1.00'], ['2026-01-10', '0.85'], ['2026-01-11', '0.90'],
+    ]);
+    expect(week1.rows).toHaveLength(1); // Urugan has no progress this week
+    expect(rowOf(week1, galian)).toMatchObject({ method: 'DAILY_FACTOR', mismatch: false, volumes: ['11.4286', '17.1429', '15.7143', '16.4286', '14.2857', '12.1429', '12.857'] });
+
+    const put = (body: unknown) => admin.request('PUT', `${base}/1/daily/${galian}`, body);
+    expect((await put({ method: 'MANUAL', volumes: ['50', '50', '0', '0', '0', '0', '0.1'] })).status).toBe(400); // 100.1 ≠ 100
+    expect((await put({ method: 'MANUAL', volumes: ['100'] })).status).toBe(400); // 1 of 7 days
+    const manual = await ok(put({ method: 'MANUAL', volumes: ['50', '50', '0', '0', '0', '0', '0'] }));
+    expect(rowOf(manual, galian)).toMatchObject({ method: 'MANUAL', mismatch: false, volumes: ['50', '50', '0', '0', '0', '0', '0'] });
+
+    await ok(save(1, [{ workItemId: galian, mode: 'VOLUME_WEEK', volume: '80' }]));
+    expect(rowOf(await daily(1), galian)).toMatchObject({ method: 'MANUAL', mismatch: true });
+
+    // Back to factors: the manual rows are kept, the factors apply again.
+    const back = await ok(put({ method: 'DAILY_FACTOR' }));
+    expect(rowOf(back, galian)).toMatchObject({ method: 'DAILY_FACTOR', mismatch: false });
+    expect(await t.prisma.dailyAllocation.count()).toBe(7);
+    const audit = await t.prisma.auditLog.findMany({ where: { action: 'UPDATE_DAILY_ALLOCATION' }, orderBy: { createdAt: 'asc' } });
+    expect(audit.map((a) => (a.newValue as { method: string }).method)).toEqual(['MANUAL', 'DAILY_FACTOR']);
+  });
+
+  it('gives the short last week only its own days and needs progress and progress.input', async () => {
+    await contractBaseline();
+    await ok(save(18, [{ workItemId: urugan, mode: 'VOLUME_WEEK', volume: '5' }]));
+    const last = await daily(18);
+    expect(last.days).toEqual([{ date: '2026-05-04', day: 1, factor: '0.80' }]);
+    expect(rowOf(last, urugan).volumes).toEqual(['5']);
+    expect((await admin.request('PUT', `${base}/1/daily/${urugan}`, { method: 'DAILY_FACTOR' })).status).toBe(404); // no progress in week 1
+
+    const u = await createUser(t.prisma, { email: 'reviewer@example.com' });
+    await t.prisma.projectUser.create({ data: { projectId: project.id, userId: u.id, roleId: await roleId(t.prisma, 'REVIEWER') } });
+    const reviewer = await loggedIn('reviewer@example.com');
+    expect((await reviewer.get(`${base}/18/daily`)).status).toBe(200);
+    expect((await reviewer.request('PUT', `${base}/18/daily/${urugan}`, { method: 'MANUAL', volumes: ['5'] })).status).toBe(403);
+  });
+});

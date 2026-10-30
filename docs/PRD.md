@@ -349,6 +349,8 @@ volume hari = volume minggu * faktor hari / total faktor
 
 Setelah rounding, total harian wajib tepat sama dengan volume mingguan. Selisih pembulatan masuk hari aktif terakhir.
 
+Presisi, hari aktif, dan alokasi manual: lihat D-075.
+
 ## 16. Laporan Harian
 
 Satu laporan per tanggal.

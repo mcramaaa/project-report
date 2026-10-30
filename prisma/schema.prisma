@@ -51,6 +51,7 @@ model User {
   approvedSchedules    ScheduleVersion[]    @relation("ScheduleApprovedBy")
   enteredProgress      WeeklyProgress[]     @relation("ProgressEnteredBy")
   updatedProgress      WeeklyProgress[]     @relation("ProgressUpdatedBy")
+  dailyAllocations     DailyAllocation[]    @relation("DailyAllocationUpdatedBy")
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -410,32 +411,57 @@ enum ProgressInputMode {
   PERCENT_CUMULATIVE
 }
 
+/// D-075: DAILY_FACTOR is computed on read; MANUAL uses the rows in daily_allocations.
+enum DailyAllocationMethod {
+  DAILY_FACTOR
+  MANUAL
+}
+
 /// D-073: realised volume of one work item in one project week (the fact); never deleted, changes are audited.
 model WeeklyProgress {
-  id              String            @id @default(uuid(7)) @db.Char(36)
-  projectId       String            @map("project_id") @db.Char(36)
-  weekId          String            @map("week_id") @db.Char(36)
-  workItemId      String            @map("work_item_id") @db.Char(36)
-  inputMode       ProgressInputMode @map("input_mode")
+  id              String                @id @default(uuid(7)) @db.Char(36)
+  projectId       String                @map("project_id") @db.Char(36)
+  weekId          String                @map("week_id") @db.Char(36)
+  workItemId      String                @map("work_item_id") @db.Char(36)
+  inputMode       ProgressInputMode     @map("input_mode")
   /// PERCENT_CUMULATIVE only: the percent as typed.
-  inputPercentage Decimal?          @map("input_percentage") @db.Decimal(9, 6)
-  actualVolume    Decimal           @map("actual_volume") @db.Decimal(30, 12)
-  note            String?           @db.Text
-  enteredBy       String            @map("entered_by") @db.Char(36)
-  enteredAt       DateTime          @default(now()) @map("entered_at") @db.DateTime(3)
-  updatedBy       String            @map("updated_by") @db.Char(36)
-  updatedAt       DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+  inputPercentage Decimal?              @map("input_percentage") @db.Decimal(9, 6)
+  actualVolume    Decimal               @map("actual_volume") @db.Decimal(30, 12)
+  dailyMethod     DailyAllocationMethod @default(DAILY_FACTOR) @map("daily_method")
+  note            String?               @db.Text
+  enteredBy       String                @map("entered_by") @db.Char(36)
+  enteredAt       DateTime              @default(now()) @map("entered_at") @db.DateTime(3)
+  updatedBy       String                @map("updated_by") @db.Char(36)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.DateTime(3)
 
-  project       Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  week          ProjectWeek @relation(fields: [weekId], references: [id], onDelete: Restrict)
-  workItem      WorkItem    @relation(fields: [workItemId], references: [id], onDelete: Restrict)
-  enteredByUser User        @relation("ProgressEnteredBy", fields: [enteredBy], references: [id], onDelete: Restrict)
-  updatedByUser User        @relation("ProgressUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  week             ProjectWeek       @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  workItem         WorkItem          @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  enteredByUser    User              @relation("ProgressEnteredBy", fields: [enteredBy], references: [id], onDelete: Restrict)
+  updatedByUser    User              @relation("ProgressUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  dailyAllocations DailyAllocation[]
 
   @@unique([weekId, workItemId])
   @@index([projectId, workItemId])
   @@index([workItemId])
   @@map("weekly_progress")
+}
+
+/// D-075: manual daily volumes of one weekly progress row; kept (not deleted) when the row goes back to DAILY_FACTOR.
+model DailyAllocation {
+  id               String   @id @default(uuid(7)) @db.Char(36)
+  weeklyProgressId String   @map("weekly_progress_id") @db.Char(36)
+  workDate         DateTime @map("work_date") @db.Date
+  volume           Decimal  @db.Decimal(30, 12)
+  updatedBy        String   @map("updated_by") @db.Char(36)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  weeklyProgress WeeklyProgress @relation(fields: [weeklyProgressId], references: [id], onDelete: Restrict)
+  updatedByUser  User           @relation("DailyAllocationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+
+  @@unique([weeklyProgressId, workDate])
+  @@map("daily_allocations")
 }
 
 /// Append-only archive of each approved state (D-068); never updated or deleted, never recomputed from live data.

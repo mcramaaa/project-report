@@ -194,7 +194,8 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode: API + UI (D-071) |
 | M8 Schedule + Weeks (D-072)                                                            | jadwal per kelompok RAB: grid, impor Master Curva S, approve/reopen; Kurva S rencana   |
 | M9 Weekly Progress (D-073)                                                             | grid per minggu, mode volume / % kumulatif, validasi baseline, peringatan D-071 butir 5 |
-| M10–M16 (alokasi harian, laporan, finalisasi, export, deploy)                          | belum dimulai                                                                          |
+| M10 Daily Allocation (D-075)                                                           | faktor hari default kantor, 4 desimal + sisa ke hari terakhir, alokasi manual per item |
+| M11–M16 (laporan harian, finalisasi, export, deploy)                                   | belum dimulai; M11 perlu OD-005                                                        |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap
 workbook kantor. Kontrak dan MC-0 cocok per item (416/416) dan total (D-063).

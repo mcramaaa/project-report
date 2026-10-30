@@ -1,7 +1,10 @@
-import { Decimal, progressSummary, weeklyVolumeFromPercent } from '@laporan-proyek/calc';
+import { addDays, allocateDaily, daysInclusive, Decimal, DEFAULT_DAILY_FACTORS, progressSummary, weeklyVolumeFromPercent } from '@laporan-proyek/calc';
 import {
   rabVersionLabel,
+  type DailyAllocationDto,
+  type DailyAllocationMethod,
   type ProgressRowDto,
+  type SaveDailyAllocationInput,
   type ProgressWeekSummaryDto,
   type SaveWeeklyProgressInput,
   type WeeklyProgressDto,
@@ -214,6 +217,98 @@ export class ProgressService {
     });
     return this.get(projectId, weekNumber);
   }
+
+  /** D-075: each work item's weekly volume over the days of the week. */
+  async daily(projectId: string, weekNumber: number): Promise<DailyAllocationDto> {
+    const progress = await this.get(projectId, weekNumber);
+    const days = weekDays(progress.week);
+    const rows = new Map(
+      (
+        await this.prisma.weeklyProgress.findMany({
+          where: { projectId, week: { weekNumber } },
+          select: { workItemId: true, dailyMethod: true, dailyAllocations: { select: { workDate: true, volume: true } } },
+        })
+      ).map((r) => [r.workItemId, r]),
+    );
+    return {
+      week: progress.week,
+      days,
+      rows: progress.rows
+        .filter((r) => r.workItemId && r.thisWeek)
+        .map((r) => {
+          const p = rows.get(r.workItemId!)!;
+          const volumes = volumesOf(p.dailyMethod, p.dailyAllocations, r.thisWeek!.volume, days);
+          return {
+            workItemId: r.workItemId!,
+            workItemCode: r.workItemCode,
+            description: r.description,
+            unit: r.unit,
+            weekVolume: r.thisWeek!.volume,
+            method: p.dailyMethod,
+            volumes,
+            mismatch: !sumOf(volumes).eq(r.thisWeek!.volume),
+          };
+        }),
+    };
+  }
+
+  async saveDaily(actor: AuthUser, projectId: string, weekNumber: number, workItemId: string, input: SaveDailyAllocationInput): Promise<DailyAllocationDto> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      const project = await findProject(tx, projectId);
+      if (project.status !== 'ACTIVE') throw new ConflictException('Proyek sudah ditutup; alokasi harian tidak dapat diubah.');
+      const week = await findWeek(tx, projectId, weekNumber);
+      if (week.startDate > today()) throw new ConflictException(`Minggu ${weekNumber} belum dimulai (mulai ${week.startDate}).`);
+      const p = await tx.weeklyProgress.findUnique({
+        where: { weekId_workItemId: { weekId: week.id, workItemId } },
+        select: { id: true, actualVolume: true, dailyMethod: true, dailyAllocations: { select: { workDate: true, volume: true } }, workItem: { select: { internalCode: true } } },
+      });
+      if (!p) throw new NotFoundException(`Work item ini belum punya progres di minggu ${weekNumber}.`);
+      const days = weekDays(week);
+      const weekVolume = new Decimal(p.actualVolume.toString()).toFixed();
+      const old = volumesOf(p.dailyMethod, p.dailyAllocations, weekVolume, days);
+
+      let volumes: string[];
+      if (input.method === 'MANUAL') {
+        if (input.volumes.length !== days.length) throw new BadRequestException(`Isi ${days.length} hari untuk minggu ${weekNumber}.`);
+        volumes = input.volumes.map((v) => new Decimal(v).toFixed());
+        const total = sumOf(volumes);
+        if (!total.eq(weekVolume)) throw new BadRequestException(`Jumlah harian ${total.toFixed()} tidak sama dengan volume minggu ${weekVolume}.`);
+        for (const [i, d] of days.entries())
+          await tx.dailyAllocation.upsert({
+            where: { weeklyProgressId_workDate: { weeklyProgressId: p.id, workDate: toDbDate(d.date) } },
+            create: { weeklyProgressId: p.id, workDate: toDbDate(d.date), volume: volumes[i]!, updatedBy: actor.id },
+            update: { volume: volumes[i]!, updatedBy: actor.id },
+          });
+      } else volumes = volumesOf('DAILY_FACTOR', [], weekVolume, days);
+      // Rows of a former MANUAL stay in daily_allocations (D-075 butir 6); the method decides which volumes count.
+      await tx.weeklyProgress.update({ where: { id: p.id }, data: { dailyMethod: input.method } });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'UPDATE_DAILY_ALLOCATION',
+        entityType: 'PROJECT_WEEK',
+        entityId: week.id,
+        projectId,
+        oldValue: { weekNumber, workItemCode: p.workItem.internalCode, method: p.dailyMethod, volumes: old },
+        newValue: { weekNumber, workItemCode: p.workItem.internalCode, method: input.method, volumes },
+      });
+    });
+    return this.daily(projectId, weekNumber);
+  }
+}
+
+type Day = DailyAllocationDto['days'][number];
+const weekDays = (w: Pick<Week, 'startDate' | 'endDate'>): Day[] =>
+  Array.from({ length: daysInclusive(w.startDate, w.endDate) }, (_, i) => ({ date: addDays(w.startDate, i), day: i + 1, factor: DEFAULT_DAILY_FACTORS[i]! }));
+const sumOf = (volumes: string[]) => volumes.reduce((t, v) => t.plus(v), new Decimal(0));
+
+function volumesOf(method: DailyAllocationMethod, manual: { workDate: Date; volume: { toString(): string } }[], weekVolume: string, days: Day[]): string[] {
+  if (method === 'MANUAL') {
+    const byDate = new Map(manual.map((a) => [fromDbDate(a.workDate), new Decimal(a.volume.toString()).toFixed()]));
+    return days.map((d) => byDate.get(d.date) ?? '0');
+  }
+  // The default factors are all > 0, so allocateDaily always has an active day.
+  return allocateDaily(weekVolume, days.map((d) => d.factor))!;
 }
 
 async function findProject(db: Db, projectId: string) {
