@@ -8,6 +8,9 @@ import { Alert, Badge, Button, Field, Section, Select } from '@/components/ui';
 import { GridTools, useLeaveWarning } from '@/components/grid-tools';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { formatDate, formatRounded } from '@/lib/project-fields';
+
+/** Display only, as the office workbook shows it; values are stored and summed in full. */
+const SHOWN_DECIMALS = 3;
 import { SCHEDULE_STATUS_BADGE } from '@/lib/rab-ui';
 
 const WEIGHT = /^\d{1,3}(\.\d{1,18})?$/;
@@ -173,7 +176,7 @@ export function ScheduleEditor({
                   <ul className="mt-1 list-disc pl-5">
                     {adjusted.map((a) => (
                       <li key={a.group}>
-                        {a.group}: {formatRounded(a.from, 4)}% → {formatRounded(a.to, 4)}%
+                        {a.group}: {formatRounded(a.from, SHOWN_DECIMALS)}% → {formatRounded(a.to, SHOWN_DECIMALS)}%
                       </li>
                     ))}
                   </ul>
@@ -273,9 +276,9 @@ export function ScheduleEditor({
                 <tr key={g.id}>
                   <td className="rab-sticky-no">{g.displayNumber ?? '–'}</td>
                   <td className="rab-sticky-desc">{g.description}</td>
-                  <td className="num">{formatRounded(g.weight, 4)}</td>
+                  <td className="num">{formatRounded(g.weight, SHOWN_DECIMALS)}</td>
                   <td className={`num ${off ? 'text-red-700' : ''}`} title={off ? 'Belum sama dengan bobot' : undefined}>
-                    {formatRounded(sum.toFixed(), 4)}
+                    {formatRounded(sum.toFixed(), SHOWN_DECIMALS)}
                   </td>
                   {data.weeks.map((w) => {
                     const k = key(g.id, w.weekNumber);
@@ -289,7 +292,7 @@ export function ScheduleEditor({
                             aria-invalid={invalid.has(k)}
                             title={cells[k] || undefined}
                             // Rounded like the workbook while not edited; the exact value while focused.
-                            value={focused === k || !cells[k] || invalid.has(k) ? (cells[k] ?? '') : formatRounded(normalized(cells[k]), 4)}
+                            value={focused === k || !cells[k] || invalid.has(k) ? (cells[k] ?? '') : formatRounded(normalized(cells[k]), SHOWN_DECIMALS)}
                             onFocus={() => setFocused(k)}
                             onBlur={() => setFocused(undefined)}
                             onChange={(e) => {
@@ -298,7 +301,7 @@ export function ScheduleEditor({
                             }}
                           />
                         ) : cells[k] ? (
-                          <span title={cells[k]}>{formatRounded(cells[k], 4)}</span>
+                          <span title={cells[k]}>{formatRounded(cells[k], SHOWN_DECIMALS)}</span>
                         ) : (
                           ''
                         )}
@@ -316,7 +319,7 @@ export function ScheduleEditor({
               </th>
               {curve.map((c) => (
                 <td key={c.weekNumber} className="num">
-                  {formatRounded(c.planned, 4)}
+                  {formatRounded(c.planned, SHOWN_DECIMALS)}
                 </td>
               ))}
             </tr>
@@ -326,7 +329,7 @@ export function ScheduleEditor({
               </th>
               {curve.map((c) => (
                 <td key={c.weekNumber} className="num font-semibold">
-                  {formatRounded(c.cumulative, 4)}
+                  {formatRounded(c.cumulative, SHOWN_DECIMALS)}
                 </td>
               ))}
             </tr>
