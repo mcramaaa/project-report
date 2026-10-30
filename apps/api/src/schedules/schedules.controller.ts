@@ -34,6 +34,13 @@ export class SchedulesController {
     return this.schedules.create(auth.user, projectId, body);
   }
 
+  /** Declared before ':scheduleId', which would take 's-curve' as an id. */
+  @Get('s-curve')
+  @RequireProjectPermission('rab.read')
+  sCurve(@Param('projectId') projectId: string) {
+    return this.schedules.sCurve(projectId);
+  }
+
   @Get(':scheduleId')
   @RequireProjectPermission('rab.read')
   get(@Param('projectId') projectId: string, @Param('scheduleId', uuid) scheduleId: string) {

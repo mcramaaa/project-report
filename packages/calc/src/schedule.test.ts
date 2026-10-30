@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule } from './index.js';
+import { actualCurve, plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule } from './index.js';
 
 describe('scheduleGroupIds', () => {
   it('takes SUBSECTIONs and SECTIONs without SUBSECTION, as REKAP RAB does', () => {
@@ -95,5 +95,28 @@ describe('scaleScheduleToWeights (D-074)', () => {
     const { entries } = scaleScheduleToWeights([{ id: 'G', weight: '1.197946' }], [1, 2, 3].map((n) => ({ groupId: 'G', weekNumber: n, weight: '0.4340376804693972' })));
     expect(entries[0]!.weight.split('.')[1]!.length).toBeLessThanOrEqual(18);
     expect(validateSchedule([{ id: 'G', label: 'G', weight: '1.197946' }], entries, 3).filter((i) => i.groupId === 'G')).toEqual([]);
+  });
+});
+
+describe('actualCurve (D-076)', () => {
+  it('weights each week by volume share of the item and accumulates; unknown items count nothing', () => {
+    // Total 1000: item A subtotal 600 (60%) over 10 m3, item B 400 (40%) over 4 m3.
+    const items = [
+      { workItemId: 'A', volume: '10', subtotal: '600' },
+      { workItemId: 'B', volume: '4', subtotal: '400' },
+      { workItemId: 'Z', volume: '0', subtotal: '0' },
+    ];
+    expect(
+      actualCurve(items, [
+        { workItemId: 'A', weekNumber: 1, volume: '5' },
+        { workItemId: 'B', weekNumber: 2, volume: '1' },
+        { workItemId: 'X', weekNumber: 2, volume: '99' },
+        { workItemId: 'Z', weekNumber: 2, volume: '1' },
+      ], '1000', 3),
+    ).toEqual([
+      { weekNumber: 1, actual: '30', cumulative: '30' },
+      { weekNumber: 2, actual: '10', cumulative: '40' },
+      { weekNumber: 3, actual: '0', cumulative: '40' },
+    ]);
   });
 });

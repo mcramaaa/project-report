@@ -1,9 +1,10 @@
-import { aggregateRabGroups, plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule, type RabRowValues } from '@laporan-proyek/calc';
+import { actualCurve, aggregateRabGroups, Decimal, plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule, type RabRowValues } from '@laporan-proyek/calc';
 import {
   rabVersionLabel,
   type CreateScheduleInput,
   type ImportScheduleInput,
   type SaveScheduleEntriesInput,
+  type SCurveDto,
   type ScheduleDetailDto,
   type ScheduleSummaryDto,
 } from '@laporan-proyek/shared';
@@ -16,6 +17,7 @@ import type { Prisma } from '../generated/prisma/client';
 import { WorkbookModel } from '../imports/workbook/workbook-model';
 import { isUniqueViolation } from '../prisma/errors';
 import { PrismaService } from '../prisma/prisma.service';
+import { today } from '../progress/progress.service';
 import { fromDbDate } from '../projects/project-calendar';
 import { DEFAULT_SCHEDULE_SHEET, parseScheduleSheet } from './schedule-sheet';
 
@@ -47,6 +49,56 @@ export class SchedulesService {
       orderBy: [{ versionType: 'asc' }, { revisionNumber: 'asc' }],
     });
     return versions.map((v) => ({ rabVersion: { id: v.id, label: rabVersionLabel(v) }, schedule: v.schedule }));
+  }
+
+  /** D-076: plan and realisation on the weights of the baseline in force at the end of the current week. */
+  async sCurve(projectId: string): Promise<SCurveDto> {
+    const weekRows = await this.prisma.projectWeek.findMany({ where: { projectId }, select: { weekNumber: true, startDate: true, endDate: true }, orderBy: { weekNumber: 'asc' } });
+    if (!weekRows.length) throw new NotFoundException('Proyek tidak ditemukan.');
+    const weeks = weekRows.map((w) => ({ weekNumber: w.weekNumber, startDate: fromDbDate(w.startDate), endDate: fromDbDate(w.endDate) }));
+    const now = today();
+    const current = (weeks.find((w) => w.startDate <= now && now <= w.endDate) ?? (now < weeks[0]!.startDate ? weeks[0]! : weeks.at(-1)!));
+    const assignment = await this.prisma.baselineAssignment.findFirst({
+      where: { projectId, revokedAt: null, effectiveFrom: { lte: weekRows[current.weekNumber - 1]!.endDate } },
+      orderBy: { effectiveFrom: 'desc' },
+      select: { rabVersion: { select: { id: true, versionType: true, revisionNumber: true, totalValue: true, schedule: { select: { id: true, status: true } } } } },
+    });
+    const version = assignment?.rabVersion;
+    const [items, progress, plan] = await Promise.all([
+      version
+        ? this.prisma.rabVersionItem.findMany({ where: { rabVersionId: version.id, rowType: 'ITEM', workItemId: { not: null } }, select: { workItemId: true, volume: true, subtotal: true } })
+        : Promise.resolve([]),
+      this.prisma.weeklyProgress.findMany({ where: { projectId }, select: { workItemId: true, actualVolume: true, week: { select: { weekNumber: true } } } }),
+      version?.schedule?.status === 'APPROVED' ? loadSchedule(this.prisma, projectId, version.schedule.id) : Promise.resolve(null),
+    ]);
+    const actual = actualCurve(
+      items.map((i) => ({ workItemId: i.workItemId!, volume: i.volume?.toString() ?? '0', subtotal: i.subtotal?.toString() ?? '0' })),
+      progress.map((p) => ({ workItemId: p.workItemId, weekNumber: p.week.weekNumber, volume: p.actualVolume.toString() })),
+      version?.totalValue?.toString() ?? '0',
+      weeks.length,
+    );
+    const planned = plan ? plannedCurve(plan.entries, weeks.length) : null;
+    const cells = new Map<string, string>();
+    for (const e of plan?.entries ?? []) cells.set(`${e.groupId}:${e.weekNumber}`, e.weight);
+    return {
+      baseline: version ? { rabVersionId: version.id, label: rabVersionLabel(version) } : null,
+      rows: (plan?.outline ?? []).map((r) => ({ ...r, planned: weeks.map((w) => cells.get(`${r.id}:${w.weekNumber}`) ?? null) })),
+      schedule: version?.schedule ?? null,
+      currentWeek: current.weekNumber,
+      weeks: weeks.map((w, i) => {
+        const started = w.startDate <= now;
+        const p = planned?.[i];
+        const a = started ? actual[i]! : null;
+        return {
+          ...w,
+          planned: p?.planned ?? null,
+          plannedCumulative: p?.cumulative ?? null,
+          actual: a?.actual ?? null,
+          actualCumulative: a?.cumulative ?? null,
+          deviation: a && p ? new Decimal(a.cumulative).minus(p.cumulative).toFixed() : null,
+        };
+      }),
+    };
   }
 
   async create(actor: AuthUser, projectId: string, input: CreateScheduleInput): Promise<ScheduleDetailDto> {
@@ -225,14 +277,19 @@ async function loadSchedule(db: Db, projectId: string, scheduleId: string) {
     if (i.rowType === 'ITEM') values.set(i.id, { unitPriceWithTax: null, subtotalBeforeTax: null, subtotal: i.subtotal?.toString() ?? null, weight: null });
   aggregateRabGroups(inputs, values, schedule.rabVersion.totalValue?.toString() ?? '0');
   const groupIds = scheduleGroupIds(inputs);
-  const groups = treeOrder(items)
+  const ordered = treeOrder(items);
+  const groups = ordered
     .filter((i) => groupIds.has(i.id))
     .map((i) => ({ id: i.id, displayNumber: i.displayNumber, description: i.description, weight: values.get(i.id)?.weight ?? '0' }));
+  /** Groups with the SECTION headings above their SUBSECTIONs, as the Curva S sheet lists them. */
+  const outline = ordered
+    .filter((i) => groupIds.has(i.id) || i.rowType === 'SECTION')
+    .map((i) => ({ id: i.id, displayNumber: i.displayNumber, description: i.description, weight: groupIds.has(i.id) ? (values.get(i.id)?.weight ?? '0') : null }));
   const weeks = weekRows.map((w) => ({ id: w.id, weekNumber: w.weekNumber, startDate: fromDbDate(w.startDate), endDate: fromDbDate(w.endDate) }));
   const entries = entryRows
     .map((e) => ({ groupId: e.groupItemId, weekNumber: e.week.weekNumber, weight: e.plannedWeight.toFixed() }))
     .sort((a, b) => a.weekNumber - b.weekNumber);
-  return { schedule, groups, weeks, entries };
+  return { schedule, groups, outline, weeks, entries };
 }
 
 /** Rows depth-first in their sort order, as the RAB shows them. */

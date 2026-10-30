@@ -627,3 +627,68 @@ td:not(.num) > .inline-edit-form, td:not(.num) .inline-edit-form { margin-left: 
   /* Table rows become cards on phones; inside a card they need the card's inner gutter. */
   .surface .data-panel { padding: 12px 12px 0; }
 }
+
+/* Kurva S (D-076), laid out like the office "Curva S" sheet: fixed columns, the curve drawn over the week columns. */
+.s-legend { display: inline-flex; flex-wrap: nowrap; flex-shrink: 0; white-space: nowrap; gap: 14px; color: var(--text-soft); font-size: var(--fs-sm); }
+.s-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+/* Bounded height: header (weeks) and footer (plan/actual rows) stay in view while the groups scroll under the curve. */
+.s-sheet-scroll { max-height: min(72vh, 620px); overflow: auto; margin: 0 16px 16px; border: 1px solid #e3e9f1; border-radius: 8px; }
+.s-table thead { position: sticky; top: 0; z-index: 3; }
+.s-table tfoot { position: sticky; bottom: 0; z-index: 3; }
+.s-sheet { position: relative; width: max-content; }
+.s-table { table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-soft); }
+/* Separate borders: sticky header/footer cells carry their own opaque borders, so the curve never shows through. */
+.s-table th, .s-table td { box-sizing: border-box; height: 22px; padding: 0 4px; border: 0; border-right: 1px solid #e3e9f1; border-bottom: 1px solid #e3e9f1; background: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-table thead th { background: var(--surface-sunken); color: #475569; font-weight: 600; text-align: center; }
+.s-table thead th.s-date { color: var(--muted); font-weight: 500; font-size: 10px; }
+.s-table thead th.s-now { background: #e5efff; color: var(--blue-dark); }
+.s-table td.num { text-align: right; }
+.s-table .s-desc { text-align: left; }
+.s-table tr.s-heading td { color: var(--text); font-weight: 600; background: #fafcff; }
+.s-table td.s-planned { background: #fdf3e3; }
+.s-table tfoot th { text-align: left; background: var(--surface-sunken); color: var(--text); font-weight: 600; }
+.s-table tfoot td { background: #fbfcfe; color: var(--text); }
+.s-table thead th:last-child, .s-table tfoot td:last-child { background: #fff; }
+.s-table tfoot tr:first-child > * { border-top: 2px solid #cbd5e1; }
+.s-table th:last-child, .s-table td:last-child { border: 0; background: transparent; }
+/* Widths pinned on the cells too: the frozen columns' left offsets (0 / 44 / 274px) depend on them. */
+.s-col-no { width: var(--c1); } .s-col-desc { width: var(--c2); } .s-col-weight { width: var(--c3); } .s-col-week { width: var(--wk); } .s-col-axis { width: var(--ax); }
+.s-table tbody tr > :nth-child(1), .s-table thead tr:first-child > :nth-child(1) { width: var(--c1); min-width: var(--c1); max-width: var(--c1); }
+.s-table tbody tr > :nth-child(2), .s-table thead tr:first-child > :nth-child(2) { width: var(--c2); min-width: var(--c2); max-width: var(--c2); }
+.s-table tbody tr > :nth-child(3), .s-table thead tr:first-child > :nth-child(3) { width: var(--c3); min-width: var(--c3); max-width: var(--c3); }
+.s-table tfoot th { --cf: calc(var(--c1) + var(--c2) + var(--c3)); width: var(--cf); min-width: var(--cf); max-width: var(--cf); }
+.s-table [data-week] { width: var(--wk); min-width: var(--wk); max-width: var(--wk); }
+.s-overlay { position: absolute; z-index: 1; pointer-events: none; overflow: visible; }
+.s-axis { fill: var(--muted); font-size: 10px; }
+.s-today { stroke: var(--blue); stroke-width: 1; stroke-dasharray: 2 3; opacity: .6; }
+.s-cross { stroke: #94a3b8; stroke-width: 1; }
+.s-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px 8px; }
+.s-readout { min-height: 20px; color: var(--text-soft); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.s-readout strong { color: var(--text); }
+.s-toolbar .grid-tools { margin: 0 !important; }
+/* Frozen No / Pekerjaan / Bobot columns, as freeze panes in the workbook; the curve slides under them. */
+.s-table tr > :nth-child(-n + 3) { position: sticky; z-index: 2; }
+.s-table tbody tr > :nth-child(1), .s-table thead tr:first-child > :nth-child(1) { left: 0; }
+.s-table tbody tr > :nth-child(2), .s-table thead tr:first-child > :nth-child(2) { left: var(--c1); }
+.s-table tbody tr > :nth-child(3), .s-table thead tr:first-child > :nth-child(3) { left: calc(var(--c1) + var(--c2)); box-shadow: 1px 0 0 #cbd5e1; }
+.s-table thead tr:not(:first-child) > * { position: static; }
+.s-table tfoot th { left: 0; box-shadow: 1px 0 0 #cbd5e1; }
+.s-table tfoot tr > td:nth-child(-n + 3) { position: static; }
+@media (max-width: 767px) {
+  /* Frozen columns would fill a phone screen; let them scroll with the weeks. */
+  .s-table tr > :nth-child(-n + 3), .s-table tfoot th { position: static; box-shadow: none; }
+  .s-legend { flex-wrap: wrap; white-space: normal; }
+}
+/* Fit-to-card: narrow week columns take smaller, centred numbers. */
+.s-narrow .s-table [data-week] { padding: 0 1px; font-size: 9px; text-align: center; letter-spacing: -.02em; }
+/* Column resize handle on the header's right edge. */
+.s-table th.s-resizable { position: relative; }
+.s-table thead tr:first-child > th.s-resizable { position: sticky; }
+.s-resize { position: absolute; top: 0; right: -3px; z-index: 5; width: 7px; height: 100%; cursor: col-resize; touch-action: none; }
+.s-resize:hover, .s-resize:active { background: rgba(37, 99, 235, .35); }
+.s-tip { position: fixed; z-index: 60; display: grid; gap: 2px; max-width: 360px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--shadow-soft); color: var(--text-soft); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; pointer-events: none; }
+.s-tip strong { color: var(--text); }
+.s-tip-row { color: var(--text); white-space: normal; }
+/* Fullscreen: the sheet takes the whole screen height. */
+.s-curve-root:fullscreen { overflow: auto; padding: 12px 8px; background: #fff; }
+.s-curve-root:fullscreen .s-sheet-scroll { max-height: calc(100vh - 80px); }

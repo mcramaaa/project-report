@@ -1082,6 +1082,27 @@ Tanggal: 2026-10-30. Diputuskan pengguna; menutup OD-004 dan melengkapi PRD §15
 8. **Metode SCHEDULE** (PRD §15) belum dibuat: jadwal D-072 hanya per minggu,
    jadi belum ada dasar pembagian harian. Diputuskan bila dibutuhkan.
 
+## D-076 Kurva S Realisasi (M12, bagian Kurva S)
+
+Tanggal: 2026-10-30. Mengikuti rumus laporan mingguan kantor (sheet M.n kolom
+O dan `Master Curva S` baris 84–86); melengkapi PRD §23 dan D-072 butir 6.
+
+1. **Versi acuan:** baseline yang berlaku pada akhir minggu berjalan (sebelum
+   proyek mulai: minggu 1; sesudah selesai: minggu terakhir). Bobot item dan
+   jadwal rencana diambil dari versi itu untuk semua minggu, sama seperti
+   rencana pada D-072 butir 6.
+2. **Realisasi mingguan** = Σ volume minggu itu ÷ volume item × bobot item,
+   dengan bobot item = subtotal item ÷ total RAB × 100 (D-043). Realisasi
+   kumulatif = jumlah berjalan. Dihitung desimal penuh, dibulatkan saat
+   ditampilkan.
+3. Item yang tidak ada di versi acuan, atau volumenya 0, tidak menambah
+   realisasi (bobotnya 0 di versi itu).
+4. **Deviasi** = realisasi kumulatif − rencana kumulatif. Realisasi dan deviasi
+   hanya untuk minggu yang sudah dimulai.
+5. Rencana memakai jadwal APPROVED versi acuan; tanpa jadwal approved, hanya
+   realisasi yang tampil.
+6. Melihat Kurva S memakai `rab.read`.
+
 ## Keputusan Terbuka
 
 

@@ -219,3 +219,17 @@ describe('daily allocation (D-075)', () => {
     expect((await reviewer.request('PUT', `${base}/18/daily/${urugan}`, { method: 'MANUAL', volumes: ['5'] })).status).toBe(403);
   });
 });
+
+describe('Kurva S realisasi (D-076)', () => {
+  it('weights progress by item volume share of the baseline and leaves the plan out without an approved schedule', async () => {
+    await contractBaseline(); // total 150 000: Galian 100 000 (66.67%), Urugan 50 000 (33.33%)
+    await ok(save(1, [{ workItemId: galian, mode: 'VOLUME_WEEK', volume: '30' }]));
+    await ok(save(2, [{ workItemId: urugan, mode: 'VOLUME_WEEK', volume: '25' }]));
+    const curve = await ok(admin.get(`/projects/${project.id}/schedules/s-curve`));
+    expect(curve.baseline).toMatchObject({ label: 'Kontrak' });
+    expect(curve.schedule).toBeNull();
+    expect(curve.weeks).toHaveLength(18);
+    expect(curve.weeks[0]).toMatchObject({ actual: '20', actualCumulative: '20', planned: null, deviation: null });
+    expect(curve.weeks[1]).toMatchObject({ actual: '16.666666666667', actualCumulative: '36.666666666667' });
+  });
+});

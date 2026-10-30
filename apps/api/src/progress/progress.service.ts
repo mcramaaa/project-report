@@ -24,7 +24,7 @@ type Week = { id: string; weekNumber: number; startDate: string; endDate: string
  * start date wherever the project is. shortcut: one zone for all projects; store a project time zone if a later
  * rule needs the exact local day.
  */
-const today = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+export const today = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
 
 /** D-073: weekly realised volume per work item; cumulative, percent and remaining are computed. */
 @Injectable()

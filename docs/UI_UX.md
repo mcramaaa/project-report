@@ -533,3 +533,12 @@ status, lokasi, tanggal, tab). Isi tiap tab berupa kartu berjudul (`Section`);
 tombol aksi bagian ada di kanan judul kartu. Breadcrumb menunjukkan Jadwal,
 Progres → Minggu n → Alokasi harian, dan RAB → Impor RAB. Daftar minggu
 progres dikelompokkan per periode B.n dengan tombol ke minggu berjalan.
+
+Tab Jadwal dibuka dengan kartu **Kurva S** (D-076) berbentuk sheet `Curva S`
+kantor: kolom No / Pekerjaan / Bobot (dibekukan), kolom minggu M.n dikelompokkan
+per BULAN I…, isian rencana per kelompok (diarsir), baris bawah Rencana progres,
+Rencana kumulatif, Realisasi progres, Realisasi kumulatif, Deviasi; kurva
+rencana (jingga putus-putus) dan realisasi (biru) digambar di atas kolom minggu
+dengan skala 0–100% di kanan. Tinggi dibatasi (header dan baris bawah tetap
+terlihat), zoom memakai tombol grid, angka minggu yang ditunjuk kursor tampil di
+baris info di atas tabel. Di HP kolom kiri tidak dibekukan.

@@ -93,3 +93,28 @@ export function scaleScheduleToWeights(
     adjusted,
   };
 }
+
+/**
+ * D-076: realised % of project weight per week. Each item counts volume ÷ item volume × subtotal ÷ RAB total × 100;
+ * items missing from `items` or with volume 0 count nothing.
+ */
+export function actualCurve(
+  items: { workItemId: string; volume: string; subtotal: string }[],
+  progress: { workItemId: string; weekNumber: number; volume: string }[],
+  totalValue: string,
+  weekCount: number,
+): { weekNumber: number; actual: string; cumulative: string }[] {
+  const perUnit = new Map<string, Decimal>();
+  if (new D(totalValue).gt(0))
+    for (const i of items) if (new D(i.volume).gt(0)) perUnit.set(i.workItemId, new D(i.subtotal).div(totalValue).times(100).div(i.volume));
+  const perWeek = Array.from({ length: weekCount }, () => new D(0));
+  for (const p of progress) {
+    const f = perUnit.get(p.workItemId);
+    if (f && p.weekNumber >= 1 && p.weekNumber <= weekCount) perWeek[p.weekNumber - 1] = perWeek[p.weekNumber - 1]!.plus(f.times(p.volume));
+  }
+  let cumulative = new D(0);
+  return perWeek.map((actual, i) => {
+    cumulative = cumulative.plus(actual);
+    return { weekNumber: i + 1, actual: actual.toDecimalPlaces(12, D.ROUND_HALF_UP).toFixed(), cumulative: cumulative.toDecimalPlaces(12, D.ROUND_HALF_UP).toFixed() };
+  });
+}

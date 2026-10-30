@@ -51,3 +51,26 @@ export interface ScheduleDetailDto {
   /** Import response only: groups scaled to this version's weight (D-074). */
   importAdjustments?: { group: string; from: string; to: string }[];
 }
+
+/** D-076: Kurva S rencana vs realisasi on the weights of the reference baseline. */
+export interface SCurveDto {
+  /** Baseline in force at the end of the current week; null without any baseline. */
+  baseline: { rabVersionId: string; label: string } | null;
+  /** The reference version's schedule; the plan is shown only when APPROVED. */
+  schedule: { id: string; status: ScheduleStatus } | null;
+  /** Curva S sheet rows (SECTION headings have weight null) with the planned % per week; empty without an approved plan. */
+  rows: { id: string; displayNumber: string | null; description: string; weight: string | null; planned: (string | null)[] }[];
+  /** Week the project is in now (clamped to the project), for the "today" marker. */
+  currentWeek: number;
+  weeks: {
+    weekNumber: number;
+    startDate: string;
+    endDate: string;
+    planned: string | null;
+    plannedCumulative: string | null;
+    /** Null for weeks that have not started. */
+    actual: string | null;
+    actualCumulative: string | null;
+    deviation: string | null;
+  }[];
+}

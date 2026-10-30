@@ -261,6 +261,17 @@ Contoh:
 }
 ```
 
+## 10b. Kurva S
+
+```text
+GET /projects/:projectId/schedules/s-curve
+```
+
+`rab.read`. D-076: versi acuan = baseline di akhir minggu berjalan; per minggu
+`planned`, `plannedCumulative` (null tanpa jadwal APPROVED), `actual`,
+`actualCumulative`, `deviation` (null untuk minggu yang belum dimulai), plus
+`currentWeek`.
+
 ## 11. Daily Allocation
 
 ```text

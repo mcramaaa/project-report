@@ -1,4 +1,4 @@
-import type { ProjectDto, ScheduleSummaryDto } from '@laporan-proyek/shared';
+import type { ProjectDto, SCurveDto, ScheduleSummaryDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectHeader } from '@/components/project-tabs';
@@ -6,13 +6,15 @@ import { Alert, Badge, EmptyState, Section } from '@/components/ui';
 import { SCHEDULE_STATUS_BADGE } from '@/lib/rab-ui';
 import { serverGet } from '@/lib/server-api';
 import { CreateSchedule } from './create-schedule';
+import { SCurveLegend, SCurveSheet } from './s-curve-chart';
 
 export default async function SchedulesPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, schedules] = await Promise.all([
+  const [{ status, data: project }, schedules, curve] = await Promise.all([
     serverGet<ProjectDto>(base),
     serverGet<ScheduleSummaryDto[]>(`${base}/schedules`),
+    serverGet<SCurveDto>(`${base}/schedules/s-curve`),
   ]);
   if (status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
@@ -21,6 +23,7 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
   return (
     <>
       <ProjectHeader project={project} active="schedule" />
+      {curve.data && <SCurveSection curve={curve.data} />}
       {schedules.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat jadwal.</Alert>
       ) : !schedules.data ? (
@@ -79,3 +82,32 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
     </>
   );
 }
+
+function SCurveSection({ curve }: { curve: SCurveDto }) {
+  return (
+    <Section
+      className="mt-4"
+      id="s-curve"
+      title="Kurva S"
+      description={
+        curve.baseline
+          ? `% bobot proyek kumulatif per minggu dengan bobot dan jadwal ${curve.baseline.label} (baseline yang berlaku). Garis tegak putus-putus: minggu berjalan; arahkan kursor ke kolom minggu untuk angkanya.`
+          : 'Aktifkan baseline di halaman RAB untuk menghitung Kurva S.'
+      }
+      action={curve.baseline && <SCurveLegend />}
+      body={false}
+    >
+      {curve.baseline && (
+        <>
+          {curve.schedule?.status !== 'APPROVED' && (
+            <div className="surface-body">
+              <Alert kind="info">Jadwal {curve.baseline.label} belum approved; rencana belum ditampilkan.</Alert>
+            </div>
+          )}
+          <SCurveSheet data={curve} />
+        </>
+      )}
+    </Section>
+  );
+}
+
