@@ -241,3 +241,15 @@ describe('schedule scenarios (D-078)', () => {
     expect(await t.prisma.scheduleScenarioEntry.count()).toBe(0);
   });
 });
+
+describe('Kurva S group detail (D-077 butir 5)', () => {
+  it('lists the items under a group with weight and realisation, and 404s outside the project', async () => {
+    const { bi } = await draft();
+    const d = await ok(admin.get(`${base}/s-curve/groups/${bi.id}/weeks/1`));
+    expect(d.group).toMatchObject({ displayNumber: 'B.I', weight: '60' });
+    expect(d.rows).toEqual([
+      expect.objectContaining({ rowType: 'ITEM', description: 'Galian tanah', volume: '1', weight: '60', cumulative: '0', percent: '0', actualWeight: '0' }),
+    ]);
+    expect((await admin.get(`${base}/s-curve/groups/01a00000-0000-7000-8000-000000000000/weeks/1`)).status).toBe(404);
+  });
+});

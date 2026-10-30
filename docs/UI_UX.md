@@ -556,3 +556,8 @@ buat skenario (salin dari jadwal). Halaman skenario: nama dan jumlah minggu
 titik-garis) vs realisasi, tabel kelompok dengan pilihan minggu mulai/selesai
 (bobot dibagi rata) dan geser ±1 minggu, lalu "Jadikan jadwal resmi" (dengan
 daftar penghalang) dan "Hapus skenario", keduanya dengan konfirmasi.
+
+Setiap baris tabel deviasi punya tombol ▸ untuk membuka **rincian item**
+pekerjaan kelompok itu (volume RAB, minggu itu, s.d. minggu, % selesai dengan
+bilah, bobot, realisasi; item "belum" ditandai) dan tautan ke progres minggu
+analisis. Filter: cari, bagian, urutan, dan chip status dengan jumlahnya.

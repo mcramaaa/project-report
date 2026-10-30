@@ -1124,6 +1124,15 @@ Tanggal: 2026-10-30. Melengkapi D-076; tidak ada data baru yang disimpan.
    - prakiraan selesai dengan laju rata-rata itu = minggu analisis +
      ⌈sisa ÷ laju⌉ (tidak ditampilkan bila laju 0).
    Ini angka bantu, bukan janji atau jadwal resmi.
+4. **Status kelompok** (s.d. minggu analisis, toleransi D-072 0,0001 poin):
+   Selesai (realisasi ≥ bobot) · Belum dijadwalkan (rencana dan realisasi 0) ·
+   Terlambat (deviasi < −toleransi) · Lebih cepat (deviasi > toleransi) ·
+   Sesuai rencana (selain itu). Tabel dapat disaring per status, bagian
+   (SECTION RAB), dan nama, serta diurutkan menurut deviasi, bobot, atau RAB.
+5. **Rincian kelompok:** item pekerjaan di bawah kelompok dengan volume RAB,
+   volume minggu itu dan kumulatif s.d. minggu analisis, % selesai, bobot item,
+   dan realisasi item (% selesai × bobot); jumlah realisasi item = realisasi
+   kelompok. Item yang belum dikerjakan ditandai.
 
 ## D-078 Simulasi Jadwal (Skenario)
 

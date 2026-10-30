@@ -120,3 +120,30 @@ export interface ScenarioDetailDto extends ScenarioSummaryDto {
   /** Why it cannot become the official schedule now; empty when it can (D-078 butir 6). */
   promoteBlockers: string[];
 }
+
+/** D-077 butir 5: the work items of one schedule group, realised through a week. */
+export interface SCurveGroupDetailDto {
+  group: { id: string; displayNumber: string | null; description: string; weight: string };
+  weekNumber: number;
+  rows: {
+    id: string;
+    rowType: 'SUBSECTION' | 'PARENT_ITEM' | 'ITEM';
+    /** Depth below the group (items directly under it are 0). */
+    depth: number;
+    displayNumber: string | null;
+    description: string;
+    unit: string | null;
+    /** ITEM only from here on. */
+    workItemCode: string | null;
+    volume: string | null;
+    /** % of the project (subtotal ÷ RAB total × 100). */
+    weight: string | null;
+    /** Realised volume through the week, and in that week. */
+    cumulative: string | null;
+    thisWeek: string | null;
+    /** Cumulative ÷ volume × 100. */
+    percent: string | null;
+    /** Cumulative ÷ volume × weight: this item's share of the project's realisation. */
+    actualWeight: string | null;
+  }[];
+}

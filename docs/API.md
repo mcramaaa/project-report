@@ -273,6 +273,10 @@ GET /projects/:projectId/schedules/s-curve
 `currentWeek`. `rows`: baris sheet Curva S (judul SECTION `weight` null) dengan
 `planned` dan `actual` per minggu per kelompok (D-077).
 
+`GET /projects/:projectId/schedules/s-curve/groups/:groupId/weeks/:weekNumber`
+(`rab.read`): item di bawah kelompok dengan `volume`, `weight`, `cumulative`,
+`thisWeek`, `percent`, `actualWeight` s.d. minggu itu (D-077 butir 5).
+
 ## 10c. Simulasi Jadwal (Skenario)
 
 ```text

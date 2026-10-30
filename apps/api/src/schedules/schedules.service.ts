@@ -5,6 +5,7 @@ import {
   type ImportScheduleInput,
   type SaveScheduleEntriesInput,
   type SCurveDto,
+  type SCurveGroupDetailDto,
   type ScheduleDetailDto,
   type ScheduleSummaryDto,
 } from '@laporan-proyek/shared';
@@ -114,6 +115,67 @@ export class SchedulesService {
           deviation: a && p ? new Decimal(a.cumulative).minus(p.cumulative).toFixed() : null,
         };
       }),
+    };
+  }
+
+  /** D-077 butir 5: the items under a schedule group with their realisation through `weekNumber`. */
+  async sCurveGroup(projectId: string, groupId: string, weekNumber: number): Promise<SCurveGroupDetailDto> {
+    const group = await this.prisma.rabVersionItem.findFirst({
+      where: { id: groupId, rabVersion: { projectId } },
+      select: { id: true, rabVersionId: true, displayNumber: true, description: true, rabVersion: { select: { totalValue: true } } },
+    });
+    if (!group) throw new NotFoundException('Kelompok pekerjaan tidak ditemukan.');
+    const [rows, progress] = await Promise.all([
+      this.prisma.rabVersionItem.findMany({
+        where: { rabVersionId: group.rabVersionId },
+        select: { id: true, parentItemId: true, sortOrder: true, rowType: true, displayNumber: true, description: true, unit: true, volume: true, subtotal: true, workItemId: true, workItem: { select: { internalCode: true } } },
+      }),
+      this.prisma.weeklyProgress.findMany({
+        where: { projectId, week: { weekNumber: { lte: weekNumber } } },
+        select: { workItemId: true, actualVolume: true, week: { select: { weekNumber: true } } },
+      }),
+    ]);
+    const cumulative = new Map<string, Decimal>();
+    const thisWeek = new Map<string, Decimal>();
+    for (const p of progress) {
+      cumulative.set(p.workItemId, (cumulative.get(p.workItemId) ?? new Decimal(0)).plus(p.actualVolume.toString()));
+      if (p.week.weekNumber === weekNumber) thisWeek.set(p.workItemId, new Decimal(p.actualVolume.toString()));
+    }
+    const total = new Decimal(group.rabVersion.totalValue?.toString() ?? 0);
+    const children = new Map<string | null, typeof rows>();
+    for (const r of rows) children.set(r.parentItemId, [...(children.get(r.parentItemId) ?? []), r]);
+    const out: SCurveGroupDetailDto['rows'] = [];
+    let groupWeight = new Decimal(0);
+    const walk = (parent: string, depth: number) => {
+      for (const r of (children.get(parent) ?? []).sort((a, b) => a.sortOrder - b.sortOrder)) {
+        const base = { id: r.id, rowType: r.rowType as 'SUBSECTION' | 'PARENT_ITEM' | 'ITEM', depth, displayNumber: r.displayNumber, description: r.description, unit: r.unit };
+        if (r.rowType !== 'ITEM') {
+          out.push({ ...base, workItemCode: null, volume: null, weight: null, cumulative: null, thisWeek: null, percent: null, actualWeight: null });
+          walk(r.id, depth + 1);
+          continue;
+        }
+        const volume = new Decimal(r.volume?.toString() ?? 0);
+        const weight = total.gt(0) ? new Decimal(r.subtotal?.toString() ?? 0).div(total).times(100) : new Decimal(0);
+        groupWeight = groupWeight.plus(weight);
+        const cum = r.workItemId ? (cumulative.get(r.workItemId) ?? new Decimal(0)) : new Decimal(0);
+        const share = volume.gt(0) ? cum.div(volume) : null;
+        out.push({
+          ...base,
+          workItemCode: r.workItem?.internalCode ?? null,
+          volume: volume.toFixed(),
+          weight: weight.toDecimalPlaces(12, Decimal.ROUND_HALF_UP).toFixed(),
+          cumulative: cum.toFixed(),
+          thisWeek: r.workItemId ? (thisWeek.get(r.workItemId)?.toFixed() ?? '0') : null,
+          percent: share ? share.times(100).toDecimalPlaces(6, Decimal.ROUND_HALF_UP).toFixed() : null,
+          actualWeight: share ? share.times(weight).toDecimalPlaces(12, Decimal.ROUND_HALF_UP).toFixed() : null,
+        });
+      }
+    };
+    walk(group.id, 0);
+    return {
+      group: { id: group.id, displayNumber: group.displayNumber, description: group.description, weight: groupWeight.toDecimalPlaces(12, Decimal.ROUND_HALF_UP).toFixed() },
+      weekNumber,
+      rows: out,
     };
   }
 

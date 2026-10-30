@@ -36,7 +36,7 @@ export default async function SchedulesPage({
     <>
       <ProjectHeader project={project} active="schedule" />
       {curve.data && <SCurveSection curve={curve.data} />}
-      {curve.data?.baseline && <ScheduleAnalysis data={curve.data} />}
+      {curve.data?.baseline && <ScheduleAnalysis data={curve.data} projectId={project.id} />}
       {scenarios.data && schedules.data && (
         <Scenarios
           projectId={project.id}

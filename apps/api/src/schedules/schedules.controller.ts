@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import {
   createScheduleSchema,
   importScheduleSchema,
@@ -39,6 +39,17 @@ export class SchedulesController {
   @RequireProjectPermission('rab.read')
   sCurve(@Param('projectId') projectId: string) {
     return this.schedules.sCurve(projectId);
+  }
+
+  /** Items of one group through a week (D-077 butir 5). */
+  @Get('s-curve/groups/:groupId/weeks/:weekNumber')
+  @RequireProjectPermission('rab.read')
+  sCurveGroup(
+    @Param('projectId') projectId: string,
+    @Param('groupId', uuid) groupId: string,
+    @Param('weekNumber', new ParseIntPipe({ errorHttpStatusCode: 404 })) weekNumber: number,
+  ) {
+    return this.schedules.sCurveGroup(projectId, groupId, weekNumber);
   }
 
   @Get(':scheduleId')
