@@ -1,7 +1,8 @@
 import type { DocumentDto, ProjectDto, RabImportSummaryDto } from '@laporan-proyek/shared';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { ImportsManager } from './imports-manager';
 
@@ -19,8 +20,12 @@ export default async function ImportsPage({ params }: { params: Promise<{ projec
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="imports" permissions={project.permissions} />
+      <ProjectHeader project={project} active="imports" />
+      {project.permissions.includes('rab.read') && (
+        <Link href={`${base}/rab`} className="page-back">
+          Versi RAB
+        </Link>
+      )}
       <ImportsManager
         projectId={project.id}
         closed={project.status === 'CLOSED'}

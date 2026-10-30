@@ -71,7 +71,7 @@ Pengaturan
 | `/login` | publik | email + password; pesan gagal generik; info bila baru ganti password |
 | `/` | user login | proyek yang dapat dibuka + role, cari & pagination (super admin: semua proyek); tombol "Proyek baru" dengan `projects.create` |
 | `/projects/new` | `projects.create` | wizard pembuatan proyek (Milestone 3, §4) |
-| `/projects/:projectId` | `project.read` | tab Informasi, Minggu & Periode, Tim; dengan `project.update`: ubah identitas, ubah jadwal, tutup/buka kembali |
+| `/projects/:projectId` | `project.read` | tab Informasi: data proyek, tim, dan daftar minggu & periode (dilipat) dalam satu halaman; dengan `project.update`: ubah identitas, ubah jadwal, tutup/buka kembali |
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
 | `/projects/:projectId/imports` | `document.read` / `rabImport.review` | dokumen (upload .xlsx, unduh asli, kandidat sheet RAB), buat run impor (peran RAB/pendukung, sheet, versi tujuan), daftar run |
 | `/projects/:projectId/imports/:importId` | `rabImport.review` / `rabImport.approve` | ringkasan & rekonsiliasi, issue, item dengan rantai rumus, kandidat, keputusan (analisa, harga langsung, harga analisa/override beralasan, pekerjaan permanen termasuk cari/pilih pekerjaan lama manual, D-067), review paket (ringkasan sumber/warisan/cocok/baru/masalah, konfirmasi usulan sekaligus, D-065), analisa terpakai & bukti rekonsiliasi, panggilan AI, approve/tolak/ulangi |
@@ -154,7 +154,7 @@ Sistem generate minggu dan periode 4 minggu saat proyek disimpan.
 ### Detail Proyek
 
 - tab Informasi: identitas, kontrak, SPMK, jadwal, status
-- tab Minggu & Periode: tabel minggu (nomor, tanggal, jumlah hari, periode) dikelompokkan per periode B.n; minggu/periode pendek ditandai
+- bagian Minggu & periode (tab Informasi): tabel minggu (nomor, tanggal, jumlah hari, periode) dikelompokkan per periode B.n; minggu/periode pendek ditandai
 - tab Tim: nama dan role anggota aktif (tanpa email); tautan ke Akses proyek bila punya `assignments.read`
 - ubah jadwal menampilkan pratinjau minggu/periode baru dan wajib alasan
 - tutup/buka kembali proyek wajib alasan dan konfirmasi; proyek CLOSED menampilkan badge dan form ubah dinonaktifkan
@@ -314,18 +314,23 @@ UX penting:
 
 ## 13. Daily Allocation
 
-Tabel 7 hari:
-- date
-- day sequence
-- factor
-- volume
+Halaman `Progres → minggu → Alokasi harian` (D-075). Tombolnya muncul bila
+minggu itu sudah ada progres.
+
+Tabel per work item yang punya progres minggu itu:
+- uraian, satuan, volume minggu
+- satu kolom per hari (Hari n, hari & tanggal, faktor)
+- cara: badge "faktor", "manual", atau "manual, tidak pas"
 
 Method:
-- daily factor
-- schedule
-- manual
+- faktor hari (default, dihitung otomatis)
+- manual: "Isi manual" membuka input per hari pada baris itu, dengan jumlah
+  langsung ("jumlah pas" / "selisih x"). Simpan hanya bila pas.
+  "Pakai faktor" mengembalikan ke faktor hari.
+- schedule: belum ada (D-075 butir 8)
 
-Total harus sama dengan weekly volume.
+Total harus sama dengan weekly volume. Item manual yang tidak pas lagi setelah
+progres berubah diberi peringatan di atas tabel.
 
 ## 14. Daily Report
 
@@ -514,3 +519,17 @@ biasa; tombol ubah dan navigasi normal tetap dipertahankan.
   - Tooltip digambar di lapisan tetap sehingga tidak terpotong tabel yang
     di-scroll.
   - Pembaca layar membaca teks yang sama.
+
+## Tab proyek
+
+Empat tab: **Informasi** (data proyek, tim, minggu & periode), **RAB** (versi,
+baseline, dan tombol "Impor RAB dari Excel"; halaman impor tetap menandai tab
+RAB), **Jadwal**, **Progres** (termasuk alokasi harian per minggu). Role yang
+hanya punya izin impor tanpa `rab.read` tetap melihat tab RAB yang langsung
+membuka halaman impor.
+
+Semua halaman proyek memakai header yang sama (`ProjectHeader`: kode, TA,
+status, lokasi, tanggal, tab). Isi tiap tab berupa kartu berjudul (`Section`);
+tombol aksi bagian ada di kanan judul kartu. Breadcrumb menunjukkan Jadwal,
+Progres → Minggu n → Alokasi harian, dan RAB → Impor RAB. Daftar minggu
+progres dikelompokkan per periode B.n dengan tombol ke minggu berjalan.

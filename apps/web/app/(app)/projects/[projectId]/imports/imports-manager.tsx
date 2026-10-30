@@ -222,10 +222,10 @@ export function ImportsManager({
       {imports !== null && (
         <section className="space-y-3" aria-labelledby="runs-title">
           <h2 id="runs-title" className="text-base font-semibold">
-            Run impor
+            Riwayat impor
           </h2>
           {imports.length === 0 ? (
-            <EmptyState>Belum ada run impor.</EmptyState>
+            <EmptyState>Belum ada impor. Pilih dokumen di atas lalu mulai impor.</EmptyState>
           ) : (
             <div className="panel data-panel">
               <table role="table" className="data-table">

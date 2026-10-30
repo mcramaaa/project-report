@@ -3,7 +3,7 @@
 import { Decimal, progressSummary, weeklyVolumeFromPercent } from '@laporan-proyek/calc';
 import type { ProgressInputMode, ProgressRowDto, WeeklyProgressDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Badge, Button, Section, Select } from '@/components/ui';
 import { GridTools, useLeaveWarning } from '@/components/grid-tools';
 import { api, ApiError, errorMessage } from '@/lib/api';
@@ -25,6 +25,18 @@ function preview(row: ProgressRowDto, mode: ProgressInputMode, raw: string) {
   return { weekly, ...s, error: s.remaining !== null && new Decimal(s.remaining).isNegative() ? 'Melebihi volume baseline' : undefined };
 }
 
+/** Each row's ancestor group ids, from the depth-first order and depths the API sends. */
+function ancestorsOf(rows: ProgressRowDto[]): Map<string, string[]> {
+  const stack: ProgressRowDto[] = [];
+  const out = new Map<string, string[]>();
+  for (const r of rows) {
+    while (stack.length && stack.at(-1)!.depth >= r.depth) stack.pop();
+    out.set(r.id, stack.map((a) => a.id));
+    if (r.rowType !== 'ITEM') stack.push(r);
+  }
+  return out;
+}
+
 export function ProgressEditor({ projectId, initial, canInput }: { projectId: string; initial: WeeklyProgressDto; canInput: boolean }) {
   const [data, setData] = useState(initial);
   const [mode, setMode] = useState<ProgressInputMode>('VOLUME_WEEK');
@@ -32,6 +44,16 @@ export function ProgressEditor({ projectId, initial, canInput }: { projectId: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; list: string[] }>();
   const [notice, setNotice] = useState<string>();
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const ancestors = useMemo(() => ancestorsOf(data.rows), [data.rows]);
+  const parents = useMemo(() => new Set([...ancestors.values()].flat()), [ancestors]);
+  const toggle = (id: string) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const { week } = data;
   const editable = canInput && week.open && Boolean(week.baseline);
@@ -75,6 +97,11 @@ export function ProgressEditor({ projectId, initial, canInput }: { projectId: st
         }
         action={
           <div className="row-actions">
+            {week.filledCount > 0 && (
+              <Link className="btn btn-secondary" href={`${base}/progress/${week.weekNumber}/daily`}>
+                Alokasi harian
+              </Link>
+            )}
             {week.weekNumber > 1 && (
               <Link className="btn btn-secondary" href={`${base}/progress/${week.weekNumber - 1}`}>
                 ← M.{week.weekNumber - 1}
@@ -126,7 +153,21 @@ export function ProgressEditor({ projectId, initial, canInput }: { projectId: st
         </div>
       </Section>
 
-      <GridTools />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {parents.size > 0 ? (
+          <div className="row-actions" role="group" aria-label="Kelompok pekerjaan">
+            <Button type="button" variant="secondary" onClick={() => setCollapsed(new Set(parents))}>
+              Ciutkan semua
+            </Button>
+            <Button type="button" variant="secondary" disabled={collapsed.size === 0} onClick={() => setCollapsed(new Set())}>
+              Buka semua
+            </Button>
+          </div>
+        ) : (
+          <span />
+        )}
+        <GridTools />
+      </div>
       <div className="rab-grid-wrap">
         <table className="rab-grid">
           <thead>
@@ -160,11 +201,25 @@ export function ProgressEditor({ projectId, initial, canInput }: { projectId: st
           </thead>
           <tbody>
             {data.rows.map((r) => {
+              if (ancestors.get(r.id)!.some((a) => collapsed.has(a))) return null;
               if (r.rowType !== 'ITEM')
                 return (
                   <tr key={r.id}>
                     <td className="rab-sticky-no font-semibold">{r.displayNumber ?? ''}</td>
                     <td className="rab-sticky-desc font-semibold" style={{ paddingLeft: 11 + r.depth * 14 }} colSpan={8}>
+                      {parents.has(r.id) ? (
+                        <button
+                          type="button"
+                          className="rab-toggle"
+                          aria-expanded={!collapsed.has(r.id)}
+                          aria-label={`${collapsed.has(r.id) ? 'Buka' : 'Ciutkan'} ${r.description}`}
+                          onClick={() => toggle(r.id)}
+                        >
+                          <span aria-hidden="true">{collapsed.has(r.id) ? '▸' : '▾'}</span>
+                        </button>
+                      ) : (
+                        <span className="rab-toggle-space" aria-hidden="true" />
+                      )}
                       {r.description}
                     </td>
                   </tr>

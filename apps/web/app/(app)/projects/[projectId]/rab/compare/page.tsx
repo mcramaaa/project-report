@@ -4,8 +4,8 @@ import { rabRowHref } from '@/lib/value-source';
 import type { ProjectDto, RabChangeType, RabCompareDto, RabRowDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert, Badge, EmptyState } from '@/components/ui';
 import { GridTools } from '@/components/grid-tools';
 import { Decimal } from '@laporan-proyek/calc';
 import { formatRounded } from '@/lib/project-fields';
@@ -115,10 +115,7 @@ export default async function RabComparePage({
     );
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
-        {project.projectName}
-      </PageTitle>
-      <ProjectTabs projectId={project.id} active="rab" permissions={project.permissions} />
+      <ProjectHeader project={project} active="rab" />
       <Link
         href={`${projectPath}/rab`}
         className="page-back"

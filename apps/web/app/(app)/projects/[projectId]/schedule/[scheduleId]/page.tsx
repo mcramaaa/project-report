@@ -1,7 +1,7 @@
 import type { DocumentDto, ProjectDto, ScheduleDetailDto } from '@laporan-proyek/shared';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { ScheduleEditor } from './schedule-editor';
 
@@ -20,8 +20,7 @@ export default async function SchedulePage({ params }: { params: Promise<{ proje
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="schedule" permissions={project.permissions} />
+      <ProjectHeader project={project} active="schedule" />
       {schedule.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat jadwal.</Alert>
       ) : !schedule.data ? (

@@ -90,9 +90,18 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
               ]
             : parts[2] === 'imports'
               ? [
-                  { label: 'Dokumen & impor', href: `/projects/${parts[1]}/imports` },
+                  { label: 'RAB', href: `/projects/${parts[1]}/rab` },
+                  { label: 'Impor RAB', href: `/projects/${parts[1]}/imports` },
                   ...(parts[3] ? [{ label: 'Review impor' }] : []),
                 ]
+              : parts[2] === 'schedule'
+                ? [{ label: 'Jadwal', href: `/projects/${parts[1]}/schedule` }, ...(parts[3] ? [{ label: 'Isi jadwal' }] : [])]
+                : parts[2] === 'progress'
+                  ? [
+                      { label: 'Progres', href: `/projects/${parts[1]}/progress` },
+                      ...(parts[3] ? [{ label: `Minggu ${parts[3]}`, href: `/projects/${parts[1]}/progress/${parts[3]}` }] : []),
+                      ...(parts[4] === 'daily' ? [{ label: 'Alokasi harian' }] : []),
+                    ]
               : parts[2] === 'documents'
                 ? [{ label: 'Sumber Excel' }]
                 : []),

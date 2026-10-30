@@ -1,8 +1,8 @@
 import type { ProjectDto, ScheduleSummaryDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert, Badge, EmptyState, Section } from '@/components/ui';
 import { SCHEDULE_STATUS_BADGE } from '@/lib/rab-ui';
 import { serverGet } from '@/lib/server-api';
 import { CreateSchedule } from './create-schedule';
@@ -20,8 +20,7 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="schedule" permissions={project.permissions} />
+      <ProjectHeader project={project} active="schedule" />
       {schedules.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat jadwal.</Alert>
       ) : !schedules.data ? (
@@ -31,7 +30,13 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
           <EmptyState>Belum ada versi RAB approved. Jadwal disusun per versi RAB approved.</EmptyState>
         </div>
       ) : (
-        <div className="panel data-panel mt-4">
+        <Section
+          className="mt-4"
+          title="Jadwal per versi RAB"
+          description="Rencana bobot per kelompok pekerjaan per minggu. Kurva S rencana memakai jadwal dari baseline yang berlaku."
+          body={false}
+        >
+        <div className="data-panel">
           <table role="table" className="data-table">
             <thead role="rowgroup">
               <tr role="row">
@@ -69,6 +74,7 @@ export default async function SchedulesPage({ params }: { params: Promise<{ proj
             </tbody>
           </table>
         </div>
+        </Section>
       )}
     </>
   );

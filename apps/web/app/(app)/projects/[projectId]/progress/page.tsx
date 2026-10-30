@@ -1,8 +1,9 @@
 import type { ProgressWeekSummaryDto, ProjectDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, Badge, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert, Badge, Section } from '@/components/ui';
 import { formatDate } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
 
@@ -17,14 +18,26 @@ export default async function ProgressWeeksPage({ params }: { params: Promise<{ 
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="progress" permissions={project.permissions} />
+      <ProjectHeader project={project} active="progress" />
       {weeks.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat progres.</Alert>
       ) : !weeks.data ? (
         <Alert>Daftar minggu tidak dapat dimuat.</Alert>
       ) : (
-        <div className="panel data-panel mt-4">
+        <Section
+          className="mt-4"
+          title="Progres mingguan"
+          description="Minggu M.n dikelompokkan per periode laporan B.n (4 minggu). Minggu yang sudah dimulai dapat diisi."
+          body={false}
+          action={
+            current && (
+              <Link className="btn btn-primary" href={`${base}/progress/${current}`}>
+                {project.permissions.includes('progress.input') ? 'Isi' : 'Lihat'} minggu berjalan (M.{current})
+              </Link>
+            )
+          }
+        >
+        <div className="data-panel">
           <table role="table" className="data-table">
             <thead role="rowgroup">
               <tr role="row">
@@ -36,8 +49,17 @@ export default async function ProgressWeeksPage({ params }: { params: Promise<{ 
               </tr>
             </thead>
             <tbody role="rowgroup">
-              {weeks.data.map((w) => (
-                <tr role="row" key={w.weekNumber}>
+              {weeks.data.map((w, i, all) => (
+                <Fragment key={w.weekNumber}>
+                {/* D-037: period B.n = weeks 4n−3..4n. */}
+                {w.weekNumber % 4 === 1 && (
+                  <tr role="row" className="period-row">
+                    <th role="cell" scope="colgroup" colSpan={5}>
+                      B{(w.weekNumber + 3) / 4} · {formatDate(w.startDate)} – {formatDate(all[Math.min(i + 3, all.length - 1)]!.endDate)}
+                    </th>
+                  </tr>
+                )}
+                <tr role="row" className={w.weekNumber === current ? 'is-current' : undefined}>
                   <td role="cell" data-label="Minggu" className="font-medium">
                     M.{w.weekNumber} {w.weekNumber === current && <Badge tone="blue">minggu berjalan</Badge>}
                   </td>
@@ -60,10 +82,12 @@ export default async function ProgressWeeksPage({ params }: { params: Promise<{ 
                     )}
                   </td>
                 </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
+        </Section>
       )}
     </>
   );

@@ -6,29 +6,15 @@ import type {
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs, type ProjectTab } from '@/components/project-tabs';
-import { Alert, Badge, EmptyState, PageTitle, Section } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert, Badge, EmptyState, Section } from '@/components/ui';
 import { can } from '@/lib/permissions';
 import { formatDate, formatRupiah } from '@/lib/project-fields';
 import { requireMe, serverGet } from '@/lib/server-api';
 import { ProjectActions } from './project-actions';
 
-type Tab = Exclude<ProjectTab, 'rab'>;
-const TABS: Tab[] = ['info', 'calendar', 'team'];
-
-export default async function ProjectPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  const [{ projectId }, { tab: rawTab }, me] = await Promise.all([
-    params,
-    searchParams,
-    requireMe(),
-  ]);
-  const tab: Tab = TABS.includes(rawTab as Tab) ? (rawTab as Tab) : 'info';
+export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
+  const [{ projectId }, me] = await Promise.all([params, requireMe()]);
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const { status, data: p } = await serverGet<ProjectDto>(base);
   if (status === 404) notFound();
@@ -38,29 +24,23 @@ export default async function ProjectPage({
 
   return (
     <>
-      <PageTitle
-        back={{ href: '/', label: 'Proyek saya' }}
-        eyebrow={
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="font-mono">{p.code}</span>
-            <span>TA {p.fiscalYear}</span>
-            {p.status === 'CLOSED' ? (
-              <Badge tone="red">Ditutup</Badge>
-            ) : (
-              <Badge tone="green">Aktif</Badge>
-            )}
-          </span>
-        }
-        subtitle={`${p.location} · ${formatDate(p.startDate)} – ${formatDate(p.plannedFinishDate)}`}
-      >
-        {p.projectName}
-      </PageTitle>
-      <ProjectTabs projectId={p.id} active={tab} permissions={p.permissions} />
-      {tab === 'info' && <InfoTab project={p} />}
-      {tab === 'calendar' && <CalendarTab base={base} />}
-      {tab === 'team' && (
+      <ProjectHeader project={p} active="info" />
+      <div className="stack">
+        <InfoTab project={p} />
         <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />
-      )}
+        <Section
+          id="calendar"
+          title="Minggu & periode laporan"
+          description="Minggu M.n (7 hari) dan periode B.n (4 minggu) dihitung dari tanggal mulai dan masa pelaksanaan."
+        >
+          <details>
+            <summary className="link-button cursor-pointer">Tampilkan daftar minggu</summary>
+            <div className="mt-3">
+              <CalendarTab base={base} />
+            </div>
+          </details>
+        </Section>
+      </div>
     </>
   );
 }
@@ -199,16 +179,22 @@ async function TeamTab({
   const { data: team } = await serverGet<ProjectTeamMemberDto[]>(`${base}/team`);
   if (!team) return <Alert>Tim proyek tidak dapat dimuat.</Alert>;
   return (
-    <div className="space-y-3">
-      {canSeeAccess && (
-        <Link href={`/admin/projects/${projectId}/members`} className="btn btn-secondary">
-          Kelola akses proyek
-        </Link>
-      )}
+    <Section
+      id="team"
+      title="Tim proyek"
+      body={team.length === 0}
+      action={
+        canSeeAccess && (
+          <Link href={`/admin/projects/${projectId}/members`} className="btn btn-secondary">
+            Kelola akses proyek
+          </Link>
+        )
+      }
+    >
       {team.length === 0 ? (
         <EmptyState>Belum ada anggota aktif.</EmptyState>
       ) : (
-        <div className="panel data-panel">
+        <div className="data-panel">
           <table role="table" className="data-table">
             <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
               <tr role="row">
@@ -235,6 +221,6 @@ async function TeamTab({
           </table>
         </div>
       )}
-    </div>
+    </Section>
   );
 }

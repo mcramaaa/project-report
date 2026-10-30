@@ -1,8 +1,9 @@
 import type { ProjectDto, WeeklyProgressDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert } from '@/components/ui';
+import { Icon } from '@/components/icon';
 import { serverGet } from '@/lib/server-api';
 import { ProgressEditor } from './progress-editor';
 
@@ -18,13 +19,11 @@ export default async function WeekProgressPage({ params }: { params: Promise<{ p
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="progress" permissions={project.permissions} />
-      <p className="mt-3 text-sm">
-        <Link className="link-button" href={`${base}/progress`}>
-          ← Semua minggu
-        </Link>
-      </p>
+      <ProjectHeader project={project} active="progress" />
+      <Link className="page-back mt-4" href={`${base}/progress`}>
+        <Icon name="arrow-left" size={14} />
+        Semua minggu
+      </Link>
       {progress.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat progres.</Alert>
       ) : !progress.data ? (
