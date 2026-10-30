@@ -1032,6 +1032,23 @@ mengaktifkan D-071 butir 5.
    melebihi volume versi baru. Daftarnya dikembalikan sebagai peringatan;
    aktivasi butuh `acknowledgeWarnings: true` dan daftarnya disimpan di audit.
 
+## D-074 Impor Jadwal Diskalakan ke Bobot Versi RAB
+
+Tanggal: 2026-10-30. Diputuskan pengguna; melengkapi D-072 butir 4. Sheet
+`Master Curva S` pada laporan MC-0 kantor masih memakai bobot Kontrak (31 dari
+49 kelompok berbeda), sedangkan sebaran minggunya tetap berlaku.
+
+1. Saat impor, jumlah isian tiap kelompok dibandingkan dengan bobot kelompok
+   di versi RAB jadwal. Bila selisihnya melebihi toleransi D-072 (0,0001 poin),
+   setiap isian kelompok itu dikalikan bobot ÷ jumlah isian, dibulatkan
+   HALF_UP ke 18 desimal. Sebaran minggu tidak berubah.
+2. Kelompok yang jumlahnya sudah sama (dalam toleransi) tidak diubah.
+3. Kelompok yang di sheet tidak punya isian sama sekali tidak dapat
+   diskalakan; tetap menjadi error validasi.
+4. Daftar kelompok yang disesuaikan (jumlah lama → bobot) dikembalikan ke
+   pengguna dan disimpan di audit `IMPORT_SCHEDULE`.
+5. Isian manual di grid tidak diskalakan; validasi D-072 tetap berlaku.
+
 ## Keputusan Terbuka
 
 

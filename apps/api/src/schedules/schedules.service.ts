@@ -1,4 +1,4 @@
-import { aggregateRabGroups, plannedCurve, scheduleGroupIds, validateSchedule, type RabRowValues } from '@laporan-proyek/calc';
+import { aggregateRabGroups, plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule, type RabRowValues } from '@laporan-proyek/calc';
 import {
   rabVersionLabel,
   type CreateScheduleInput,
@@ -121,12 +121,15 @@ export class SchedulesService {
     const model = new WorkbookModel(input.documentId, file.filename, workbook);
     const sheet = input.sheet ?? DEFAULT_SCHEDULE_SHEET;
 
-    await this.prisma.$transaction(async (tx) => {
+    const importAdjustments = await this.prisma.$transaction(async (tx) => {
       const ctx = await lockEditable(tx, projectId, scheduleId);
       const parsed = parseScheduleSheet(model, sheet, ctx.groups, ctx.weeks.length);
       if (parsed.errors.length)
         throw new BadRequestException({ message: `Impor jadwal dari ${file.filename} gagal: ${parsed.errors.length} masalah.`, errors: parsed.errors });
-      const count = await replaceEntries(tx, ctx, parsed.entries);
+      const scaled = scaleScheduleToWeights(ctx.groups, parsed.entries);
+      const label = new Map(ctx.groups.map((g) => [g.id, `${g.displayNumber ?? ''} ${g.description}`.trim()]));
+      const adjustments = scaled.adjusted.map((a) => ({ group: label.get(a.groupId)!, from: a.from, to: a.to }));
+      const count = await replaceEntries(tx, ctx, scaled.entries);
       await tx.scheduleVersion.update({ where: { id: scheduleId }, data: { sourceDocumentId: input.documentId } });
       await writeAudit(tx, {
         actorId: actor.id,
@@ -135,10 +138,11 @@ export class SchedulesService {
         entityId: scheduleId,
         projectId,
         oldValue: { entryCount: ctx.entries.length },
-        newValue: { documentId: input.documentId, filename: file.filename, sheet: model.sheetName(sheet), entryCount: count },
+        newValue: { documentId: input.documentId, filename: file.filename, sheet: model.sheetName(sheet), entryCount: count, scaledGroups: adjustments },
       });
+      return adjustments;
     });
-    return this.get(projectId, scheduleId);
+    return { ...(await this.get(projectId, scheduleId)), importAdjustments };
   }
 
   async approve(actor: AuthUser, projectId: string, scheduleId: string): Promise<ScheduleDetailDto> {

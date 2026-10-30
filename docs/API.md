@@ -163,7 +163,7 @@ GET   /projects/:projectId/schedules                              -> [{ rabVersi
 POST  /projects/:projectId/schedules                              { rabVersionId }                 schedule.edit (RAB approved, 1 per versi)
 GET   /projects/:projectId/schedules/:scheduleId                  -> { groups, weeks, entries, curve, issues, … }  rab.read
 PUT   /projects/:projectId/schedules/:scheduleId/entries          { entries: [{ groupId, weekNumber, weight }] }  schedule.edit (ganti semua isian)
-POST  /projects/:projectId/schedules/:scheduleId/import           { documentId, sheet? }           schedule.edit (default sheet `Master Curva S`)
+POST  /projects/:projectId/schedules/:scheduleId/import           { documentId, sheet? } -> { …, importAdjustments }  schedule.edit (default sheet `Master Curva S`; diskalakan ke bobot versi, D-074)
 POST  /projects/:projectId/schedules/:scheduleId/approve          —                                schedule.approve (409 + errors bila tidak valid)
 POST  /projects/:projectId/schedules/:scheduleId/reopen           { reason }                       schedule.approve
 GET   /projects/:projectId/progress/weeks                         -> [{ weekNumber, baseline, open, filledCount, … }]  rab.read (D-073)

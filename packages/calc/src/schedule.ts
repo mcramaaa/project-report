@@ -65,3 +65,31 @@ export function plannedCurve(entries: Pick<ScheduleEntryInput, 'weekNumber' | 'w
     return { weekNumber: i + 1, planned: planned.toFixed(), cumulative: cumulative.toFixed() };
   });
 }
+
+/**
+ * D-074: imported weeks keep their spread but each group is scaled to its weight in this RAB version
+ * (× weight ÷ sum, HALF_UP 18 decimals). Groups already within tolerance, or with no entries, are left as they are.
+ */
+export function scaleScheduleToWeights(
+  groups: Pick<ScheduleGroup, 'id' | 'weight'>[],
+  entries: ScheduleEntryInput[],
+): { entries: ScheduleEntryInput[]; adjusted: { groupId: string; from: string; to: string }[] } {
+  const tolerance = new D(SCHEDULE_TOLERANCE);
+  const sums = new Map<string, Decimal>();
+  for (const e of entries) sums.set(e.groupId, (sums.get(e.groupId) ?? new D(0)).plus(e.weight));
+  const factors = new Map<string, Decimal>();
+  const adjusted: { groupId: string; from: string; to: string }[] = [];
+  for (const g of groups) {
+    const sum = sums.get(g.id);
+    if (!sum || sum.isZero() || sum.minus(g.weight).abs().lte(tolerance)) continue;
+    factors.set(g.id, new D(g.weight).div(sum));
+    adjusted.push({ groupId: g.id, from: sum.toFixed(), to: new D(g.weight).toFixed() });
+  }
+  return {
+    entries: entries.map((e) => {
+      const f = factors.get(e.groupId);
+      return f ? { ...e, weight: new D(e.weight).times(f).toDecimalPlaces(18, D.ROUND_HALF_UP).toFixed() } : e;
+    }),
+    adjusted,
+  };
+}

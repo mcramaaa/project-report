@@ -48,4 +48,6 @@ export interface ScheduleDetailDto {
   curve: { weekNumber: number; planned: string; cumulative: string }[];
   /** Approval blockers (D-072 butir 5); empty when the schedule can be approved. */
   issues: { groupId: string | null; message: string }[];
+  /** Import response only: groups scaled to this version's weight (D-074). */
+  importAdjustments?: { group: string; from: string; to: string }[];
 }

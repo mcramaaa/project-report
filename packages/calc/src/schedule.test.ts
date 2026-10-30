@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plannedCurve, scheduleGroupIds, validateSchedule } from './index.js';
+import { plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule } from './index.js';
 
 describe('scheduleGroupIds', () => {
   it('takes SUBSECTIONs and SECTIONs without SUBSECTION, as REKAP RAB does', () => {
@@ -64,5 +64,36 @@ describe('plannedCurve', () => {
       { weekNumber: 2, planned: '0', cumulative: '0.3' },
       { weekNumber: 3, planned: '99.7', cumulative: '100' },
     ]);
+  });
+});
+
+describe('scaleScheduleToWeights (D-074)', () => {
+  it('keeps the weekly spread and scales only groups whose weight changed', () => {
+    const { entries, adjusted } = scaleScheduleToWeights(
+      [
+        { id: 'A', weight: '40' },
+        { id: 'B', weight: '45' },
+        { id: 'C', weight: '15' },
+      ],
+      [
+        { groupId: 'A', weekNumber: 1, weight: '40.00005' }, // within tolerance: untouched
+        { groupId: 'B', weekNumber: 1, weight: '15' },
+        { groupId: 'B', weekNumber: 2, weight: '45' },
+      ],
+    );
+    expect(entries).toEqual([
+      { groupId: 'A', weekNumber: 1, weight: '40.00005' },
+      { groupId: 'B', weekNumber: 1, weight: '11.25' },
+      { groupId: 'B', weekNumber: 2, weight: '33.75' },
+    ]);
+    expect(adjusted).toEqual([{ groupId: 'B', from: '60', to: '45' }]);
+    // C has no entries: nothing to scale, validation still reports it.
+    expect(validateSchedule([{ id: 'C', label: 'C', weight: '15' }], [], 1)).toHaveLength(2);
+  });
+
+  it('rounds each scaled week to 18 decimals and the group stays within tolerance', () => {
+    const { entries } = scaleScheduleToWeights([{ id: 'G', weight: '1.197946' }], [1, 2, 3].map((n) => ({ groupId: 'G', weekNumber: n, weight: '0.4340376804693972' })));
+    expect(entries[0]!.weight.split('.')[1]!.length).toBeLessThanOrEqual(18);
+    expect(validateSchedule([{ id: 'G', label: 'G', weight: '1.197946' }], entries, 3).filter((i) => i.groupId === 'G')).toEqual([]);
   });
 });

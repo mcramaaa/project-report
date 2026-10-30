@@ -145,6 +145,20 @@ describe('time schedule (D-072)', () => {
       [3, '40'],
     ]);
     expect(imported.issues).toEqual([]);
+    expect(imported.importAdjustments).toEqual([]);
+
+    // D-074: a sheet made for other weights keeps its weekly spread, scaled to this version's weight.
+    const older = await admin.upload(`/projects/${project.id}/documents`, [{ name: 'lama.xlsx', data: await xlsxOf({ 'Master Curva S': { ...sheet, M27: 30, N27: 60 } }) }]);
+    const scaled = await ok(admin.post(`${base}/${s.id}/import`, { documentId: older.body[0].id }));
+    expect(scaled.entries.map((e: { weekNumber: number; weight: string }) => [e.weekNumber, e.weight])).toEqual([
+      [1, '40'],
+      [2, '20'],
+      [3, '40'],
+    ]);
+    expect(scaled.importAdjustments).toEqual([{ group: 'B.I Galian', from: '90', to: '60' }]);
+    expect(scaled.issues).toEqual([]);
+    const audit = await t.prisma.auditLog.findFirstOrThrow({ where: { action: 'IMPORT_SCHEDULE' }, orderBy: { createdAt: 'desc' } });
+    expect((audit.newValue as { scaledGroups: unknown[] }).scaledGroups).toHaveLength(1);
 
     const unknown = await admin.upload(`/projects/${project.id}/documents`, [{ name: 'salah.xlsx', data: await xlsxOf({ 'Master Curva S': { ...sheet, C30: 'Z.IX', L30: 5 } }) }]);
     const failed = await admin.post(`${base}/${s.id}/import`, { documentId: unknown.body[0].id });

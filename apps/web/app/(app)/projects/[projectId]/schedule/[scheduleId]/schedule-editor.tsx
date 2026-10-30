@@ -35,6 +35,7 @@ export function ScheduleEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; list: string[] }>();
   const [notice, setNotice] = useState<string>();
+  const [adjusted, setAdjusted] = useState<NonNullable<ScheduleDetailDto['importAdjustments']>>([]);
   const [reopening, setReopening] = useState(false);
   const [focused, setFocused] = useState<string>();
   useLeaveWarning(dirty);
@@ -77,6 +78,7 @@ export function ScheduleEditor({
       setDirty(false);
       setReopening(false);
       setNotice(done);
+      setAdjusted(next.importAdjustments ?? []);
       return true;
     } catch (err) {
       const list = err instanceof ApiError ? ((err.details as { errors?: unknown } | undefined)?.errors ?? []) : [];
@@ -160,7 +162,25 @@ export function ScheduleEditor({
               onCancel={() => setReopening(false)}
             />
           )}
-          {notice && <Alert kind="success">{notice}</Alert>}
+          {notice && (
+            <Alert kind="success">
+              {notice}
+              {adjusted.length > 0 && (
+                <details className="mt-1">
+                  <summary className="cursor-pointer">
+                    {adjusted.length} kelompok disesuaikan ke bobot {data.rabVersion.label}; sebaran mingguannya tetap seperti di Excel.
+                  </summary>
+                  <ul className="mt-1 list-disc pl-5">
+                    {adjusted.map((a) => (
+                      <li key={a.group}>
+                        {a.group}: {formatRounded(a.from, 4)}% → {formatRounded(a.to, 4)}%
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+            </Alert>
+          )}
           {error && (
             <Alert>
               {error.message}
