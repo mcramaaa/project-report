@@ -148,6 +148,8 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `APPROVE_RAB_VERSION` | draft disetujui | total sebelum PPN, PPN, total, jumlah ITEM, warning yang dikonfirmasi |
 | `CREATE_SCHEDULE` / `UPDATE_SCHEDULE` / `IMPORT_SCHEDULE` | jadwal dibuat / grid disimpan / diimpor (D-072) | versi RAB; jumlah isian lama & baru; dokumen, sheet |
 | `APPROVE_SCHEDULE` / `REOPEN_SCHEDULE` | jadwal di-approve / dibuka untuk revisi | status, jumlah isian; isian approved lengkap saat reopen (alasan wajib) |
+| `CREATE_SCHEDULE_SCENARIO` / `UPDATE_SCHEDULE_SCENARIO` / `DELETE_SCHEDULE_SCENARIO` | skenario jadwal dibuat/diubah/dihapus (D-078) | nama, jumlah minggu, jumlah isian |
+| `PROMOTE_SCHEDULE_SCENARIO` | isian skenario menggantikan isian jadwal resmi (D-078) | id & nama skenario, jumlah isian lama dan baru |
 | `UPDATE_WEEKLY_PROGRESS` | progres minggu disimpan (D-073) | nomor minggu, baseline; per item kode work item, volume lama & baru, mode, persen |
 | `UPDATE_DAILY_ALLOCATION` | alokasi harian satu item diubah (D-075) | nomor minggu, kode work item, method & volume per hari lama dan baru |
 | `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |

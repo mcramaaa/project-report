@@ -183,3 +183,61 @@ describe('time schedule (D-072)', () => {
     expect(res.status).toBe(409);
   });
 });
+
+describe('schedule scenarios (D-078)', () => {
+  it('copies a schedule, edits apart from it (also past the project end), and becomes the official schedule only when reopened and valid', async () => {
+    const { s, a, bi } = await draft();
+    const official = [
+      { groupId: a.id, weekNumber: 1, weight: '40' },
+      { groupId: bi.id, weekNumber: 2, weight: '60' },
+    ];
+    await ok(admin.request('PUT', `${base}/${s.id}/entries`, { entries: official }));
+    await ok(admin.post(`${base}/${s.id}/approve`, {}));
+    const sc = `/projects/${project.id}/schedule-scenarios`;
+
+    const created = await ok(admin.post(sc, { scheduleId: s.id, name: 'Galian mundur' }), 201);
+    expect(created).toMatchObject({ name: 'Galian mundur', weekCount: 18, projectWeekCount: 18, issues: [] });
+    expect(created.entries).toHaveLength(2);
+
+    // Past the project end: allowed in the scenario, blocks promote.
+    const late = await ok(
+      admin.request('PUT', `${sc}/${created.id}`, {
+        name: 'Galian mundur',
+        weekCount: 20,
+        entries: [
+          { groupId: a.id, weekNumber: 1, weight: '40' },
+          { groupId: bi.id, weekNumber: 19, weight: '60' },
+        ],
+      }),
+    );
+    expect(late.weeks).toHaveLength(20);
+    expect(late.weeks[18]).toMatchObject({ weekNumber: 19, startDate: '2026-05-05' });
+    expect(late.promoteBlockers).toEqual([expect.stringContaining('masih approved'), expect.stringContaining('setelah minggu 18')]);
+    expect((await admin.request('PUT', `${sc}/${created.id}`, { name: 'x', weekCount: 71, entries: [] })).status).toBe(400);
+    // The official schedule did not change.
+    expect((await ok(admin.get(`${base}/${s.id}`))).entries).toEqual(official);
+
+    expect((await admin.post(`${sc}/${created.id}/promote`, {})).status).toBe(409); // still approved
+    await ok(admin.post(`${base}/${s.id}/reopen`, { reason: 'Simulasi' }));
+    expect((await admin.post(`${sc}/${created.id}/promote`, {})).status).toBe(409); // week 19 is past the project
+    await ok(
+      admin.request('PUT', `${sc}/${created.id}`, {
+        name: 'Galian mundur',
+        weekCount: 18,
+        entries: [
+          { groupId: a.id, weekNumber: 1, weight: '40' },
+          { groupId: bi.id, weekNumber: 5, weight: '60' },
+        ],
+      }),
+    );
+    await ok(admin.post(`${sc}/${created.id}/promote`, {}));
+    expect((await ok(admin.get(`${base}/${s.id}`))).entries).toEqual([
+      { groupId: a.id, weekNumber: 1, weight: '40' },
+      { groupId: bi.id, weekNumber: 5, weight: '60' },
+    ]);
+    expect(await t.prisma.auditLog.count({ where: { action: 'PROMOTE_SCHEDULE_SCENARIO' } })).toBe(1);
+
+    await ok(admin.request('DELETE', `${sc}/${created.id}`), 204);
+    expect(await t.prisma.scheduleScenarioEntry.count()).toBe(0);
+  });
+});

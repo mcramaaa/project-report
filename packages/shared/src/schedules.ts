@@ -82,3 +82,41 @@ export interface SCurveDto {
     deviation: string | null;
   }[];
 }
+
+/** D-078: scenarios may run up to this many weeks past the project end. */
+export const SCENARIO_EXTRA_WEEKS = 52;
+
+export const createScenarioSchema = z.object({
+  scheduleId: z.uuid({ message: 'Jadwal tidak valid.' }),
+  name: z.string().trim().min(1, { message: 'Isi nama skenario.' }).max(120),
+});
+export type CreateScenarioInput = z.infer<typeof createScenarioSchema>;
+
+/** The whole scenario; entries replace the previous ones (zero cells left out). */
+export const saveScenarioSchema = z.object({
+  name: z.string().trim().min(1, { message: 'Isi nama skenario.' }).max(120),
+  weekCount: z.number().int().min(1).max(1000),
+  entries: saveScheduleEntriesSchema.shape.entries,
+});
+export type SaveScenarioInput = z.infer<typeof saveScenarioSchema>;
+
+export interface ScenarioSummaryDto {
+  id: string;
+  name: string;
+  schedule: { id: string; status: ScheduleStatus; rabVersionLabel: string };
+  weekCount: number;
+  updatedBy: { id: string; name: string };
+  updatedAt: string;
+}
+
+export interface ScenarioDetailDto extends ScenarioSummaryDto {
+  projectWeekCount: number;
+  /** Week dates, including weeks past the project end (scenario only). */
+  weeks: { weekNumber: number; startDate: string; endDate: string }[];
+  groups: ScheduleDetailDto['groups'];
+  entries: ScheduleDetailDto['entries'];
+  curve: ScheduleDetailDto['curve'];
+  issues: ScheduleDetailDto['issues'];
+  /** Why it cannot become the official schedule now; empty when it can (D-078 butir 6). */
+  promoteBlockers: string[];
+}

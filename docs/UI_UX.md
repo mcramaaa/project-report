@@ -549,3 +549,10 @@ pekerjaan, kebutuhan per minggu, laju 4 minggu terakhir, prakiraan selesai) dan
 tabel deviasi per kelompok (paling terlambat dulu, 8 teratas, bisa tampilkan
 semua) dengan bilah progres kelompok vs posisi rencana. Kelompok terlambat
 ditandai merah di sheet Kurva S.
+
+Kartu **Simulasi jadwal** (D-078) di tab Jadwal: daftar skenario tim dan form
+buat skenario (salin dari jadwal). Halaman skenario: nama dan jumlah minggu
+(boleh melewati akhir proyek), Kurva S skenario vs rencana resmi (teal,
+titik-garis) vs realisasi, tabel kelompok dengan pilihan minggu mulai/selesai
+(bobot dibagi rata) dan geser ±1 minggu, lalu "Jadikan jadwal resmi" (dengan
+daftar penghalang) dan "Hapus skenario", keduanya dengan konfirmasi.

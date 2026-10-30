@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { actualCurve, plannedCurve, scaleScheduleToWeights, scheduleGroupIds, validateSchedule } from './index.js';
+import { actualCurve, plannedCurve, spreadEvenly, scaleScheduleToWeights, scheduleGroupIds, validateSchedule } from './index.js';
 
 describe('scheduleGroupIds', () => {
   it('takes SUBSECTIONs and SECTIONs without SUBSECTION, as REKAP RAB does', () => {
@@ -118,5 +118,16 @@ describe('actualCurve (D-076)', () => {
       { weekNumber: 3, actual: '0', cumulative: '40' },
     ]);
     expect(Object.fromEntries(groups)).toEqual({ G1: ['30', '0', '0'], G2: ['0', '10', '0'] });
+  });
+});
+
+describe('spreadEvenly (D-078)', () => {
+  it('splits the weight over the weeks and the last week takes the rounding rest, so the sum is exact', () => {
+    const e = spreadEvenly('G', '1', 3, 5);
+    expect(e.map((x) => x.weekNumber)).toEqual([3, 4, 5]);
+    expect(e[0]!.weight).toBe('0.333333333333333333');
+    expect(e[2]!.weight).toBe('0.333333333333333334');
+    expect(validateSchedule([{ id: 'G', label: 'G', weight: '1' }], e, 5).filter((i) => i.groupId === 'G')).toEqual([]);
+    expect(spreadEvenly('G', '1', 4, 2)).toEqual([]);
   });
 });

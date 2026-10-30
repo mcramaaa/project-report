@@ -429,6 +429,18 @@ Untuk dukungan exact-date di tengah minggu.
 - start_date
 - end_date
 
+### schedule_scenarios (D-078)
+
+- id, project_id, schedule_version_id, name, week_count
+- created_by, updated_by, created_at, updated_at
+
+### schedule_scenario_entries
+
+- id, scenario_id (CASCADE), group_item_id, week_number, planned_weight DECIMAL(30,18)
+- week_number, bukan week_id: skenario boleh melewati akhir proyek
+
+Unique: scenario_id + group_item_id + week_number
+
 ### weekly_progress
 
 D-073: volume realisasi per minggu per work item; tidak pernah dihapus.

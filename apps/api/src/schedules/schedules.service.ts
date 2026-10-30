@@ -258,7 +258,7 @@ export class SchedulesService {
   }
 }
 
-async function lockActiveProject(tx: Prisma.TransactionClient, projectId: string) {
+export async function lockActiveProject(tx: Prisma.TransactionClient, projectId: string) {
   await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
   const project = await tx.project.findUnique({ where: { id: projectId }, select: { status: true } });
   if (!project) throw new NotFoundException('Proyek tidak ditemukan.');
@@ -267,7 +267,7 @@ async function lockActiveProject(tx: Prisma.TransactionClient, projectId: string
 
 type ScheduleContext = Awaited<ReturnType<typeof loadSchedule>>;
 
-async function lockEditable(tx: Prisma.TransactionClient, projectId: string, scheduleId: string): Promise<ScheduleContext> {
+export async function lockEditable(tx: Prisma.TransactionClient, projectId: string, scheduleId: string): Promise<ScheduleContext> {
   await lockActiveProject(tx, projectId);
   const ctx = await loadSchedule(tx, projectId, scheduleId);
   if (ctx.schedule.status === 'APPROVED') throw new ConflictException('Jadwal sudah approved; buka kembali untuk merevisi.');
@@ -276,7 +276,7 @@ async function lockEditable(tx: Prisma.TransactionClient, projectId: string, sch
 }
 
 /** Schedule row, its groups (RAB order, weights from the approved subtotals), project weeks and entries. */
-async function loadSchedule(db: Db, projectId: string, scheduleId: string) {
+export async function loadSchedule(db: Db, projectId: string, scheduleId: string) {
   const schedule = await db.scheduleVersion.findFirst({ where: { id: scheduleId, projectId }, select: SCHEDULE_SELECT });
   if (!schedule) throw new NotFoundException('Jadwal tidak ditemukan.');
   const [items, weekRows, entryRows] = await Promise.all([
@@ -324,7 +324,7 @@ function treeOrder<T extends { id: string; parentItemId: string | null; sortOrde
 }
 
 /** Replaces all entries; groups and weeks must belong to this schedule's RAB version and project. */
-async function replaceEntries(tx: Prisma.TransactionClient, ctx: ScheduleContext, entries: Entry[]): Promise<number> {
+export async function replaceEntries(tx: Prisma.TransactionClient, ctx: ScheduleContext, entries: Entry[]): Promise<number> {
   const groups = new Set(ctx.groups.map((g) => g.id));
   const weekIds = new Map(ctx.weeks.map((w) => [w.weekNumber, w.id]));
   const keep = new Map<string, Entry>();

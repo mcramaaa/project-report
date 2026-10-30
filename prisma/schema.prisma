@@ -48,6 +48,8 @@ model User {
   approvedSnapshots    RabVersionSnapshot[] @relation("SnapshotApprovedBy")
   createdSnapshots     RabVersionSnapshot[] @relation("SnapshotCreatedBy")
   createdSchedules     ScheduleVersion[]    @relation("ScheduleCreatedBy")
+  createdScenarios     ScheduleScenario[]   @relation("ScenarioCreatedBy")
+  updatedScenarios     ScheduleScenario[]   @relation("ScenarioUpdatedBy")
   approvedSchedules    ScheduleVersion[]    @relation("ScheduleApprovedBy")
   enteredProgress      WeeklyProgress[]     @relation("ProgressEnteredBy")
   updatedProgress      WeeklyProgress[]     @relation("ProgressUpdatedBy")
@@ -109,6 +111,7 @@ model Project {
   priceLists          PriceList[]
   analyses            AhspAnalysis[]
   schedules           ScheduleVersion[]
+  scheduleScenarios   ScheduleScenario[]
   weeklyProgress      WeeklyProgress[]
 
   @@map("projects")
@@ -376,12 +379,13 @@ model ScheduleVersion {
   createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
 
-  project        Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  rabVersion     RabVersion       @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
-  sourceDocument ProjectDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
-  createdByUser  User             @relation("ScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
-  approvedByUser User?            @relation("ScheduleApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  rabVersion     RabVersion         @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  sourceDocument ProjectDocument?   @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  createdByUser  User               @relation("ScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser User?              @relation("ScheduleApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
   entries        ScheduleEntry[]
+  scenarios      ScheduleScenario[]
 
   @@index([projectId])
   @@map("schedule_versions")
@@ -404,6 +408,45 @@ model ScheduleEntry {
   @@index([groupItemId])
   @@index([weekId])
   @@map("schedule_entries")
+}
+
+/// D-078: a named what-if copy of a schedule's entries; may run past the project end (weekCount).
+model ScheduleScenario {
+  id                String   @id @default(uuid(7)) @db.Char(36)
+  projectId         String   @map("project_id") @db.Char(36)
+  scheduleVersionId String   @map("schedule_version_id") @db.Char(36)
+  name              String   @db.VarChar(120)
+  weekCount         Int      @map("week_count") @db.UnsignedSmallInt
+  createdBy         String   @map("created_by") @db.Char(36)
+  updatedBy         String   @map("updated_by") @db.Char(36)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project         Project                 @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  scheduleVersion ScheduleVersion         @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+  createdByUser   User                    @relation("ScenarioCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser   User                    @relation("ScenarioUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  entries         ScheduleScenarioEntry[]
+
+  @@index([projectId])
+  @@index([scheduleVersionId])
+  @@map("schedule_scenarios")
+}
+
+/// Week by number, not by `weeks` row: scenario weeks may lie past the project end.
+model ScheduleScenarioEntry {
+  id            String  @id @default(uuid(7)) @db.Char(36)
+  scenarioId    String  @map("scenario_id") @db.Char(36)
+  groupItemId   String  @map("group_item_id") @db.Char(36)
+  weekNumber    Int     @map("week_number") @db.UnsignedSmallInt
+  plannedWeight Decimal @map("planned_weight") @db.Decimal(30, 18)
+
+  scenario  ScheduleScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  groupItem RabVersionItem   @relation(fields: [groupItemId], references: [id], onDelete: Restrict)
+
+  @@unique([scenarioId, groupItemId, weekNumber])
+  @@index([groupItemId])
+  @@map("schedule_scenario_entries")
 }
 
 enum ProgressInputMode {
@@ -537,15 +580,16 @@ model RabVersionItem {
   createdAt             DateTime       @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt             DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
 
-  analysisVersion     AhspAnalysisVersion? @relation(fields: [analysisVersionId], references: [id], onDelete: Restrict)
-  priceDecidedByUser  User?                @relation("ItemPriceDecidedBy", fields: [priceDecidedBy], references: [id], onDelete: Restrict)
-  rabVersion          RabVersion           @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
-  workItem            WorkItem?            @relation(fields: [workItemId], references: [id], onDelete: Restrict)
-  parent              RabVersionItem?      @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
-  children            RabVersionItem[]     @relation("RabItemTree")
-  previousVersionItem RabVersionItem?      @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
-  copies              RabVersionItem[]     @relation("RabItemCopy")
+  analysisVersion     AhspAnalysisVersion?    @relation(fields: [analysisVersionId], references: [id], onDelete: Restrict)
+  priceDecidedByUser  User?                   @relation("ItemPriceDecidedBy", fields: [priceDecidedBy], references: [id], onDelete: Restrict)
+  rabVersion          RabVersion              @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  workItem            WorkItem?               @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  parent              RabVersionItem?         @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
+  children            RabVersionItem[]        @relation("RabItemTree")
+  previousVersionItem RabVersionItem?         @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
+  copies              RabVersionItem[]        @relation("RabItemCopy")
   scheduleEntries     ScheduleEntry[]
+  scenarioEntries     ScheduleScenarioEntry[]
 
   @@unique([rabVersionId, workItemId])
   @@index([rabVersionId, parentItemId, sortOrder])

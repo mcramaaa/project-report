@@ -1,4 +1,9 @@
-import type { ProjectDto, SCurveDto, ScheduleSummaryDto } from '@laporan-proyek/shared';
+import type {
+  ProjectDto,
+  ScenarioSummaryDto,
+  SCurveDto,
+  ScheduleSummaryDto,
+} from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectHeader } from '@/components/project-tabs';
@@ -8,6 +13,7 @@ import { serverGet } from '@/lib/server-api';
 import { CreateSchedule } from './create-schedule';
 import { SCurveLegend, SCurveSheet } from './s-curve-chart';
 import { ScheduleAnalysis } from './schedule-analysis';
+import { Scenarios } from './scenarios';
 
 export default async function SchedulesPage({
   params,
@@ -21,6 +27,7 @@ export default async function SchedulesPage({
     serverGet<ScheduleSummaryDto[]>(`${base}/schedules`),
     serverGet<SCurveDto>(`${base}/schedules/s-curve`),
   ]);
+  const scenarios = await serverGet<ScenarioSummaryDto[]>(`${base}/schedule-scenarios`);
   if (status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const canEdit = project.permissions.includes('schedule.edit') && project.status === 'ACTIVE';
@@ -30,6 +37,30 @@ export default async function SchedulesPage({
       <ProjectHeader project={project} active="schedule" />
       {curve.data && <SCurveSection curve={curve.data} />}
       {curve.data?.baseline && <ScheduleAnalysis data={curve.data} />}
+      {scenarios.data && schedules.data && (
+        <Scenarios
+          projectId={project.id}
+          scenarios={scenarios.data}
+          // The reference schedule (D-076) first: it is the one the comparison draws.
+          schedules={schedules.data
+            .flatMap((s) =>
+              s.schedule
+                ? [
+                    {
+                      id: s.schedule.id,
+                      label: `${s.rabVersion.label} (${s.schedule.status === 'APPROVED' ? 'approved' : 'draf'})`,
+                    },
+                  ]
+                : [],
+            )
+            .sort(
+              (a, b) =>
+                Number(b.id === curve.data?.schedule?.id) -
+                Number(a.id === curve.data?.schedule?.id),
+            )}
+          canEdit={project.status === 'ACTIVE' && project.permissions.includes('schedule.edit')}
+        />
+      )}
       {schedules.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat jadwal.</Alert>
       ) : !schedules.data ? (

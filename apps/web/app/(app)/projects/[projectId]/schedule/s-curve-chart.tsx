@@ -1,13 +1,16 @@
 'use client';
 
 import type { SCurveDto } from '@laporan-proyek/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatDate, formatRounded } from '@/lib/project-fields';
 import { defaultAnalysisWeek, groupDeviations } from './schedule-analysis';
 
 // Validated pair (dataviz validator, light surface): plan is also dashed, so identity never rests on color alone.
 const PLAN = '#d97706';
 const ACTUAL = '#2563eb';
+/** Third series (D-078 scenario), validated with the two above on all pairs; dash-dot keeps it apart without color. */
+const SCENARIO = '#0d9488';
+const SCENARIO_DASH = '9 3 2 3';
 const ROMAN = [
   'I',
   'II',
@@ -42,7 +45,13 @@ const decimalsFor = (week: number) => (week >= 48 ? 3 : week >= 38 ? 2 : week >=
  * D-076: the office "Curva S" sheet — groups × weeks with the planned % per week, plan/actual/deviation rows below,
  * and the cumulative curves drawn over the week columns on a 0–100% scale.
  */
-export function SCurveSheet({ data }: { data: SCurveDto }) {
+export function SCurveSheet({
+  data,
+  extra,
+}: {
+  data: SCurveDto;
+  extra?: { label: string; cumulative: (string | null)[] };
+}) {
   const root = useRef<HTMLDivElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -60,13 +69,14 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
   const [full, setFull] = useState(false);
   const n = data.weeks.length;
   // D-077 butir 2: groups behind plan at the last reported week are marked in the sheet.
-  const [behind] = useState(
+  const behind = useMemo(
     () =>
       new Set(
         groupDeviations(data, defaultAnalysisWeek(data))
           .filter((g) => g.deviation.lt(0))
           .map((g) => g.row.id),
       ),
+    [data],
   );
   const base = detail ? DETAIL : FIT;
   const desc = sizes.desc ?? base.desc;
@@ -174,15 +184,16 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
     );
   };
 
-  const curve = (key: 'plannedCumulative' | 'actualCumulative') => {
+  const curve = (key: 'plannedCumulative' | 'actualCumulative' | 'extra') => {
     if (!box) return '';
-    const pts = data.weeks.flatMap((w, i) =>
-      w[key] === null
+    const values = key === 'extra' ? (extra?.cumulative ?? []) : data.weeks.map((w) => w[key]);
+    const pts = values.flatMap((v, i) =>
+      v === null
         ? []
         : [
             [
               (i + 1) * (box.width / n),
-              box.height * (1 - Math.min(Math.max(Number(w[key]), 0), 100) / 100),
+              box.height * (1 - Math.min(Math.max(Number(v), 0), 100) / 100),
             ],
           ],
     );
@@ -221,7 +232,12 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
           )}
         </p>
         <div className="row-actions">
-          {full && <SCurveLegend />}
+          {full && (
+            <SCurveLegend
+              extra={extra?.label}
+              planLabel={extra ? 'Rencana resmi kumulatif' : undefined}
+            />
+          )}
           <button
             type="button"
             className="btn btn-secondary"
@@ -420,6 +436,16 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
                 strokeDasharray="6 4"
                 strokeLinejoin="round"
               />
+              {extra && (
+                <path
+                  d={curve('extra')}
+                  fill="none"
+                  stroke={SCENARIO}
+                  strokeWidth="2.5"
+                  strokeDasharray={SCENARIO_DASH}
+                  strokeLinejoin="round"
+                />
+              )}
               <path
                 d={curve('actualCumulative')}
                 fill="none"
@@ -460,6 +486,12 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
           <span>
             Rencana minggu ini {pct(h.planned)} · kumulatif {pct(h.plannedCumulative)}
           </span>
+          {extra && (
+            <span>
+              {extra.label} kumulatif {pct(extra.cumulative[hover! - 1] ?? null)}
+            </span>
+          )}
+          <span></span>
           <span>
             Realisasi minggu ini {pct(h.actual)} · kumulatif {pct(h.actualCumulative)}
           </span>
@@ -477,14 +509,36 @@ export function SCurveSheet({ data }: { data: SCurveDto }) {
   );
 }
 
-export function SCurveLegend() {
+export function SCurveLegend({
+  extra,
+  planLabel = 'Rencana kumulatif',
+}: {
+  extra?: string;
+  planLabel?: string;
+}) {
   return (
     <span className="s-legend" aria-hidden="true">
+      {extra && (
+        <span>
+          <svg width="22" height="8">
+            <line
+              x1="0"
+              y1="4"
+              x2="22"
+              y2="4"
+              stroke={SCENARIO}
+              strokeWidth="2.5"
+              strokeDasharray="7 2 2 2"
+            />
+          </svg>
+          {extra}
+        </span>
+      )}
       <span>
         <svg width="22" height="8">
           <line x1="0" y1="4" x2="22" y2="4" stroke={PLAN} strokeWidth="2" strokeDasharray="5 3" />
         </svg>
-        Rencana kumulatif
+        {planLabel}
       </span>
       <span>
         <svg width="22" height="8">

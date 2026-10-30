@@ -1125,6 +1125,34 @@ Tanggal: 2026-10-30. Melengkapi D-076; tidak ada data baru yang disimpan.
      ⌈sisa ÷ laju⌉ (tidak ditampilkan bila laju 0).
    Ini angka bantu, bukan janji atau jadwal resmi.
 
+## D-078 Simulasi Jadwal (Skenario)
+
+Tanggal: 2026-10-30. Diputuskan pengguna: skenario terlihat oleh seluruh tim
+dan dapat dijadikan revisi jadwal resmi. Siapa yang membuat belum dijawab;
+dipakai bawaan `schedule.edit` karena skenario dapat menjadi jadwal resmi.
+
+1. **Skenario** = salinan bernama dari isian sebuah jadwal (versi RAB yang
+   sama), disimpan terpisah (`schedule_scenarios`, `schedule_scenario_entries`).
+   Jadwal resmi tidak berubah selama skenario diedit.
+2. **Izin:** melihat memakai `rab.read`; membuat, mengubah, menghapus, dan
+   menjadikan revisi memakai `schedule.edit`. Skenario boleh dihapus (bukan
+   data progres/baseline); pembuatan, perubahan, penghapusan diaudit.
+3. **Mengubah:** isian per kelompok per minggu seperti grid jadwal, plus
+   pengisian cepat "mulai–selesai" yang membagi bobot kelompok rata ke minggu
+   itu (HALF_UP 18 desimal, sisa ke minggu terakhir).
+4. **Tambah waktu:** skenario boleh lebih panjang dari masa proyek (maks. 52
+   minggu tambahan) untuk mensimulasikan perpanjangan. Minggu tambahan hanya
+   ada di skenario.
+5. **Bandingkan:** Kurva S skenario ditampilkan bersama rencana resmi dan
+   realisasi (D-076). Validasi D-072 butir 5 (jumlah per kelompok = bobot)
+   ditampilkan sebagai peringatan; skenario tetap boleh disimpan walau belum
+   valid.
+6. **Jadikan revisi:** isian skenario menggantikan isian jadwal resminya, hanya
+   bila jadwal resmi berstatus DRAFT/REOPENED (APPROVED harus dibuka kembali
+   dengan alasan, D-072), skenario lolos validasi, dan semua minggunya ada di
+   masa proyek (perpanjangan waktu harus diubah di data proyek dulu). Jadwal
+   tetap harus di-approve. Audit `PROMOTE_SCHEDULE_SCENARIO`.
+
 ## Keputusan Terbuka
 
 

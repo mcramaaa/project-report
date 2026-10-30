@@ -132,3 +132,15 @@ export function actualCurve(
     groups: new Map([...byGroup].map(([id, w]) => [id, w.map(round)])),
   };
 }
+
+/** D-078 butir 3: a group's weight spread evenly over weeks `from`..`to` (HALF_UP 18 decimals, the last week takes the rest). */
+export function spreadEvenly(groupId: string, weight: string, from: number, to: number): ScheduleEntryInput[] {
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) return [];
+  const count = to - from + 1;
+  const each = new D(weight).div(count).toDecimalPlaces(18, D.ROUND_HALF_UP);
+  return Array.from({ length: count }, (_, i) => ({
+    groupId,
+    weekNumber: from + i,
+    weight: (i === count - 1 ? new D(weight).minus(each.times(count - 1)) : each).toFixed(),
+  }));
+}

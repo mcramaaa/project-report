@@ -273,6 +273,23 @@ GET /projects/:projectId/schedules/s-curve
 `currentWeek`. `rows`: baris sheet Curva S (judul SECTION `weight` null) dengan
 `planned` dan `actual` per minggu per kelompok (D-077).
 
+## 10c. Simulasi Jadwal (Skenario)
+
+```text
+GET    /projects/:projectId/schedule-scenarios
+POST   /projects/:projectId/schedule-scenarios               { scheduleId, name }
+GET    /projects/:projectId/schedule-scenarios/:scenarioId
+PUT    /projects/:projectId/schedule-scenarios/:scenarioId   { name, weekCount, entries }
+DELETE /projects/:projectId/schedule-scenarios/:scenarioId
+POST   /projects/:projectId/schedule-scenarios/:scenarioId/promote
+```
+
+D-078. Baca: `rab.read`; ubah, hapus, promote: `schedule.edit`. `weekCount`
+boleh sampai 52 minggu setelah akhir proyek. Detail berisi `weeks` (termasuk
+minggu tambahan), `groups`, `entries`, `curve`, `issues`, `promoteBlockers`.
+Promote `409` bila jadwal resmi masih APPROVED atau skenario tidak valid
+(termasuk isian di luar masa proyek).
+
 ## 11. Daily Allocation
 
 ```text
