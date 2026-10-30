@@ -374,26 +374,30 @@ Tepat satu dari `price_item_id`/`sub_analysis_version_id`, atau keduanya null un
 
 ## 6. Schedule
 
+D-072: per kelompok pekerjaan RAB, % bobot proyek per minggu.
+
 ### schedule_versions
 
 - id
-- project_id
-- rab_version_id
-- version_number
-- document_id
-- effective_date
-- status
-- created_at
+- project_id → projects (RESTRICT)
+- rab_version_id → rab_versions (RESTRICT), unique — satu jadwal per versi RAB
+- status — DRAFT | APPROVED | REOPENED
+- source_document_id nullable → project_documents (impor terakhir)
+- created_by, approved_by nullable, approved_at nullable
+- created_at, updated_at
 
-### schedule_items
+### schedule_entries
 
 - id
-- schedule_version_id
-- week_id
-- work_item_id
-- planned_volume
-- planned_weight
-- planned_cumulative_weight
+- schedule_version_id → schedule_versions (RESTRICT)
+- group_item_id → rab_version_items (RESTRICT) — SUBSECTION, atau SECTION tanpa SUBSECTION
+- week_id → weeks (RESTRICT)
+- planned_weight DECIMAL(30,18) — % bobot proyek, hanya nilai ≠ 0
+
+Unique:
+- schedule_version_id + group_item_id + week_id
+
+Bobot kelompok, rencana mingguan, dan kumulatif dihitung, tidak disimpan.
 
 ## 7. Weeks & Progress
 

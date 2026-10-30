@@ -1,4 +1,4 @@
-import type { RabRowType, RabVersionStatus } from '@laporan-proyek/shared';
+import type { RabRowType, RabVersionStatus, ScheduleStatus } from '@laporan-proyek/shared';
 
 export const RAB_STATUS_BADGE: Record<
   RabVersionStatus,
@@ -8,6 +8,12 @@ export const RAB_STATUS_BADGE: Record<
   APPROVED: { tone: 'green', label: 'Approved' },
   DISCARDED: { tone: 'slate', label: 'Dibatalkan' },
   REOPENED: { tone: 'amber', label: 'Dibuka untuk koreksi' },
+};
+
+export const SCHEDULE_STATUS_BADGE: Record<ScheduleStatus, { tone: 'blue' | 'green' | 'amber'; label: string }> = {
+  DRAFT: { tone: 'blue', label: 'Draft' },
+  APPROVED: { tone: 'green', label: 'Approved' },
+  REOPENED: { tone: 'amber', label: 'Dibuka untuk revisi' },
 };
 
 /** Project permissions that let a user change a version in this status (the API checks the same, D-068). */

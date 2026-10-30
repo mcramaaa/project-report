@@ -294,6 +294,11 @@ textarea { min-height: 96px; resize: vertical; }
 .rab-grid .num { text-align: right; font-variant-numeric: tabular-nums; }
 .rab-grid .rab-sticky-no { position: sticky; left: 0; z-index: 1; width: 82px; min-width: 82px; }
 .rab-grid .rab-sticky-desc { position: sticky; left: 82px; z-index: 1; min-width: 260px; max-width: 420px; white-space: normal; box-shadow: 1px 0 0 var(--line); }
+/* !important: the global input rule (38px, width 100%) is more specific than a class. */
+.rab-grid .schedule-cell { width: 92px !important; min-height: 30px !important; height: 30px; padding: 3px 6px !important; text-align: right; font-variant-numeric: tabular-nums; }
+.rab-grid .schedule-cell[aria-invalid='true'] { border-color: #d9677a !important; background: #fff8f9 !important; }
+.rab-grid tfoot { position: sticky; bottom: 0; z-index: 2; }
+.rab-grid tfoot th, .rab-grid tfoot td { background: #f2f6fc; }
 .rab-grid thead .rab-sticky-no, .rab-grid thead .rab-sticky-desc { z-index: 3; }
 .rab-grid .rab-group td { font-weight: 600; }
 .rab-grid .rab-section td { background: var(--blue-wash); }

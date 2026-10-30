@@ -8,6 +8,7 @@ export interface HealthResponse {
 export * from './access.js';
 export * from './audit.js';
 export * from './baselines.js';
+export * from './schedules.js';
 export * from './auth.js';
 export * from './projects.js';
 export * from './rab.js';

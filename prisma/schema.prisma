@@ -47,6 +47,8 @@ model User {
   priceDecisions       RabVersionItem[]     @relation("ItemPriceDecidedBy")
   approvedSnapshots    RabVersionSnapshot[] @relation("SnapshotApprovedBy")
   createdSnapshots     RabVersionSnapshot[] @relation("SnapshotCreatedBy")
+  createdSchedules     ScheduleVersion[]    @relation("ScheduleCreatedBy")
+  approvedSchedules    ScheduleVersion[]    @relation("ScheduleApprovedBy")
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -103,6 +105,7 @@ model Project {
   rabImports          RabImport[]
   priceLists          PriceList[]
   analyses            AhspAnalysis[]
+  schedules           ScheduleVersion[]
 
   @@map("projects")
 }
@@ -123,8 +126,9 @@ model ProjectWeek {
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  project      Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  reportPeriod ReportPeriod @relation(fields: [reportPeriodId], references: [id], onDelete: Restrict)
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  reportPeriod    ReportPeriod    @relation(fields: [reportPeriodId], references: [id], onDelete: Restrict)
+  scheduleEntries ScheduleEntry[]
 
   @@unique([projectId, weekNumber])
   @@index([reportPeriodId])
@@ -310,6 +314,7 @@ model RabVersion {
   priceList           PriceList?
   analyses            AhspAnalysis[]
   snapshots           RabVersionSnapshot[]
+  schedule            ScheduleVersion?
 
   @@index([projectId, status])
   @@map("rab_versions")
@@ -343,6 +348,57 @@ model BaselineAssignment {
   @@index([projectId, effectiveFrom])
   @@index([rabVersionId])
   @@map("baseline_assignments")
+}
+
+enum ScheduleStatus {
+  DRAFT
+  APPROVED
+  /// Approved schedule opened again for revision; entries before reopen are in the audit log (D-072).
+  REOPENED
+}
+
+/// D-072: one time schedule per approved RAB version, in % of project weight per RAB group per week.
+model ScheduleVersion {
+  id               String         @id @default(uuid(7)) @db.Char(36)
+  projectId        String         @map("project_id") @db.Char(36)
+  rabVersionId     String         @unique @map("rab_version_id") @db.Char(36)
+  status           ScheduleStatus @default(DRAFT)
+  /// Last imported workbook; null when filled by hand only.
+  sourceDocumentId String?        @map("source_document_id") @db.Char(36)
+  createdBy        String         @map("created_by") @db.Char(36)
+  approvedBy       String?        @map("approved_by") @db.Char(36)
+  approvedAt       DateTime?      @map("approved_at") @db.DateTime(3)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  rabVersion     RabVersion       @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  sourceDocument ProjectDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  createdByUser  User             @relation("ScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser User?            @relation("ScheduleApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  entries        ScheduleEntry[]
+
+  @@index([projectId])
+  @@map("schedule_versions")
+}
+
+/// Planned % of project weight for one RAB group in one project week; only non-zero values are stored.
+model ScheduleEntry {
+  id                String  @id @default(uuid(7)) @db.Char(36)
+  scheduleVersionId String  @map("schedule_version_id") @db.Char(36)
+  /// SUBSECTION, or SECTION without SUBSECTION (scheduleGroupIds).
+  groupItemId       String  @map("group_item_id") @db.Char(36)
+  weekId            String  @map("week_id") @db.Char(36)
+  plannedWeight     Decimal @map("planned_weight") @db.Decimal(30, 18)
+
+  scheduleVersion ScheduleVersion @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+  groupItem       RabVersionItem  @relation(fields: [groupItemId], references: [id], onDelete: Restrict)
+  week            ProjectWeek     @relation(fields: [weekId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleVersionId, groupItemId, weekId])
+  @@index([groupItemId])
+  @@index([weekId])
+  @@map("schedule_entries")
 }
 
 /// Append-only archive of each approved state (D-068); never updated or deleted, never recomputed from live data.
@@ -425,6 +481,7 @@ model RabVersionItem {
   children            RabVersionItem[]     @relation("RabItemTree")
   previousVersionItem RabVersionItem?      @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
   copies              RabVersionItem[]     @relation("RabItemCopy")
+  scheduleEntries     ScheduleEntry[]
 
   @@unique([rabVersionId, workItemId])
   @@index([rabVersionId, parentItemId, sortOrder])
@@ -454,9 +511,10 @@ model ProjectDocument {
   uploadedBy       String   @map("uploaded_by") @db.Char(36)
   uploadedAt       DateTime @default(now()) @map("uploaded_at") @db.DateTime(3)
 
-  project  Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  uploader User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
-  imports  RabImportDocument[]
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  uploader        User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  imports         RabImportDocument[]
+  scheduleImports ScheduleVersion[]
 
   @@index([projectId])
   @@index([sha256])

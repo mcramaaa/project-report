@@ -42,6 +42,8 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `rabImport.review` | PROJECT | Impor RAB | buat run impor, retry, catat keputusan reviewer |
 | `rabImport.approve` | PROJECT | Impor RAB | approve/reject impor → analisa/harga resmi + RAB DRAFT |
 | `ahsp.read` | PROJECT | AHSP | lihat daftar analisa, komponen, harga |
+| `schedule.edit` | PROJECT | Jadwal | buat jadwal per versi RAB approved, isi grid, impor dari Excel (D-072) |
+| `schedule.approve` | PROJECT | Jadwal | approve jadwal valid (terkunci), buka kembali untuk revisi dengan alasan (D-072) |
 | `baseline.activate` | PROJECT | Baseline | aktifkan versi RAB approved sebagai baseline mulai tanggal tertentu, cabut assignment terakhir (alasan wajib) (D-071) |
 
 Rencana (ditambahkan saat milestone terkait; `rab.*` sudah ditambahkan di M4, default role sistem dikonfirmasi lebih dulu, OD-008): `progress.input` (M9), `dailyReport.edit` (M11), `report.review`, `report.finalize`¹ (M11–13), `addendum.manage` (M6), `report.reopen` (M13), `presentation.view` (M15), `document.upload`, `aiExtraction.review` (M5).
@@ -56,8 +58,8 @@ FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2), RAB_EDITOR (D-
 |---|---|
 | FILLER, REVIEWER | `project.read`, `rab.read`, `ahsp.read` |
 | ADMIN | `project.read`, `rab.read`, `rab.edit`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review` |
-| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve`, `baseline.activate` |
-| RAB_EDITOR (Editor RAB) | `project.read`, `rab.read`, `rab.edit`, `rab.approve`, `rab.reopen`, `ahsp.read`, `ahsp.edit`, `document.read`, `baseline.activate` |
+| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve`, `baseline.activate`, `schedule.edit`, `schedule.approve` |
+| RAB_EDITOR (Editor RAB) | `project.read`, `rab.read`, `rab.edit`, `rab.approve`, `rab.reopen`, `ahsp.read`, `ahsp.edit`, `document.read`, `baseline.activate`, `schedule.edit`, `schedule.approve` |
 
 Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
 
@@ -142,6 +144,8 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `CLOSE_PROJECT` / `REOPEN_PROJECT` | status proyek berubah | status lama & baru (alasan wajib) |
 | `CREATE_RAB_VERSION` / `UPDATE_RAB_VERSION` | versi RAB dibuat (jenis, revisi, versi asal) / dokumen diubah | jenis, revisi, nomor/tanggal dokumen |
 | `APPROVE_RAB_VERSION` | draft disetujui | total sebelum PPN, PPN, total, jumlah ITEM, warning yang dikonfirmasi |
+| `CREATE_SCHEDULE` / `UPDATE_SCHEDULE` / `IMPORT_SCHEDULE` | jadwal dibuat / grid disimpan / diimpor (D-072) | versi RAB; jumlah isian lama & baru; dokumen, sheet |
+| `APPROVE_SCHEDULE` / `REOPEN_SCHEDULE` | jadwal di-approve / dibuka untuk revisi | status, jumlah isian; isian approved lengkap saat reopen (alasan wajib) |
 | `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |
 | `CREATE_RAB_IMPORT` / `RETRY_RAB_IMPORT` | run impor dibuat / diulang | versi tujuan, dokumen, run sebelumnya |
 | `DECIDE_RAB_IMPORT_ROW` | keputusan reviewer | baris, jenis, nilai, alasan |

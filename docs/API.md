@@ -159,6 +159,13 @@ POST  /projects/:projectId/rab-versions/:versionId/cancel-correction { reason } 
 GET   /projects/:projectId/baselines                              —                                rab.read (D-071)
 POST  /projects/:projectId/baselines                              { rabVersionId, activationMode, effectiveFrom?, reason? }  baseline.activate
 POST  /projects/:projectId/baselines/:assignmentId/revoke         { reason }                       baseline.activate
+GET   /projects/:projectId/schedules                              -> [{ rabVersion, schedule }]     rab.read (D-072)
+POST  /projects/:projectId/schedules                              { rabVersionId }                 schedule.edit (RAB approved, 1 per versi)
+GET   /projects/:projectId/schedules/:scheduleId                  -> { groups, weeks, entries, curve, issues, … }  rab.read
+PUT   /projects/:projectId/schedules/:scheduleId/entries          { entries: [{ groupId, weekNumber, weight }] }  schedule.edit (ganti semua isian)
+POST  /projects/:projectId/schedules/:scheduleId/import           { documentId, sheet? }           schedule.edit (default sheet `Master Curva S`)
+POST  /projects/:projectId/schedules/:scheduleId/approve          —                                schedule.approve (409 + errors bila tidak valid)
+POST  /projects/:projectId/schedules/:scheduleId/reopen           { reason }                       schedule.approve
 GET   /projects/:projectId/rab-versions/:versionId/history      -> { snapshots, events }         rab.read + ahsp.read
 GET   /projects/:projectId/rab-versions/:versionId/snapshots/:snapshotId -> { …, checksumValid, payload } rab.read + ahsp.read
 POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/work-item  { workItemId, reason? }  rab.edit

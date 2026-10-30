@@ -174,6 +174,8 @@ describe('update identity', () => {
       'rab.approve',
       'rab.reopen',
       'baseline.activate',
+      'schedule.edit',
+      'schedule.approve',
       'document.read',
       'document.upload',
       'rabImport.review',

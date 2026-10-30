@@ -70,6 +70,20 @@ export const PERMISSIONS = [
     name: 'Aktivasi baseline',
     description: 'Menetapkan versi RAB approved yang berlaku mulai minggu/tanggal tertentu, dan mencabut aktivasi terakhir (D-071).',
   },
+  {
+    code: 'schedule.edit',
+    scope: 'PROJECT',
+    module: 'Jadwal',
+    name: 'Kelola jadwal',
+    description: 'Membuat, mengisi, dan mengimpor time schedule (% bobot per kelompok per minggu) selama draft/revisi (D-072).',
+  },
+  {
+    code: 'schedule.approve',
+    scope: 'PROJECT',
+    module: 'Jadwal',
+    name: 'Approve jadwal',
+    description: 'Menyetujui time schedule yang valid (terkunci) dan membukanya kembali untuk revisi dengan alasan (D-072).',
+  },
   { code: 'document.read', scope: 'PROJECT', module: 'Dokumen', name: 'Lihat dokumen', description: 'Melihat dan mengunduh dokumen proyek.' },
   { code: 'document.upload', scope: 'PROJECT', module: 'Dokumen', name: 'Upload dokumen', description: 'Mengunggah dokumen proyek (.xlsx).' },
   {
@@ -115,9 +129,9 @@ export const SYSTEM_PROJECT_ROLES = [
 export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
   FILLER: ['project.read', 'rab.read', 'ahsp.read'],
   REVIEWER: ['project.read', 'rab.read', 'ahsp.read'],
-  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'baseline.activate', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
+  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
   ADMIN: ['project.read', 'rab.read', 'rab.edit', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review'],
-  RAB_EDITOR: ['project.read', 'rab.read', 'rab.edit', 'rab.approve', 'rab.reopen', 'baseline.activate', 'ahsp.read', 'ahsp.edit', 'document.read'],
+  RAB_EDITOR: ['project.read', 'rab.read', 'rab.edit', 'rab.approve', 'rab.reopen', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'ahsp.read', 'ahsp.edit', 'document.read'],
 };
 
 /** Permissions the MANAGER role must hold for project creation to hand the creator a usable project (D-039). */

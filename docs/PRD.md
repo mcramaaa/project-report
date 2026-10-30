@@ -442,6 +442,8 @@ Tidak ada input progres baru pada laporan periode ini. Data berasal dari minggu-
 
 Time schedule harus versioned karena MC0/Addendum dapat memiliki schedule revisi.
 
+Jadwal disusun per kelompok pekerjaan RAB (A, B.I, B.II, …) dalam % bobot proyek per minggu, satu jadwal per versi RAB approved, DRAFT → APPROVED, diisi lewat grid atau impor sheet `Master Curva S` (D-072). Kurva S rencana memakai jadwal versi baseline yang sedang berlaku.
+
 Tampilkan:
 
 - rencana mingguan

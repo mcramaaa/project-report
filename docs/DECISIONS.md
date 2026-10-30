@@ -955,6 +955,51 @@ OD-008.
      berada setelah tanggal mulai dan sampai tanggal selesai rencana. Cabut
      aktivasinya dulu.
 
+## D-072 Time Schedule dan Rencana Kurva S (M8)
+
+Tanggal: 2026-10-30. Diputuskan pengguna berdasarkan sheet `Master Curva S`
+pada laporan mingguan kantor (`04. LAPORAN MINGGUAN … (MC 0).xlsx`).
+
+1. **Level jadwal:** per kelompok pekerjaan RAB, bukan per item.
+   - Kelompok = baris SUBSECTION, atau SECTION yang tidak punya SUBSECTION
+     (sama dengan baris REKAP RAB: A, B.I, B.II, …).
+   - Isian = % bobot proyek per kelompok per minggu proyek, seperti kolom M.1
+     … M.n di Excel. Hanya angka ≠ 0 yang disimpan.
+   - Tidak ada volume rencana per item.
+2. **Bobot kelompok** = nilai kelompok (termasuk PPN) ÷ total RAB × 100, sama
+   dengan `weight` RAB (D-043). Tidak disimpan; dihitung dari RAB versi
+   jadwal.
+3. **Versi:** satu jadwal per versi RAB approved (Kontrak, MC-0, …).
+   - Status DRAFT → APPROVED (terkunci). Revisi = reopen dengan alasan dan
+     audit (status REOPENED), lalu approve lagi.
+   - Isi jadwal sebelum reopen disimpan di audit.
+4. **Sumber isian:** grid manual dan impor dari dokumen Excel proyek yang sudah
+   diunggah.
+   - Impor membaca sheet `Master Curva S` (atau sheet yang dipilih): kolom
+     minggu dari header `M.n`, baris dari nomor kelompok (A, B.I, …), dan nilai
+     dari hasil sel (15 digit, `excelDecimal`).
+   - Impor mengganti seluruh isian draft. Nomor kelompok atau minggu yang tidak
+     dikenal dilaporkan sebagai error.
+5. **Validasi approve** (toleransi 0,0001 poin persen untuk sisa desimal
+   Excel):
+   - jumlah isian tiap kelompok = bobot kelompok;
+   - jumlah bobot semua kelompok = 100 (item di luar kelompok ditolak);
+   - isian tidak negatif dan minggu berada dalam masa proyek.
+6. **Kurva S rencana:** rencana mingguan = jumlah isian per minggu; rencana
+   kumulatif = jumlah berjalan. Saat baseline berganti, Kurva S memakai jadwal
+   versi baseline yang sedang berlaku untuk semua minggu (seperti laporan
+   Excel MC-0). Laporan final tetap memakai snapshot-nya (M13).
+7. **Izin (OD-008, bagian M8):** `schedule.edit` (buat, isi, impor) dan
+   `schedule.approve` (approve, reopen). Default untuk MANAGER dan RAB_EDITOR.
+   Melihat jadwal memakai `rab.read`.
+8. **Hubungan dengan RAB dan kalender:**
+   - Jadwal hanya dibuat, diisi, dan di-approve saat versi RAB-nya APPROVED.
+   - Bila RAB dibuka kembali (D-068) dan bobot berubah, jadwal approved tidak
+     berubah otomatis; selisih tampil sebagai error validasi sampai jadwal
+     dibuka kembali dan disesuaikan.
+   - Isian merujuk `weeks` (RESTRICT): memperpendek durasi proyek ditolak bila
+     minggu yang dihapus punya isian.
+
 ## Keputusan Terbuka
 
 
