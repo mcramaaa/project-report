@@ -157,7 +157,7 @@ POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }      
 POST  /projects/:projectId/rab-versions/:versionId/reopen       { reason }                       rab.reopen (D-068)
 POST  /projects/:projectId/rab-versions/:versionId/cancel-correction { reason }                  rab.reopen (D-070)
 GET   /projects/:projectId/baselines                              —                                rab.read (D-071)
-POST  /projects/:projectId/baselines                              { rabVersionId, activationMode, effectiveFrom?, reason? }  baseline.activate
+POST  /projects/:projectId/baselines                              { rabVersionId, activationMode, effectiveFrom?, reason?, acknowledgeWarnings? }  baseline.activate (409 + warnings bila volume < realisasi)
 POST  /projects/:projectId/baselines/:assignmentId/revoke         { reason }                       baseline.activate
 GET   /projects/:projectId/schedules                              -> [{ rabVersion, schedule }]     rab.read (D-072)
 POST  /projects/:projectId/schedules                              { rabVersionId }                 schedule.edit (RAB approved, 1 per versi)
@@ -166,6 +166,9 @@ PUT   /projects/:projectId/schedules/:scheduleId/entries          { entries: [{ 
 POST  /projects/:projectId/schedules/:scheduleId/import           { documentId, sheet? }           schedule.edit (default sheet `Master Curva S`)
 POST  /projects/:projectId/schedules/:scheduleId/approve          —                                schedule.approve (409 + errors bila tidak valid)
 POST  /projects/:projectId/schedules/:scheduleId/reopen           { reason }                       schedule.approve
+GET   /projects/:projectId/progress/weeks                         -> [{ weekNumber, baseline, open, filledCount, … }]  rab.read (D-073)
+GET   /projects/:projectId/progress/weeks/:weekNumber             -> { week, rows }                rab.read
+PUT   /projects/:projectId/progress/weeks/:weekNumber             { entries: [{ workItemId, mode, volume | percentage, note? }] }  progress.input (hanya item yang dikirim berubah)
 GET   /projects/:projectId/rab-versions/:versionId/history      -> { snapshots, events }         rab.read + ahsp.read
 GET   /projects/:projectId/rab-versions/:versionId/snapshots/:snapshotId -> { …, checksumValid, payload } rab.read + ahsp.read
 POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/work-item  { workItemId, reason? }  rab.edit

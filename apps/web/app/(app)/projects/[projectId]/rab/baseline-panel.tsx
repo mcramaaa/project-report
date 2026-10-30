@@ -1,6 +1,6 @@
 'use client';
 
-import type { BaselineActivationMode, BaselineWeekDto, ProjectBaselinesDto } from '@laporan-proyek/shared';
+import type { BaselineActivationMode, BaselineVolumeWarningDto, BaselineWeekDto, ProjectBaselinesDto } from '@laporan-proyek/shared';
 import { useState, type FormEvent } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
 import { Alert, Badge, Button, Field, Section, Select } from '@/components/ui';
@@ -41,6 +41,8 @@ export function BaselinePanel({
   const [error, setError] = useState<string>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string>();
+  // D-071 butir 5: activation refused until the smaller volumes are confirmed.
+  const [pending, setPending] = useState<{ body: Record<string, unknown>; label: string; warnings: BaselineVolumeWarningDto[] }>();
 
   const base = `/projects/${projectId}/baselines`;
   const candidate = data.candidates.find((c) => c.rabVersion.id === candidateId) ?? data.candidates[0];
@@ -53,17 +55,18 @@ export function BaselinePanel({
     setError(undefined);
     setErrors({});
     setNotice(undefined);
+    setPending(undefined);
     try {
       const next = await request();
       setData(next);
       setCandidateId(next.candidates[0]?.rabVersion.id);
       setRevoking(false);
       setNotice(done);
-      return true;
+      return null;
     } catch (err) {
       if (err instanceof ApiError) setErrors(err.fieldErrors);
       setError(errorMessage(err));
-      return false;
+      return err;
     } finally {
       setBusy(false);
     }
@@ -76,16 +79,18 @@ export function BaselinePanel({
     const form = new FormData(element);
     const reason = String(form.get('reason') ?? '').trim();
     const effectiveFrom = String(form.get('effectiveFrom') ?? '');
-    void run(
-      () =>
-        api<ProjectBaselinesDto>('POST', base, {
-          rabVersionId: candidate.rabVersion.id,
-          activationMode: effectiveMode,
-          ...(effectiveMode === 'EXACT_DATE' && !isContract && effectiveFrom ? { effectiveFrom } : {}),
-          ...(reason ? { reason } : {}),
-        }),
-      `${candidate.rabVersion.label} diaktifkan sebagai baseline.`,
-    ).then((ok) => ok && element.reset());
+    const body = {
+      rabVersionId: candidate.rabVersion.id,
+      activationMode: effectiveMode,
+      ...(effectiveMode === 'EXACT_DATE' && !isContract && effectiveFrom ? { effectiveFrom } : {}),
+      ...(reason ? { reason } : {}),
+    };
+    const label = candidate.rabVersion.label;
+    void run(() => api<ProjectBaselinesDto>('POST', base, body), `${label} diaktifkan sebagai baseline.`).then((err) => {
+      if (!err) return element.reset();
+      const warnings = err instanceof ApiError ? (err.details as { warnings?: BaselineVolumeWarningDto[] } | undefined)?.warnings : undefined;
+      if (warnings?.length) setPending({ body, label, warnings });
+    });
   }
 
   return (
@@ -96,7 +101,31 @@ export function BaselinePanel({
     >
       <div className="space-y-4">
         {notice && <Alert kind="success">{notice}</Alert>}
-        {error && <Alert>{error}</Alert>}
+        {error && !pending && <Alert>{error}</Alert>}
+        {pending && (
+          <Alert kind="warning">
+            {error}
+            <ul className="mt-1 list-disc pl-5">
+              {pending.warnings.map((w) => (
+                <li key={w.workItemId}>
+                  <span className="font-mono">{w.workItemCode}</span> {w.description}: realisasi {w.reported}, volume {pending.label} {w.newVolume}
+                </li>
+              ))}
+            </ul>
+            <div className="row-actions mt-2">
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => void run(() => api<ProjectBaselinesDto>('POST', base, { ...pending.body, acknowledgeWarnings: true }), `${pending.label} diaktifkan sebagai baseline.`)}
+              >
+                Tetap aktifkan {pending.label}
+              </Button>
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => setPending(undefined)}>
+                Batal
+              </Button>
+            </div>
+          </Alert>
+        )}
 
         {data.assignments.length === 0 ? (
           <p className="text-sm text-slate-600">Belum ada baseline aktif. Baseline pertama adalah RAB Kontrak yang sudah approved.</p>

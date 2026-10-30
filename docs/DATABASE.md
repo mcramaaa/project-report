@@ -431,23 +431,21 @@ Untuk dukungan exact-date di tengah minggu.
 
 ### weekly_progress
 
+D-073: volume realisasi per minggu per work item; tidak pernah dihapus.
+
 - id
-- week_id
-- work_item_id
-- input_mode
-- input_percentage
-- actual_volume
-- note
-- entered_by
-- entered_at
-- updated_at
+- project_id → projects (RESTRICT)
+- week_id → weeks (RESTRICT)
+- work_item_id → work_items (RESTRICT)
+- input_mode — VOLUME_WEEK | PERCENT_CUMULATIVE
+- input_percentage DECIMAL(9,6) nullable — persen kumulatif yang diketik
+- actual_volume DECIMAL(30,12) — volume minggu ini (fakta)
+- note nullable
+- entered_by, entered_at
+- updated_by, updated_at
 
 Unique:
 - week_id + work_item_id
-
-input_mode:
-- PERCENT_CUMULATIVE
-- VOLUME_WEEK
 
 ## 8. Daily
 

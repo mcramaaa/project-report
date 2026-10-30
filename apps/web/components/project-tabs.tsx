@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-export type ProjectTab = 'info' | 'calendar' | 'team' | 'rab' | 'schedule' | 'imports';
+export type ProjectTab = 'info' | 'calendar' | 'team' | 'rab' | 'schedule' | 'progress' | 'imports';
 
 /** Project section tabs shown by project permission (UX hint; the API checks). */
 export function ProjectTabs({
@@ -19,6 +19,7 @@ export function ProjectTabs({
     { key: 'team', label: 'Tim', href: `${base}?tab=team`, show: true },
     { key: 'rab', label: 'RAB', href: `${base}/rab`, show: permissions.includes('rab.read') },
     { key: 'schedule', label: 'Jadwal', href: `${base}/schedule`, show: permissions.includes('rab.read') },
+    { key: 'progress', label: 'Progres', href: `${base}/progress`, show: permissions.includes('rab.read') },
     {
       key: 'imports',
       label: 'Impor RAB',

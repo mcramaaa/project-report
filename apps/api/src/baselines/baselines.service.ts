@@ -13,6 +13,7 @@ import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { baselineVolumeWarnings } from '../progress/progress.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -136,7 +137,12 @@ export class BaselinesService {
         throw new ConflictException(
           `Tanggal efektif ${label} harus sesudah tanggal efektif ${rabVersionLabel(last.rabVersion)} (${fromDbDate(last.effectiveFrom)}).`,
         );
-      // D-071 butir 5 (OD-003): the check of new volumes against reported progress starts when M9 stores progress.
+      const warnings = await baselineVolumeWarnings(tx, projectId, version.id, effectiveFrom);
+      if (warnings.length && !input.acknowledgeWarnings)
+        throw new ConflictException({
+          message: `Volume ${label} lebih kecil dari realisasi pada ${warnings.length} item. Konfirmasi untuk tetap mengaktifkan; realisasi tidak diubah.`,
+          warnings,
+        });
 
       const activationMode = version.versionType === 'CONTRACT' ? 'EXACT_DATE' : input.activationMode;
       const created = await tx.baselineAssignment.create({
@@ -149,7 +155,7 @@ export class BaselinesService {
         entityId: created.id,
         projectId,
         oldValue: { rabVersion: last ? rabVersionLabel(last.rabVersion) : null },
-        newValue: { rabVersionId: version.id, rabVersion: label, effectiveFrom, activationMode, weekNumber },
+        newValue: { rabVersionId: version.id, rabVersion: label, effectiveFrom, activationMode, weekNumber, ...(warnings.length ? { acknowledgedWarnings: warnings } : {}) },
         reason: input.reason,
       });
     });

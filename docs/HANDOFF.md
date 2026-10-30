@@ -193,7 +193,8 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M7 AHSP (analisa, harga bahan/upah/alat, paket per versi RAB)                          | selesai                                                                                |
 | M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode: API + UI (D-071) |
 | M8 Schedule + Weeks (D-072)                                                            | jadwal per kelompok RAB: grid, impor Master Curva S, approve/reopen; Kurva S rencana   |
-| M9–M16 (progres, alokasi harian, laporan, finalisasi, export, deploy)                  | belum dimulai                                                                          |
+| M9 Weekly Progress (D-073)                                                             | grid per minggu, mode volume / % kumulatif, validasi baseline, peringatan D-071 butir 5 |
+| M10–M16 (alokasi harian, laporan, finalisasi, export, deploy)                          | belum dimulai                                                                          |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap
 workbook kantor. Kontrak dan MC-0 cocok per item (416/416) dan total (D-063).

@@ -15,6 +15,8 @@ export const activateBaselineSchema = z
       .refine(isValidIsoDate, { message: 'Tanggal efektif harus tanggal valid (YYYY-MM-DD).' })
       .optional(),
     reason: z.string().trim().max(1000, { message: 'Maksimal 1000 karakter.' }).optional(),
+    /** D-071 butir 5: confirms activating a version smaller than reported progress. */
+    acknowledgeWarnings: z.boolean().optional(),
   })
   .refine((v) => v.activationMode === 'EXACT_DATE' || v.effectiveFrom === undefined, {
     message: 'Tanggal efektif hanya untuk mode tanggal pasti.',

@@ -21,6 +21,8 @@ import { AiClient, readAiConfig } from './ai/ai.client';
 import { BaselinesController } from './baselines/baselines.controller';
 import { BaselinesService } from './baselines/baselines.service';
 import { SchedulesController } from './schedules/schedules.controller';
+import { ProgressController } from './progress/progress.controller';
+import { ProgressService } from './progress/progress.service';
 import { SchedulesService } from './schedules/schedules.service';
 import { DocumentsController } from './documents/documents.controller';
 import { DocumentsService } from './documents/documents.service';
@@ -32,7 +34,7 @@ import { RabService } from './rab/rab.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ProgressController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -46,6 +48,7 @@ import { RabService } from './rab/rab.service';
     RabCorrectionsService,
     BaselinesService,
     SchedulesService,
+    ProgressService,
     DocumentsService,
     RabImportsService,
     AhspService,

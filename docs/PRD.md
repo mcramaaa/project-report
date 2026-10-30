@@ -307,6 +307,8 @@ Tampilan:
 - persen
 - sisa
 
+Aturan rinci (mode, baseline per minggu, minggu terbuka, izin): D-073.
+
 ## 14. Validasi Progres
 
 Error minimum:

@@ -1000,6 +1000,38 @@ pada laporan mingguan kantor (`04. LAPORAN MINGGUAN … (MC 0).xlsx`).
    - Isian merujuk `weeks` (RESTRICT): memperpendek durasi proyek ditolak bila
      minggu yang dihapus punya isian.
 
+## D-073 Input Progres Mingguan (M9)
+
+Tanggal: 2026-10-30. Diputuskan pengguna; melengkapi PRD §13–14 dan
+mengaktifkan D-071 butir 5.
+
+1. **Fakta:** `weekly_progress` menyimpan volume realisasi minggu itu per
+   work item (`actual_volume`, 12 desimal). Kumulatif, persen, dan sisa
+   dihitung. Baris tidak pernah dihapus; perubahan diaudit (nilai lama dan
+   baru).
+2. **Mode input:**
+   - `VOLUME_WEEK`: volume minggu ini, ≥ 0.
+   - `PERCENT_CUMULATIVE`: persen kumulatif (0–100, maks. 6 desimal) terhadap
+     volume baseline minggu itu. Volume minggu ini = persen × volume baseline
+     ÷ 100 − kumulatif sampai minggu lalu, dibulatkan HALF_UP ke 12 desimal.
+     Hasil negatif ditolak. Persen yang diketik disimpan apa adanya.
+3. **Baseline minggu:** versi yang berlaku pada hari terakhir minggu (D-071).
+   Minggu tanpa baseline tidak dapat diisi.
+4. **Trackable:** baris ITEM dengan work item dan volume > 0 di baseline
+   minggu itu. Progres lama untuk item yang tidak ada lagi di baseline tetap
+   tampil, tetapi tidak dapat diisi lagi.
+5. **Validasi simpan:** kumulatif tidak melebihi volume baseline pada minggu
+   yang diisi dan setiap minggu sesudahnya yang ikut naik. Perubahan yang
+   menurunkan kumulatif selalu boleh.
+6. **Minggu terbuka:** minggu yang `start_date`-nya ≤ hari ini (tanggal WIT,
+   UTC+9), selama proyek ACTIVE. Penguncian minggu final menyusul di M13.
+7. **Izin (OD-008, bagian M9):** `progress.input`, default FILLER dan
+   MANAGER. Melihat progres memakai `rab.read`.
+8. **D-071 butir 5 aktif:** aktivasi baseline memeriksa work item yang
+   realisasi kumulatifnya (minggu yang berakhir sebelum `effective_from`)
+   melebihi volume versi baru. Daftarnya dikembalikan sebagai peringatan;
+   aktivasi butuh `acknowledgeWarnings: true` dan daftarnya disimpan di audit.
+
 ## Keputusan Terbuka
 
 
