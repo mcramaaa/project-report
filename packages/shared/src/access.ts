@@ -38,6 +38,13 @@ export const PERMISSIONS = [
     name: 'Kelola akses proyek',
     description: 'Menambah, mengubah role, dan mencabut anggota proyek. Tidak berlaku untuk akses diri sendiri.',
   },
+  {
+    code: 'workers.manage',
+    scope: 'GLOBAL',
+    module: 'Pekerja',
+    name: 'Kelola pekerja',
+    description: 'Melihat NIK lengkap dan foto KTP, serta menambah, mengubah, dan menonaktifkan pekerja (D-080).',
+  },
   { code: 'projects.create', scope: 'GLOBAL', module: 'Proyek', name: 'Buat proyek', description: 'Membuat proyek baru; pembuat menjadi MANAGER proyek tersebut.' },
   {
     code: 'project.read',
@@ -76,6 +83,13 @@ export const PERMISSIONS = [
     module: 'Progres',
     name: 'Input progres mingguan',
     description: 'Mengisi dan mengubah volume realisasi mingguan per item pada minggu yang sudah dimulai (D-073).',
+  },
+  {
+    code: 'report.reopen',
+    scope: 'PROJECT',
+    module: 'Progres',
+    name: 'Buka kembali laporan final',
+    description: 'Membuka kembali laporan harian yang sudah FINAL, dengan alasan (D-079).',
   },
   {
     code: 'schedule.edit',
@@ -136,7 +150,7 @@ export const SYSTEM_PROJECT_ROLES = [
 export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
   FILLER: ['project.read', 'rab.read', 'progress.input', 'ahsp.read'],
   REVIEWER: ['project.read', 'rab.read', 'ahsp.read'],
-  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'progress.input', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
+  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'progress.input', 'report.reopen', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
   ADMIN: ['project.read', 'rab.read', 'rab.edit', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review'],
   RAB_EDITOR: ['project.read', 'rab.read', 'rab.edit', 'rab.approve', 'rab.reopen', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'ahsp.read', 'ahsp.edit', 'document.read'],
 };

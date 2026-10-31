@@ -25,6 +25,8 @@ import { ProgressController } from './progress/progress.controller';
 import { ProgressService } from './progress/progress.service';
 import { SchedulesService } from './schedules/schedules.service';
 import { ScenariosController } from './schedules/scenarios.controller';
+import { DailyReportsController } from './daily-reports/daily-reports.controller';
+import { DailyReportsService } from './daily-reports/daily-reports.service';
 import { ScenariosService } from './schedules/scenarios.service';
 import { DocumentsController } from './documents/documents.controller';
 import { DocumentsService } from './documents/documents.service';
@@ -33,10 +35,12 @@ import { AI_CLIENT, RabImportsService } from './imports/rab-imports.service';
 import { RabController } from './rab/rab.controller';
 import { RabCorrectionsService } from './rab/corrections.service';
 import { RabService } from './rab/rab.service';
+import { WorkersController } from './workers/workers.controller';
+import { WorkersService } from './workers/workers.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DailyReportsController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController, WorkersController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -51,6 +55,7 @@ import { RabService } from './rab/rab.service';
     BaselinesService,
     SchedulesService,
     ScenariosService,
+    DailyReportsService,
     ProgressService,
     DocumentsService,
     RabImportsService,
@@ -59,6 +64,7 @@ import { RabService } from './rab/rab.service';
     { provide: AI_CLIENT, useFactory: () => { const config = readAiConfig(); return config ? new AiClient(config) : null; } },
     AdminUsersService,
     AdminProjectsService,
+    WorkersService,
   ],
 })
 export class AppModule {}

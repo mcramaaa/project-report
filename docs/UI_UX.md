@@ -561,3 +561,13 @@ Setiap baris tabel deviasi punya tombol ▸ untuk membuka **rincian item**
 pekerjaan kelompok itu (volume RAB, minggu itu, s.d. minggu, % selesai dengan
 bilah, bobot, realisasi; item "belum" ditandai) dan tautan ke progres minggu
 analisis. Filter: cari, bagian, urutan, dan chip status dengan jumlahnya.
+
+**Laporan harian (D-079):** halaman progres mingguan menampilkan strip H1–H7
+(status: belum / Draft / Final / Dibuka kembali; tanggal yang belum tiba
+nonaktif). Halaman `/projects/:id/daily/:tanggal`: pekerjaan hari ini (dari
+alokasi harian, tautan ke alokasi untuk koreksi), tenaga kerja (keahlian dengan
+saran dari upah AHSP, jumlah orang, total), penggunaan bahan dan peralatan
+(hitungan AHSP | aktual, tombol "pakai hitungan", baris ketik bebas), cuaca
+(kondisi + jam), catatan. Laporan baru diisi awal dari tenaga kerja dan alat
+laporan sebelumnya. Tombol Simpan, Finalkan (konfirmasi peringatan), Buka
+kembali (alasan, `report.reopen`). Navigasi Kemarin/Besok.

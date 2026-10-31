@@ -9,7 +9,7 @@ export function createTestPrisma(): PrismaService {
   return new PrismaService(url);
 }
 
-const TABLES = ['schedule_scenario_entries', 'schedule_scenarios', 'daily_allocations', 'weekly_progress', 'schedule_entries', 'schedule_versions', 'baseline_assignments', 'rab_version_snapshots', 'ai_runs', 'rab_import_decisions', 'rab_import_documents', 'ahsp_components', 'rab_version_items', 'ahsp_analysis_versions', 'ahsp_analyses', 'price_items', 'rab_imports', 'price_lists', 'project_documents', 'rab_versions', 'work_items', 'audit_logs', 'weeks', 'report_periods', 'user_global_roles', 'project_users', 'role_permissions', 'roles', 'auth_sessions', 'projects', 'users'];
+const TABLES = ['workers', 'daily_report_work', 'daily_report_weather', 'daily_report_resources', 'daily_reports', 'schedule_scenario_entries', 'schedule_scenarios', 'daily_allocations', 'weekly_progress', 'schedule_entries', 'schedule_versions', 'baseline_assignments', 'rab_version_snapshots', 'ai_runs', 'rab_import_decisions', 'rab_import_documents', 'ahsp_components', 'rab_version_items', 'ahsp_analysis_versions', 'ahsp_analyses', 'price_items', 'rab_imports', 'price_lists', 'project_documents', 'rab_versions', 'work_items', 'audit_logs', 'weeks', 'report_periods', 'user_global_roles', 'project_users', 'role_permissions', 'roles', 'auth_sessions', 'projects', 'users'];
 
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   assertTestDatabase(process.env.DATABASE_URL ?? '');

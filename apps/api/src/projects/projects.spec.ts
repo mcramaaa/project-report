@@ -175,6 +175,7 @@ describe('update identity', () => {
       'rab.reopen',
       'baseline.activate',
       'progress.input',
+      'report.reopen',
       'schedule.edit',
       'schedule.approve',
       'document.read',

@@ -30,6 +30,7 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `assignments.read` | GLOBAL | Akses proyek | lihat proyek (metadata minimum), anggota, akses per user |
 | `assignments.manage` | GLOBAL | Akses proyek | tambah/ubah role/cabut anggota proyek, kecuali diri sendiri |
 | `projects.create` | GLOBAL | Proyek | membuat proyek; pembuat menjadi MANAGER (D-039) |
+| `workers.manage` | GLOBAL | Pekerja | lihat NIK lengkap & foto KTP, tambah/ubah/nonaktifkan pekerja; tanpa izin ini user hanya melihat nama, posisi, NIK tersamar (D-080) |
 | `project.read` | PROJECT | Proyek | baca identitas, minggu, periode, tim proyek |
 | `project.update` | PROJECT | Proyek | ubah identitas, jadwal, tutup/buka kembali proyek |
 | `rab.read` | PROJECT | RAB | lihat versi RAB, grid, perbandingan (D-041) |
@@ -42,7 +43,8 @@ Didefinisikan di `packages/shared` (`PERMISSIONS`). Hanya permission yang sudah 
 | `rabImport.review` | PROJECT | Impor RAB | buat run impor, retry, catat keputusan reviewer |
 | `rabImport.approve` | PROJECT | Impor RAB | approve/reject impor → analisa/harga resmi + RAB DRAFT |
 | `ahsp.read` | PROJECT | AHSP | lihat daftar analisa, komponen, harga |
-| `progress.input` | PROJECT | Progres | isi/ubah volume realisasi mingguan pada minggu yang sudah dimulai (D-073) |
+| `progress.input` | PROJECT | Progres | isi/ubah volume realisasi mingguan pada minggu yang sudah dimulai (D-073); isi, simpan, dan finalkan laporan harian (D-079) |
+| `report.reopen` | PROJECT | Progres | buka kembali laporan harian FINAL dengan alasan (D-079) |
 | `schedule.edit` | PROJECT | Jadwal | buat jadwal per versi RAB approved, isi grid, impor dari Excel (D-072) |
 | `schedule.approve` | PROJECT | Jadwal | approve jadwal valid (terkunci), buka kembali untuk revisi dengan alasan (D-072) |
 | `baseline.activate` | PROJECT | Baseline | aktifkan versi RAB approved sebagai baseline mulai tanggal tertentu, cabut assignment terakhir (alasan wajib) (D-071) |
@@ -60,7 +62,7 @@ FILLER, REVIEWER, MANAGER, ADMIN (scope `PROJECT`, dari PRD §2), RAB_EDITOR (D-
 | FILLER | `project.read`, `rab.read`, `ahsp.read`, `progress.input` |
 | REVIEWER | `project.read`, `rab.read`, `ahsp.read` |
 | ADMIN | `project.read`, `rab.read`, `rab.edit`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review` |
-| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve`, `baseline.activate`, `schedule.edit`, `schedule.approve`, `progress.input` |
+| MANAGER | `project.read`, `project.update`, `rab.read`, `rab.edit`, `rab.approve`, `ahsp.read`, `document.read`, `document.upload`, `rabImport.review`, `rabImport.approve`, `baseline.activate`, `schedule.edit`, `schedule.approve`, `progress.input`, `report.reopen` |
 | RAB_EDITOR (Editor RAB) | `project.read`, `rab.read`, `rab.edit`, `rab.approve`, `rab.reopen`, `ahsp.read`, `ahsp.edit`, `document.read`, `baseline.activate`, `schedule.edit`, `schedule.approve` |
 
 Pembuat proyek menjadi MANAGER. Bila permission MANAGER diubah sehingga tidak memiliki `project.read` atau `project.update`, pembuatan proyek ditolak dengan pesan konfigurasi; permission tidak diperbaiki otomatis (D-039).
@@ -150,6 +152,9 @@ Super admin aktif terakhir tidak dapat dinonaktifkan atau dicabut (D-029).
 | `APPROVE_SCHEDULE` / `REOPEN_SCHEDULE` | jadwal di-approve / dibuka untuk revisi | status, jumlah isian; isian approved lengkap saat reopen (alasan wajib) |
 | `CREATE_SCHEDULE_SCENARIO` / `UPDATE_SCHEDULE_SCENARIO` / `DELETE_SCHEDULE_SCENARIO` | skenario jadwal dibuat/diubah/dihapus (D-078) | nama, jumlah minggu, jumlah isian |
 | `PROMOTE_SCHEDULE_SCENARIO` | isian skenario menggantikan isian jadwal resmi (D-078) | id & nama skenario, jumlah isian lama dan baru |
+| `CREATE_DAILY_REPORT` / `UPDATE_DAILY_REPORT` | laporan harian disimpan (D-079) | tanggal, jumlah baris sumber daya dan cuaca |
+| `FINALIZE_DAILY_REPORT` | laporan harian difinalkan (D-079) | tanggal, jumlah pekerjaan, peringatan yang dikonfirmasi |
+| `REOPEN_DAILY_REPORT` | laporan harian FINAL dibuka kembali (D-079) | tanggal, status lama/baru, alasan |
 | `UPDATE_WEEKLY_PROGRESS` | progres minggu disimpan (D-073) | nomor minggu, baseline; per item kode work item, volume lama & baru, mode, persen |
 | `UPDATE_DAILY_ALLOCATION` | alokasi harian satu item diubah (D-075) | nomor minggu, kode work item, method & volume per hari lama dan baru |
 | `UPLOAD_DOCUMENT` | dokumen di-upload | nama file, ukuran, sha256 |

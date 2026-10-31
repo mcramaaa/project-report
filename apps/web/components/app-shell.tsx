@@ -29,7 +29,11 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
   const pathname = usePathname();
   const drawer = useRef<HTMLDialogElement>(null);
   const accountMenu = useRef<HTMLDialogElement>(null);
-  const sidebarCollapsed = useSyncExternalStore(subscribeSidebarPreference, getSidebarPreference, () => false);
+  const sidebarCollapsed = useSyncExternalStore(
+    subscribeSidebarPreference,
+    getSidebarPreference,
+    () => false,
+  );
   // One entry for access management; delegates land on their first permitted tab.
   const accessHref = can(user, 'users.read')
     ? '/admin/users'
@@ -40,9 +44,18 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
         : undefined;
   const items: NavItem[] = [
     { href: '/', label: 'Proyek saya', short: 'Proyek', icon: 'grid', group: 'Ruang kerja' },
+    { href: '/workers', label: 'Pekerja', short: 'Pekerja', icon: 'users', group: 'Ruang kerja' },
     // UX only: the API checks each permission (docs/PERMISSIONS.md).
     ...(accessHref
-      ? [{ href: accessHref, label: 'Pengguna', short: 'Akses', icon: 'users' as const, group: 'Manajemen akses' }]
+      ? [
+          {
+            href: accessHref,
+            label: 'Pengguna',
+            short: 'Akses',
+            icon: 'users' as const,
+            group: 'Manajemen akses',
+          },
+        ]
       : []),
     { href: '/profile', label: 'Profil & keamanan', short: 'Profil', icon: 'user', group: 'Akun' },
   ];
@@ -95,19 +108,38 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
                   ...(parts[3] ? [{ label: 'Review impor' }] : []),
                 ]
               : parts[2] === 'schedule'
-                ? [{ label: 'Jadwal', href: `/projects/${parts[1]}/schedule` }, ...(parts[3] ? [{ label: 'Isi jadwal' }] : [])]
-                : parts[2] === 'progress'
+                ? [
+                    { label: 'Jadwal', href: `/projects/${parts[1]}/schedule` },
+                    ...(parts[3] ? [{ label: 'Isi jadwal' }] : []),
+                  ]
+                : parts[2] === 'daily'
                   ? [
                       { label: 'Progres', href: `/projects/${parts[1]}/progress` },
-                      ...(parts[3] ? [{ label: `Minggu ${parts[3]}`, href: `/projects/${parts[1]}/progress/${parts[3]}` }] : []),
-                      ...(parts[4] === 'daily' ? [{ label: 'Alokasi harian' }] : []),
+                      { label: `Laporan harian ${parts[3] ?? ''}`.trim() },
                     ]
-              : parts[2] === 'documents'
-                ? [{ label: 'Sumber Excel' }]
-                : []),
+                  : parts[2] === 'progress'
+                    ? [
+                        { label: 'Progres', href: `/projects/${parts[1]}/progress` },
+                        ...(parts[3]
+                          ? [
+                              {
+                                label: `Minggu ${parts[3]}`,
+                                href: `/projects/${parts[1]}/progress/${parts[3]}`,
+                              },
+                            ]
+                          : []),
+                        ...(parts[4] === 'daily' ? [{ label: 'Alokasi harian' }] : []),
+                      ]
+                    : parts[2] === 'documents'
+                      ? [{ label: 'Sumber Excel' }]
+                      : []),
         ]
       : [{ label: currentLabel }];
-  const role = user.isSystemAdmin ? 'Super admin' : user.permissions.length ? 'Admin akses' : 'Anggota proyek';
+  const role = user.isSystemAdmin
+    ? 'Super admin'
+    : user.permissions.length
+      ? 'Admin akses'
+      : 'Anggota proyek';
   const initials = user.name
     .trim()
     .split(/\s+/)
@@ -167,7 +199,12 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
         Lewati ke konten
       </a>
       <aside className="sidebar" aria-label="Sidebar">
-        <Link href="/" className="sidebar-brand" aria-label="Laporan Proyek, beranda" title={sidebarCollapsed ? 'Laporan Proyek' : undefined}>
+        <Link
+          href="/"
+          className="sidebar-brand"
+          aria-label="Laporan Proyek, beranda"
+          title={sidebarCollapsed ? 'Laporan Proyek' : undefined}
+        >
           <Brand />
         </Link>
         {navigation()}
@@ -301,7 +338,10 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
           const box = event.currentTarget.getBoundingClientRect();
           if (
             event.target === event.currentTarget &&
-            (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)
+            (event.clientX < box.left ||
+              event.clientX > box.right ||
+              event.clientY < box.top ||
+              event.clientY > box.bottom)
           )
             accountMenu.current?.close();
         }}
@@ -316,12 +356,21 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
               </p>
             </div>
           </div>
-          <button type="button" className="icon-button" aria-label="Tutup menu akun" onClick={() => accountMenu.current?.close()}>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Tutup menu akun"
+            onClick={() => accountMenu.current?.close()}
+          >
             <Icon name="close" size={17} />
           </button>
         </div>
         <div className="modal-body flex flex-wrap gap-3">
-          <Link className="btn btn-secondary" href="/profile" onClick={() => accountMenu.current?.close()}>
+          <Link
+            className="btn btn-secondary"
+            href="/profile"
+            onClick={() => accountMenu.current?.close()}
+          >
             <Icon name="user" size={16} />
             Profil & keamanan
           </Link>

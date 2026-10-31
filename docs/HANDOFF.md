@@ -196,7 +196,9 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M9 Weekly Progress (D-073)                                                             | grid per minggu, mode volume / % kumulatif, validasi baseline, peringatan D-071 butir 5 |
 | M10 Daily Allocation (D-075)                                                           | faktor hari default kantor, 4 desimal + sisa ke hari terakhir, alokasi manual per item |
 | M12 Kurva S (D-076)                                                                    | Kurva S + analisis keterlambatan (D-077) + simulasi skenario jadwal (D-078)            |
-| M11–M16 (laporan harian, finalisasi, export, deploy)                                   | belum dimulai; M11 perlu OD-005                                                        |
+| M11 Daily Reports (D-079)                                                              | pekerjaan dari alokasi, tenaga kerja, bahan/alat AHSP vs aktual, cuaca, Draft→Final  |
+| Database pekerja (D-080) | daftar global nama, posisi, NIK (tersamar tanpa `workers.manage`), foto KTP privat |
+| M12–M16 (laporan mingguan/4 minggu, finalisasi, export, deploy)                        | belum dimulai; M12 perlu sisa OD-005                                                   |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap
 workbook kantor. Kontrak dan MC-0 cocok per item (416/416) dan total (D-063).

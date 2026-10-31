@@ -1162,6 +1162,56 @@ dipakai bawaan `schedule.edit` karena skenario dapat menjadi jadwal resmi.
    masa proyek (perpanjangan waktu harus diubah di data proyek dulu). Jadwal
    tetap harus di-approve. Audit `PROMOTE_SCHEDULE_SCENARIO`.
 
+## D-079 Laporan Harian (M11)
+
+Tanggal: 2026-10-30. Diputuskan pengguna (OD-005 bagian laporan harian);
+mengikuti contoh `03 LAPORAN HARIAN … (MC 0)`.
+
+1. **Satu laporan per tanggal proyek**, hanya untuk tanggal yang sudah tiba
+   (WIT, D-073 butir 6) dan proyek ACTIVE.
+2. **Status:** DRAFT → FINAL oleh pemegang `progress.input` (penginput boleh
+   memfinalkan laporannya sendiri; review formal di laporan mingguan, M12).
+   FINAL dapat dibuka kembali (REOPENED) oleh pemegang izin baru
+   `report.reopen` (default MANAGER) dengan alasan wajib; tercatat di audit.
+3. **Pekerjaan hari itu** = alokasi harian D-075 tanggal itu (volume > 0).
+   Koreksi volume dilakukan sebagai alokasi manual: total minggu tetap sama
+   dengan progres mingguan; total yang salah dikoreksi di progres mingguan.
+4. **Bahan dan alat dihitung dari AHSP:** volume hari itu × koefisien komponen
+   MATERIAL/EQUIPMENT analisa item RAB (baseline minggu itu), termasuk
+   sub-analisa (koefisien dikalikan berantai), dijumlahkan per bahan/alat.
+   Pengguna mengisi jumlah aktual dan catatan; hasil hitung sistem tetap
+   tersimpan berdampingan (PRD §17–18). Baris tambahan bebas boleh (mis. alat
+   kerja yang tidak ada di AHSP).
+5. **Tenaga kerja:** daftar jenis dari komponen upah (LABOR) daftar harga
+   proyek, ditambah nama bebas; isian jumlah orang. Laporan baru diisi awal
+   dari tenaga kerja dan alat laporan sebelumnya.
+6. **Cuaca:** satu atau lebih baris kondisi (CLEAR, CLOUDY, DRIZZLE, RAIN,
+   OTHER) dengan jam dari–sampai dan catatan.
+7. **Finalisasi:** ERROR menahan (alokasi manual item yang tidak sama dengan
+   volume minggu); WARNING boleh lanjut dengan konfirmasi (tanpa tenaga kerja,
+   tanpa cuaca). Saat FINAL, volume pekerjaan dan hasil hitung bahan/alat
+   dibekukan di laporan; snapshot immutable penuh menyusul di M13.
+
+## D-080 Database Pekerja
+
+Tanggal: 2026-10-31. Diputuskan pengguna.
+
+1. **Satu daftar global** lintas proyek (bukan per proyek). Belum terhubung
+   ke laporan harian; tenaga kerja harian tetap jenis × jumlah orang (D-079).
+2. **Data:** nama (wajib), posisi (wajib; saran dari komponen upah AHSP semua
+   proyek + posisi yang pernah diketik, boleh bebas), NIK (wajib, 16 digit,
+   unik), foto KTP (opsional; JPG/PNG/WEBP/PDF maks. 5 MB, dicek dari isi
+   file). Pekerja dinonaktifkan, tidak dihapus.
+3. **Akses:** semua user yang login melihat nama, posisi, status, dan NIK
+   tersamar (4 digit awal + 4 digit akhir). NIK lengkap, foto KTP, tambah,
+   ubah, dan nonaktifkan hanya untuk izin GLOBAL baru `workers.manage`.
+   Karena daftarnya global, izin ini tidak bisa menjadi bawaan role proyek
+   MANAGER: super admin selalu punya; user lain diberi lewat role global.
+4. **File KTP** disimpan privat di `storage/workers/`, hanya bisa diunduh
+   lewat API dengan `workers.manage`. Mengganti atau menghapus foto
+   menghapus file lama (data pribadi tidak disimpan lebih dari perlu); audit
+   mencatat kejadiannya tanpa NIK lengkap.
+
 ## Keputusan Terbuka
 
 
@@ -1194,6 +1244,8 @@ PRD §15: total harian harus sama dengan volume mingguan; selisih ke "hari aktif
 Diputuskan sebelum: Milestone 10.
 
 ### OD-005 Status dan pemilik laporan mingguan & 4 minggu
+
+**Sebagian (2026-10-30):** laporan harian diputuskan di D-079 butir 2. Laporan mingguan/4 minggu masih terbuka (M12/M13).
 
 PRD §24 berlaku untuk semua laporan (DRAFT/REVIEWED/FINAL/REOPENED) dan aturan reviewer-own-entry membutuhkan "siapa yang menginput". `daily_reports` memiliki status/created_by, tetapi laporan mingguan dan periode hanya memiliki `weeks.status`, `report_periods.status`, dan `report_snapshots`. Di mana status, reviewer, dan penginput laporan mingguan/periode disimpan, dan siapa "penginput" laporan mingguan bila progres diisi beberapa user?
 

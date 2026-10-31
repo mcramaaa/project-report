@@ -311,6 +311,18 @@ PUT /projects/:projectId/progress/weeks/:weekNumber/daily/:workItemId
 
 ## 12. Daily Reports
 
+D-079 (dipakai):
+
+```text
+GET  /projects/:projectId/daily-reports/weeks/:weekNumber   hari-hari minggu itu + status laporan
+GET  /projects/:projectId/daily-reports/:date               isi laporan (pekerjaan, tenaga kerja, bahan/alat AHSP vs aktual, cuaca)
+PUT  /projects/:projectId/daily-reports/:date               { note, resources[], weather[] } (progress.input; DRAFT/REOPENED)
+POST /projects/:projectId/daily-reports/:date/finalize      { acknowledgeWarnings? } → 409 errors / warnings
+POST /projects/:projectId/daily-reports/:date/reopen        { reason } (report.reopen)
+```
+
+Rencana awal:
+
 ```text
 GET   /projects/:projectId/daily-reports?from=&to=
 GET   /daily-reports/:dailyReportId
@@ -328,6 +340,18 @@ PUT /daily-reports/:id/materials
 PUT /daily-reports/:id/equipment
 PUT /daily-reports/:id/weather
 ```
+
+## 12a. Workers (D-080)
+
+Daftar global. Semua user login boleh membaca; NIK tersamar tanpa `workers.manage`.
+
+- `GET /workers?search=&active=true|false|all&page=&pageSize=`: cari nama/posisi (NIK hanya dengan `workers.manage`)
+- `GET /workers/positions`: saran posisi (komponen upah AHSP + posisi tersimpan)
+- `POST /workers` `{ name, position, nik }` (`workers.manage`; NIK 16 digit unik → 409 bila terpakai)
+- `PATCH /workers/:workerId` `{ name?, position?, nik?, isActive? }` (`workers.manage`)
+- `POST /workers/:workerId/ktp` multipart `files` (1 file JPG/PNG/WEBP/PDF ≤ 5 MB; mengganti file lama) (`workers.manage`)
+- `GET /workers/:workerId/ktp`: file KTP inline (`workers.manage`)
+- `DELETE /workers/:workerId/ktp` (`workers.manage`)
 
 ## 13. Weekly Reports
 

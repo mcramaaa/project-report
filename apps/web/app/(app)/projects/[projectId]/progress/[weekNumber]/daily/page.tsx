@@ -7,7 +7,11 @@ import { Icon } from '@/components/icon';
 import { serverGet } from '@/lib/server-api';
 import { DailyEditor } from './daily-editor';
 
-export default async function DailyAllocationPage({ params }: { params: Promise<{ projectId: string; weekNumber: string }> }) {
+export default async function DailyAllocationPage({
+  params,
+}: {
+  params: Promise<{ projectId: string; weekNumber: string }>;
+}) {
   const { projectId, weekNumber } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const [{ status, data: project }, daily] = await Promise.all([
@@ -29,7 +33,11 @@ export default async function DailyAllocationPage({ params }: { params: Promise<
       ) : !daily.data ? (
         <Alert>Alokasi harian minggu ini tidak dapat dimuat.</Alert>
       ) : (
-        <DailyEditor projectId={project.id} initial={daily.data} canInput={project.permissions.includes('progress.input')} />
+        <DailyEditor
+          projectId={project.id}
+          initial={daily.data}
+          canInput={project.permissions.includes('progress.input')}
+        />
       )}
     </>
   );

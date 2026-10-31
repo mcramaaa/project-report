@@ -16,3 +16,5 @@ export * from './rab.js';
 export * from './users.js';
 export * from './rab-import.js';
 export * from './workbook-preview.js';
+export * from './daily-reports.js';
+export * from './workers.js';

@@ -8,6 +8,7 @@ coverage/
 storage/projects/*
 storage/exports/*
 storage/temp/*
+storage/workers/*
 !storage/projects/.gitkeep
 !storage/exports/.gitkeep
 !storage/temp/.gitkeep
@@ -23,3 +24,4 @@ graphify-out/
 graphify-out-backup-*/
 *.bak-graphify
 *.graphify-bak
+.playwright-mcp/

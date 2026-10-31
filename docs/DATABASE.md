@@ -480,19 +480,25 @@ Baris tidak dihapus saat kembali ke DAILY_FACTOR.
 Unique:
 - weekly_progress_id + work_date
 
-### daily_reports
+### daily_reports (D-079)
 
-- id
-- project_id
-- week_id
-- report_date
-- day_sequence
-- status
-- general_note
-- created_by
-- checked_by
-- finalized_by
-- finalized_at
+- id, project_id, week_id, report_date (unique per proyek)
+- status — DRAFT | FINAL | REOPENED
+- note, created_by, updated_by, finalized_by, finalized_at
+
+### daily_report_resources
+
+- category — LABOR | MATERIAL | EQUIPMENT; sort_order
+- source_key — kunci baris hitungan AHSP (price item id atau "uraian|satuan"); null untuk baris ketik bebas
+- name, unit, calculated_quantity (dibekukan saat FINAL), actual_quantity, note
+
+### daily_report_weather
+
+- condition — CLEAR | CLOUDY | DRIZZLE | RAIN | OTHER; from_time, to_time ("JJ:MM"), note
+
+### daily_report_work
+
+- work_item_id, volume — pekerjaan hari itu, dibekukan saat FINAL
 
 ### daily_weather
 
@@ -590,6 +596,11 @@ format:
 - XLSX
 - PDF
 - PPTX
+
+### workers (D-080)
+
+Daftar pekerja global: `name`, `position`, `nik` CHAR(16) UNIQUE, `ktp_filename`/`ktp_mime_type`/`ktp_file_size`
+(nullable; file di `storage/workers/`), `is_active`, `created_by`, `updated_by`. Tidak dihapus, hanya dinonaktifkan.
 
 ## 11. Audit
 
