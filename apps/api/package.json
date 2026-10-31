@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:seed": "node dist/db/seed.js",
     "db:seed:dev": "node dist/db/seed-dev.js",
+    "db:seed:workers": "node dist/db/seed-workers.js",
     "db:seed:sample": "node dist/db/seed-sample.js",
     "schema:drop": "node dist/db/drop-schema.js",
     "ai:ping": "node dist/ai/ping.js",

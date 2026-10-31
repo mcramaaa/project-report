@@ -1217,7 +1217,7 @@ Tanggal: 2026-10-31. Diputuskan pengguna.
    per baris. NIK ganda di dalam file = salah. NIK yang sudah terdaftar
    memperbarui nama dan posisi (status aktif tidak berubah); NIK baru
    menambah pekerja. Foto KTP tidak lewat Excel. Maks. 2.000 baris.
-6. **Seed development** `db:seed:dev` menambah pekerja contoh dengan NIK
+6. **Seed development** `db:seed:workers` (terpisah dari `db:seed:dev`, tidak membuat proyek) menambah pekerja contoh dengan NIK
    berawalan 99 (bukan kode provinsi, jadi jelas fiktif); idempoten.
 
 ## Keputusan Terbuka
