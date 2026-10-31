@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, StreamableFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, StreamableFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   KTP_MAX_BYTES,
@@ -35,6 +35,23 @@ export class WorkersController {
   @Get('positions')
   positions() {
     return this.workers.positions();
+  }
+
+  @Get('template')
+  @RequirePermission('workers.manage')
+  async template() {
+    return new StreamableFile(await this.workers.template(), {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: 'attachment; filename="template-pekerja.xlsx"',
+    });
+  }
+
+  @Post('import')
+  @RequirePermission('workers.manage')
+  @HttpCode(200)
+  @UseInterceptors(FilesInterceptor('files', 1, { limits: { fileSize: 5 * 1024 * 1024 } }))
+  import(@CurrentAuth() auth: AuthContext, @UploadedFiles() files: UploadedPart[]) {
+    return this.workers.import(auth.user, files?.[0]);
   }
 
   @Post()

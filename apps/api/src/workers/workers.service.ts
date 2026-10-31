@@ -2,9 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import ExcelJS from 'exceljs';
 import {
   KTP_MAX_BYTES,
   maskNik,
+  WORKER_IMPORT_MAX_ROWS,
+  workerInputSchema,
+  type WorkerImportResult,
   type ListWorkersQuery,
   type Paginated,
   type UpdateWorkerInput,
@@ -140,6 +144,101 @@ export class WorkersService {
     });
     await rm(ktpPath(old), { force: true });
     return toDto(row, true);
+  }
+
+  /** D-080 butir 5: the official template; the NIK column is text so Excel keeps all 16 digits. */
+  async template(): Promise<Buffer> {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Pekerja');
+    ws.columns = [
+      { header: 'Nama', key: 'name', width: 32 },
+      { header: 'Posisi', key: 'position', width: 24 },
+      { header: 'NIK', key: 'nik', width: 22, style: { numFmt: '@' } },
+    ];
+    ws.getRow(1).font = { bold: true };
+    ws.addRow({ name: 'Contoh Nama (hapus baris ini)', position: 'Tukang Batu', nik: '9900000000000000' });
+    const help = wb.addWorksheet('Petunjuk');
+    help.getColumn(1).width = 100;
+    for (const line of [
+      'Isi satu pekerja per baris di sheet "Pekerja", mulai baris 2. Jangan ubah judul kolom.',
+      'Nama dan Posisi wajib. Posisi boleh bebas, mis. Mandor, Kepala Tukang, Tukang Batu, Pekerja.',
+      'NIK wajib 16 digit angka dan tidak boleh sama. Kolom NIK sudah berformat teks; tempel sebagai teks/nilai saja.',
+      'NIK yang sudah terdaftar akan memperbarui nama dan posisinya. Satu baris salah membatalkan seluruh impor.',
+      `Maksimal ${WORKER_IMPORT_MAX_ROWS} baris. Foto KTP diunggah per pekerja di aplikasi.`,
+    ])
+      help.addRow([line]);
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  /** All-or-nothing; every bad row is reported at once (D-080 butir 5). */
+  async import(actor: AuthUser, file: UploadedPart | undefined): Promise<WorkerImportResult> {
+    if (!file) throw new BadRequestException('Pilih file Excel (.xlsx).');
+    const wb = new ExcelJS.Workbook();
+    try {
+      await wb.xlsx.load(file.buffer as unknown as ArrayBuffer);
+    } catch {
+      throw new BadRequestException('File Excel tidak dapat dibaca. Gunakan template .xlsx dari aplikasi.');
+    }
+    const ws = wb.getWorksheet('Pekerja') ?? wb.worksheets[0];
+    const header = ws?.getRow(1);
+    const col = (name: string) => {
+      let found = 0;
+      header?.eachCell((c, n) => {
+        if (!found && String(c.text).trim().toLowerCase() === name) found = n;
+      });
+      return found;
+    };
+    const cols = { name: col('nama'), position: col('posisi'), nik: col('nik') };
+    if (!ws || !cols.name || !cols.position || !cols.nik) throw new BadRequestException('Kolom Nama, Posisi, dan NIK tidak ditemukan di baris 1. Gunakan template dari aplikasi.');
+
+    const errors: string[] = [];
+    const rows: (WorkerInput & { row: number })[] = [];
+    const seen = new Map<string, number>();
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const nikCell = row.getCell(cols.nik).value;
+      // 16-digit numbers above 2^53 lose digits in Excel/JS; only exact integers are trusted.
+      if (typeof nikCell === 'number' && !Number.isSafeInteger(nikCell)) {
+        errors.push(`Baris ${r}: NIK tersimpan sebagai angka dan digit terakhirnya bisa berubah; ketik ulang sebagai teks.`);
+        continue;
+      }
+      const raw = { name: row.getCell(cols.name).text, position: row.getCell(cols.position).text, nik: typeof nikCell === 'number' ? String(nikCell) : row.getCell(cols.nik).text };
+      if (!raw.name.trim() && !raw.position.trim() && !raw.nik.trim()) continue;
+      const parsed = workerInputSchema.safeParse(raw);
+      if (!parsed.success) {
+        errors.push(`Baris ${r}: ${parsed.error.issues.map((i) => i.message).join(' ')}`);
+        continue;
+      }
+      const first = seen.get(parsed.data.nik);
+      if (first) errors.push(`Baris ${r}: NIK sama dengan baris ${first}.`);
+      else seen.set(parsed.data.nik, r);
+      rows.push({ ...parsed.data, row: r });
+    }
+    if (rows.length + errors.length > WORKER_IMPORT_MAX_ROWS) throw new BadRequestException(`Maksimal ${WORKER_IMPORT_MAX_ROWS} baris per impor.`);
+    if (errors.length) throw new BadRequestException({ message: `${errors.length} baris bermasalah; tidak ada data yang disimpan.`, errors });
+    if (!rows.length) throw new BadRequestException('File tidak berisi pekerja.');
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const existing = new Map((await tx.worker.findMany({ where: { nik: { in: rows.map((r) => r.nik) } }, select: { id: true, nik: true, name: true, position: true } })).map((w) => [w.nik, w]));
+        let created = 0;
+        let updated = 0;
+        for (const { name, position, nik } of rows) {
+          const input = { name, position, nik };
+          const old = existing.get(input.nik);
+          if (!old) {
+            await tx.worker.create({ data: { ...input, createdBy: actor.id, updatedBy: actor.id } });
+            created++;
+          } else if (old.name !== input.name || old.position !== input.position) {
+            await tx.worker.update({ where: { id: old.id }, data: { name: input.name, position: input.position, updatedBy: actor.id } });
+            updated++;
+          }
+        }
+        await writeAudit(tx, { actorId: actor.id, action: 'IMPORT_WORKERS', entityType: 'WORKER', newValue: { rows: rows.length, created, updated } });
+        return { created, updated };
+      },
+      { timeout: 60_000 },
+    );
   }
 
   async readKtp(id: string): Promise<{ mimeType: string; data: Buffer; ext: string }> {

@@ -1,6 +1,6 @@
 import { loadRootEnv, requireEnv } from '../config/env';
 import { PrismaService } from '../prisma/prisma.service';
-import { seedDevData } from './seeding';
+import { seedDevData, seedDevWorkers } from './seeding';
 
 async function main() {
   loadRootEnv();
@@ -8,6 +8,7 @@ async function main() {
   try {
     const { projectCode, created } = await seedDevData(prisma);
     console.log(created ? `Proyek development ${projectCode} dibuat.` : `Proyek development ${projectCode} sudah ada; tidak diubah.`);
+    console.log(`${await seedDevWorkers(prisma)} pekerja contoh ditambahkan.`);
   } finally {
     await prisma.$disconnect();
   }

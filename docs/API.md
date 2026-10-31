@@ -346,6 +346,8 @@ PUT /daily-reports/:id/weather
 Daftar global. Semua user login boleh membaca; NIK tersamar tanpa `workers.manage`.
 
 - `GET /workers?search=&active=true|false|all&page=&pageSize=`: cari nama/posisi (NIK hanya dengan `workers.manage`)
+- `GET /workers/template`: template impor .xlsx (`workers.manage`)
+- `POST /workers/import` multipart `files` (1 .xlsx): semua baris atau tidak sama sekali → `{ created, updated }`; 400 `{ message, errors: string[] }` per baris (`workers.manage`, D-080 butir 5)
 - `GET /workers/positions`: saran posisi (komponen upah AHSP + posisi tersimpan)
 - `POST /workers` `{ name, position, nik }` (`workers.manage`; NIK 16 digit unik → 409 bila terpakai)
 - `PATCH /workers/:workerId` `{ name?, position?, nik?, isActive? }` (`workers.manage`)

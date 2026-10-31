@@ -1,7 +1,9 @@
 'use client';
 
-import type { Paginated, WorkerDto } from '@laporan-proyek/shared';
-import { useEffect, useState, type FormEvent } from 'react';
+import type { Paginated, WorkerDto, WorkerImportResult } from '@laporan-proyek/shared';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { Icon } from '@/components/icon';
 import { Alert, Badge, Button, EmptyState, Field, Loading, Select } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 
@@ -14,7 +16,7 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
   const [positions, setPositions] = useState<string[]>([]);
   const [loadError, setLoadError] = useState<string>();
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string }>();
-  const [editing, setEditing] = useState<string | 'new'>();
+  const [modal, setModal] = useState<WorkerDto | 'new' | 'import'>();
   const [busyId, setBusyId] = useState<string>();
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
@@ -56,7 +58,7 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
   }
 
   const saved = (text: string) => {
-    setEditing(undefined);
+    setModal(undefined);
     setNotice({ kind: 'success', text });
     reload();
   };
@@ -97,16 +99,27 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
           </Button>
         </form>
         {canManage && (
-          <Button onClick={() => setEditing((v) => (v === 'new' ? undefined : 'new'))} aria-expanded={editing === 'new'}>
-            {editing === 'new' ? 'Tutup form' : 'Tambah pekerja'}
-          </Button>
+          <div className="row-actions">
+            <Button variant="secondary" onClick={() => setModal('import')}>
+              Impor Excel
+            </Button>
+            <Button onClick={() => setModal('new')}>Tambah pekerja</Button>
+          </div>
         )}
       </div>
 
-      {editing === 'new' && (
-        <div className="panel form-panel">
-          <WorkerForm onCancel={() => setEditing(undefined)} onSaved={(w) => saved(`${w.name} ditambahkan.`)} />
-        </div>
+      {modal && (
+        <Modal title={modal === 'import' ? 'Impor pekerja dari Excel' : modal === 'new' ? 'Tambah pekerja' : `Ubah ${modal.name}`} onClose={() => setModal(undefined)}>
+          {modal === 'import' ? (
+            <ImportForm onDone={(r) => saved(`Impor selesai: ${r.created} pekerja baru, ${r.updated} diperbarui.`)} />
+          ) : (
+            <WorkerForm
+              worker={modal === 'new' ? undefined : modal}
+              onCancel={() => setModal(undefined)}
+              onSaved={(w) => saved(modal === 'new' ? `${w.name} ditambahkan.` : `Data ${w.name} disimpan.`)}
+            />
+          )}
+        </Modal>
       )}
 
       {notice && <Alert kind={notice.kind}>{notice.text}</Alert>}
@@ -132,14 +145,7 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
               </tr>
             </thead>
             <tbody role="rowgroup" className="divide-y divide-slate-100">
-              {data.items.map((w) =>
-                editing === w.id ? (
-                  <tr role="row" key={w.id}>
-                    <td role="cell" colSpan={6} className="px-3 py-3">
-                      <WorkerForm worker={w} onCancel={() => setEditing(undefined)} onSaved={() => saved(`Data ${w.name} disimpan.`)} />
-                    </td>
-                  </tr>
-                ) : (
+              {data.items.map((w) => (
                   <tr role="row" key={w.id}>
                     <td role="cell" data-label="Nama" className="px-3 py-2 font-medium">{w.name}</td>
                     <td role="cell" data-label="Posisi" className="px-3 py-2">{w.position}</td>
@@ -161,7 +167,7 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
                     {canManage && (
                       <td role="cell" data-label="Aksi">
                         <div className="row-actions">
-                          <Button variant="secondary" disabled={busyId === w.id} onClick={() => setEditing(w.id)}>
+                          <Button variant="secondary" disabled={busyId === w.id} onClick={() => setModal(w)}>
                             Ubah
                           </Button>
                           {w.isActive ? (
@@ -190,8 +196,7 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
                       </td>
                     )}
                   </tr>
-                ),
-              )}
+              ))}
             </tbody>
           </table>
         </div>
@@ -248,9 +253,8 @@ function WorkerForm({ worker, onCancel, onSaved }: { worker?: WorkerDto; onCance
 
   return (
     <form onSubmit={onSubmit} className="space-y-3" noValidate>
-      {!worker && <h2 className="text-base font-semibold">Pekerja baru</h2>}
       {error && <Alert>{error}</Alert>}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field id={`w-name-${key}`} name="name" label="Nama" defaultValue={worker?.name} required error={fieldErrors.name} />
         <Field id={`w-position-${key}`} name="position" label="Posisi" list="worker-positions" defaultValue={worker?.position} required error={fieldErrors.position} />
         <Field
@@ -272,12 +276,93 @@ function WorkerForm({ worker, onCancel, onSaved }: { worker?: WorkerDto; onCance
           label={worker?.hasKtp ? 'Ganti foto KTP (opsional)' : 'Foto KTP (opsional, maks. 5 MB)'}
         />
       </div>
-      <div className="space-x-2">
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={onCancel}>
+          Batal
+        </Button>
         <Button type="submit" disabled={submitting}>
           {submitting ? 'Menyimpan…' : worker ? 'Simpan' : 'Tambah pekerja'}
         </Button>
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Batal
+      </div>
+    </form>
+  );
+}
+
+/** Native modal dialog: Esc and the backdrop close it, focus stays inside while open. */
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const id = useId();
+  useEffect(() => dialog.current?.showModal(), []);
+  return createPortal(
+    <dialog
+      ref={dialog}
+      className="source-dialog"
+      aria-labelledby={id}
+      onClose={onClose}
+      onClick={(e) => e.target === e.currentTarget && dialog.current?.close()}
+    >
+      <header className="source-dialog-header">
+        <h2 id={id}>{title}</h2>
+        <button type="button" className="icon-button" aria-label="Tutup" onClick={() => dialog.current?.close()}>
+          <Icon name="close" />
+        </button>
+      </header>
+      <div className="source-dialog-body">{children}</div>
+    </dialog>,
+    document.body,
+  );
+}
+
+function ImportForm({ onDone }: { onDone: (r: WorkerImportResult) => void }) {
+  const [error, setError] = useState<{ message: string; rows: string[] }>();
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const file = new FormData(event.currentTarget).get('file');
+    if (!(file instanceof File) || !file.size) return setError({ message: 'Pilih file Excel (.xlsx).', rows: [] });
+    const body = new FormData();
+    body.append('files', file);
+    setSubmitting(true);
+    setError(undefined);
+    try {
+      onDone(await api<WorkerImportResult>('POST', '/workers/import', body));
+    } catch (err) {
+      const rows = err instanceof ApiError ? ((err.details as { errors?: unknown[] })?.errors ?? []).filter((e): e is string => typeof e === 'string') : [];
+      setError({ message: errorMessage(err), rows });
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-4" noValidate>
+      <ol className="list-decimal space-y-1 pl-5 text-sm text-slate-600">
+        <li>
+          Unduh{' '}
+          <a className="link-button" href="/api/workers/template">
+            template Excel
+          </a>
+          , lalu isi Nama, Posisi, dan NIK (16 digit) satu pekerja per baris.
+        </li>
+        <li>NIK yang sudah terdaftar akan memperbarui nama dan posisinya.</li>
+        <li>Kalau ada baris yang salah, tidak ada yang disimpan; perbaiki baris yang disebut lalu unggah lagi.</li>
+      </ol>
+      {error && (
+        <Alert>
+          {error.message}
+          {error.rows.length > 0 && (
+            <ul className="mt-2 max-h-48 list-disc overflow-auto pl-5">
+              {error.rows.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          )}
+        </Alert>
+      )}
+      <Field id="import-file" name="file" type="file" label="File Excel (.xlsx)" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+      <div className="flex justify-end">
+        <Button type="submit" disabled={submitting}>
+          {submitting ? 'Mengimpor…' : 'Impor'}
         </Button>
       </div>
     </form>

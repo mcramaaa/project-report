@@ -1,5 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { LoginRateLimiter } from '../auth/login-rate-limiter';
 import { storageRoot } from '../documents/documents.service';
@@ -66,5 +67,36 @@ describe('workers (D-080)', () => {
     const audit = await t.prisma.auditLog.findMany({ where: { entityType: 'WORKER' }, select: { action: true, newValue: true } });
     expect(audit.map((a) => a.action)).toEqual(['CREATE_WORKER', 'UPLOAD_WORKER_KTP', 'UPLOAD_WORKER_KTP', 'UPDATE_WORKER', 'REMOVE_WORKER_KTP']);
     expect(JSON.stringify(audit)).not.toContain('3578010101010001');
+  });
+
+  it('imports from the template all-or-nothing, updating known NIKs', async () => {
+    const tpl = await fetch(`${t.baseUrl}/workers/template`, { headers: { cookie: admin.cookie! } });
+    expect(tpl.status).toBe(200);
+    const book = async (rows: unknown[][]) => {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await tpl.clone().arrayBuffer());
+      const ws = wb.getWorksheet('Pekerja')!;
+      ws.spliceRows(2, 1);
+      for (const r of rows) ws.addRow(r);
+      return Buffer.from(await wb.xlsx.writeBuffer());
+    };
+    await admin.post('/workers', { name: 'Lama', position: 'Pekerja', nik: '9900000000000001' });
+
+    const bad = await admin.upload('/workers/import', [{ name: 'p.xlsx', data: await book([['Ani', 'Mandor', '9900000000000002'], ['', 'Pekerja', '123'], ['Ani2', 'Mandor', '9900000000000002'], ['Big', 'Pekerja', Number('9900000000000003')]]) }]);
+    expect(bad.status).toBe(400);
+    expect(bad.body.errors).toEqual([
+      'Baris 3: Nama wajib diisi. NIK harus 16 digit angka.',
+      'Baris 4: NIK sama dengan baris 2.',
+      'Baris 5: NIK tersimpan sebagai angka dan digit terakhirnya bisa berubah; ketik ulang sebagai teks.',
+    ]);
+    expect(await t.prisma.worker.count()).toBe(1);
+
+    const good = await admin.upload('/workers/import', [{ name: 'p.xlsx', data: await book([['Ani', 'Mandor', '9900000000000002'], ['Lama Baru', 'Tukang Batu', '9900 0000 0000 0001'], []]) }]);
+    expect(good.status, JSON.stringify(good.body)).toBe(200);
+    expect(good.body).toEqual({ created: 1, updated: 1 });
+    expect((await t.prisma.worker.findUnique({ where: { nik: '9900000000000001' } }))?.position).toBe('Tukang Batu');
+
+    await createUser(t.prisma, { email: 'biasa@example.com' });
+    expect((await (await loggedIn('biasa@example.com')).upload('/workers/import', [{ name: 'p.xlsx', data: await book([]) }])).status).toBe(403);
   });
 });

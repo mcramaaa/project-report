@@ -1211,6 +1211,14 @@ Tanggal: 2026-10-31. Diputuskan pengguna.
    lewat API dengan `workers.manage`. Mengganti atau menghapus foto
    menghapus file lama (data pribadi tidak disimpan lebih dari perlu); audit
    mencatat kejadiannya tanpa NIK lengkap.
+5. **Impor Excel** (2026-10-31): template resmi dari aplikasi (kolom Nama,
+   Posisi, NIK; kolom NIK berformat teks). Semua baris atau tidak sama sekali:
+   satu baris salah membatalkan seluruh file dan semua kesalahan dilaporkan
+   per baris. NIK ganda di dalam file = salah. NIK yang sudah terdaftar
+   memperbarui nama dan posisi (status aktif tidak berubah); NIK baru
+   menambah pekerja. Foto KTP tidak lewat Excel. Maks. 2.000 baris.
+6. **Seed development** `db:seed:dev` menambah pekerja contoh dengan NIK
+   berawalan 99 (bukan kode provinsi, jadi jelas fiktif); idempoten.
 
 ## Keputusan Terbuka
 

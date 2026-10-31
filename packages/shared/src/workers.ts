@@ -37,3 +37,10 @@ export interface WorkerDto {
   isActive: boolean;
   updatedAt: string;
 }
+
+export const WORKER_IMPORT_MAX_ROWS = 2000;
+
+export interface WorkerImportResult {
+  created: number;
+  updated: number;
+}

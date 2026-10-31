@@ -71,3 +71,30 @@ export async function seedDevData(prisma: PrismaClient): Promise<{ projectCode: 
   });
   return { projectCode: DEV_PROJECT_CODE, created: true };
 }
+
+/** D-080 butir 6: sample workers for development. NIKs start with 99 (no such province) so they are obviously fake. */
+export const DEV_WORKERS: [name: string, position: string][] = [
+  ['Andi Saputra', 'Pelaksana'],
+  ['Bambang Wijaya', 'Mandor'],
+  ['Cahyo Nugroho', 'Kepala Tukang'],
+  ['Dedi Kurniawan', 'Tukang Batu'],
+  ['Eko Prasetyo', 'Tukang Batu'],
+  ['Fajar Hidayat', 'Tukang Kayu'],
+  ['Gilang Ramadhan', 'Tukang Besi'],
+  ['Hendra Gunawan', 'Tukang Cat'],
+  ['Imam Santoso', 'Pekerja'],
+  ['Joko Susilo', 'Pekerja'],
+  ['Kurniadi', 'Pekerja'],
+  ['Lukman Hakim', 'Pekerja'],
+];
+
+export async function seedDevWorkers(prisma: PrismaClient): Promise<number> {
+  if (process.env.NODE_ENV === 'production') throw new Error('Seed data development tidak boleh dijalankan di production.');
+  const admin = await prisma.user.findFirst({ where: { isSystemAdmin: true }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+  if (!admin) throw new Error('Jalankan db:seed (super admin) lebih dulu.');
+  const { count } = await prisma.worker.createMany({
+    data: DEV_WORKERS.map(([name, position], i) => ({ name, position, nik: `99000000000000${String(i + 1).padStart(2, '0')}`, createdBy: admin.id, updatedBy: admin.id })),
+    skipDuplicates: true,
+  });
+  return count;
+}
