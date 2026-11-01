@@ -54,6 +54,7 @@ describe('daily reports (D-079)', () => {
     expect((await admin.post(`${base}/2026-01-06/finalize`, {})).status).toBe(409); // not saved yet
 
     const body = {
+      baseUpdatedAt: null,
       note: 'Galian zona A',
       resources: [
         { category: 'LABOR', name: 'Mandor', unit: 'Org', actual: '1' },
@@ -71,6 +72,9 @@ describe('daily reports (D-079)', () => {
       ['Cangkul', '3'],
     ]);
     expect(saved.issues.warnings).toEqual([]);
+    // A save based on the pre-save copy would drop these lines: refused until reloaded.
+    expect((await admin.request('PUT', `${base}/2026-01-06`, body)).status).toBe(409);
+    await ok(admin.request('PUT', `${base}/2026-01-06`, { ...body, baseUpdatedAt: saved.report.updatedAt }));
 
     const final = await ok(admin.post(`${base}/2026-01-06/finalize`, {}));
     expect(final.report).toMatchObject({ status: 'FINAL', finalizedBy: { name: 'Super' } });
@@ -106,11 +110,36 @@ describe('daily reports (D-079)', () => {
     const u = await createUser(t.prisma, { email: 'filler@example.com' });
     await t.prisma.projectUser.create({ data: { projectId: project.id, userId: u.id, roleId: await roleId(t.prisma, 'FILLER') } });
     const filler = await loggedIn('filler@example.com');
-    const body = { resources: [{ category: 'LABOR', name: 'Pekerja', actual: '2' }], weather: [{ condition: 'CLOUDY' }] };
+    const body = { baseUpdatedAt: null, resources: [{ category: 'LABOR', name: 'Pekerja', actual: '2' }], weather: [{ condition: 'CLOUDY' }] };
     await ok(filler.request('PUT', `${base}/2026-01-05`, body));
     await ok(filler.post(`${base}/2026-01-05/finalize`, {}));
     expect((await filler.post(`${base}/2026-01-05/reopen`, { reason: 'x' })).status).toBe(403);
     expect((await admin.get(`${base}/2025-12-31`)).status).toBe(404);
     expect((await admin.get(`${base}/bukan-tanggal`)).status).toBe(404);
+  });
+
+  it('labor comes from the AHSP of the day work; renamed lines and head counts carry to the next day (D-079 butir 5, 8)', async () => {
+    const version = await t.prisma.rabVersion.findFirstOrThrow({ where: { projectId: project.id }, select: { id: true, createdBy: true } });
+    const list = await t.prisma.priceList.create({ data: { projectId: project.id, rabVersionId: version.id, versionNumber: 1, createdBy: version.createdBy } });
+    const analysis = await t.prisma.ahspAnalysis.create({ data: { projectId: project.id, rabVersionId: version.id, code: 'A.1', name: 'Galian tanah' } });
+    const zero = { directCost: '0', overheadAmount: '0', priceExact: '0', price: '0', sourceLocator: {} };
+    const av = await t.prisma.ahspAnalysisVersion.create({ data: { analysisId: analysis.id, versionNumber: 1, priceListId: list.id, name: 'Galian tanah', ...zero } });
+    await t.prisma.ahspComponent.create({
+      data: { analysisVersionId: av.id, sortOrder: 0, category: 'LABOR', description: 'Pekerja', unit: 'OH', coefficient: '0.5', unitPrice: '0', amount: '0', sourceLocator: {} },
+    });
+    await t.prisma.rabVersionItem.updateMany({ where: { rabVersionId: version.id, workItemId: galian }, data: { analysisVersionId: av.id } });
+
+    const day = await ok(admin.get(`${base}/2026-01-06`));
+    const labor = day.resources.filter((r: { category: string }) => r.category === 'LABOR');
+    expect(labor).toEqual([expect.objectContaining({ name: 'Pekerja', unit: 'OH', calculated: '6', actual: null })]); // 12 m3 × 0.5 OH
+
+    const line = { category: 'LABOR', sourceKey: labor[0].sourceKey, name: 'Pekerja galian', unit: 'Org', actual: '6' };
+    const saved = await ok(admin.request('PUT', `${base}/2026-01-06`, { baseUpdatedAt: null, resources: [line], weather: [] }));
+    expect(saved.resources).toEqual([expect.objectContaining({ name: 'Pekerja galian', unit: 'Org', calculated: '6', actual: '6' })]);
+
+    const next = await ok(admin.get(`${base}/2026-01-07`));
+    expect(next.resources.filter((r: { category: string }) => r.category === 'LABOR')).toEqual([
+      expect.objectContaining({ sourceKey: labor[0].sourceKey, name: 'Pekerja galian', unit: 'Org', actual: '6', id: null }),
+    ]);
   });
 });

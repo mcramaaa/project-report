@@ -2,7 +2,7 @@ import type { ProjectDto, WorkbookPreviewDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { PageTitle, Alert } from '@/components/ui';
+import { PageTitle, Alert, Select } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 
 export default async function DocumentPage({
@@ -75,11 +75,11 @@ export default async function DocumentPage({
                 <label htmlFor="sheet" className="field-label">
                   Sheet
                 </label>
-                <select className="field" id="sheet" name="sheet" defaultValue={d.sheet}>
+                <Select id="sheet" name="sheet" defaultValue={d.sheet}>
                   {d.sheets.map((name) => (
                     <option key={name}>{name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <label htmlFor="cell" className="field-label">

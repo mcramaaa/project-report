@@ -23,6 +23,13 @@ dependency dari OLMAT.
   yang belum tersedia. Navigasi hanya menuju fitur yang sudah diimplementasikan.
 - Halaman profil memisahkan identitas akun dan penggantian password.
 - Visibilitas menu mengikuti akun; authorization tetap diperiksa di backend.
+- Dropdown memakai satu komponen `Select` (`components/select.tsx`), bukan `<select>` bawaan
+  browser: tampilan sama di semua halaman, kotak pencarian otomatis bila pilihan lebih dari 7,
+  keyboard (panah, Enter, Esc, ketik untuk mencari). Isian bebas dengan saran memakai
+  `SuggestInput` (pengganti `<datalist>`). Pop-up dipasang di dalam modal bila pemicunya di modal.
+- Scrollbar seragam (`globals.css`, token `--scroll-*`): pil tipis warna garis biru, track tak
+  terlihat; di grid/tabel lebar ada jalur samar agar terlihat bisa digeser. Firefox memakai
+  `scrollbar-color` yang sama.
 
 ## 1. Sidebar
 

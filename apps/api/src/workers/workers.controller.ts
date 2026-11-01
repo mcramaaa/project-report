@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, StreamableFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, StreamableFile, UploadedFiles, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   KTP_MAX_BYTES,
@@ -81,6 +81,8 @@ export class WorkersController {
 
   @Get(':workerId/ktp')
   @RequirePermission('workers.manage')
+  // Personal data: browsers and proxies must not keep a copy after the page is closed.
+  @Header('Cache-Control', 'private, no-store')
   async ktp(@Param('workerId', workerId) id: string) {
     const file = await this.workers.readKtp(id);
     return new StreamableFile(file.data, { type: file.mimeType, disposition: `inline; filename="ktp-${id}.${file.ext}"` });

@@ -1182,15 +1182,23 @@ mengikuti contoh `03 LAPORAN HARIAN … (MC 0)`.
    Pengguna mengisi jumlah aktual dan catatan; hasil hitung sistem tetap
    tersimpan berdampingan (PRD §17–18). Baris tambahan bebas boleh (mis. alat
    kerja yang tidak ada di AHSP).
-5. **Tenaga kerja:** daftar jenis dari komponen upah (LABOR) daftar harga
-   proyek, ditambah nama bebas; isian jumlah orang. Laporan baru diisi awal
-   dari tenaga kerja dan alat laporan sebelumnya.
+5. **Tenaga kerja dihitung dari AHSP** (diubah 2026-10-31, permintaan
+   pengguna): volume hari itu × koefisien upah (LABOR, orang-hari) per
+   keahlian, sama seperti bahan/alat; pengguna mengisi jumlah orang aktual.
+   "Pakai hitungan" membulatkan setengah ke atas ke orang utuh. Baris bebas
+   tetap boleh (saran dari daftar upah). Laporan baru diisi awal dari jumlah
+   orang dan alat bebas laporan sebelumnya.
 6. **Cuaca:** satu atau lebih baris kondisi (CLEAR, CLOUDY, DRIZZLE, RAIN,
    OTHER) dengan jam dari–sampai dan catatan.
 7. **Finalisasi:** ERROR menahan (alokasi manual item yang tidak sama dengan
    volume minggu); WARNING boleh lanjut dengan konfirmasi (tanpa tenaga kerja,
    tanpa cuaca). Saat FINAL, volume pekerjaan dan hasil hitung bahan/alat
    dibekukan di laporan; snapshot immutable penuh menyusul di M13.
+8. **Kustomisasi baris** (2026-10-31): nama dan satuan baris hitungan AHSP
+   boleh diubah (kunci AHSP tetap; nama/satuan terbawa ke laporan berikutnya).
+   Baris hitungan kecil bisa disembunyikan dengan ambang per tabel (bawaan
+   tenaga kerja < 0,5 OH; disimpan per browser). Ini hanya tampilan: baris
+   tetap tersimpan, dan baris yang sudah berisi aktual selalu tampil.
 
 ## D-080 Database Pekerja
 

@@ -18,6 +18,7 @@ import {
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import { storageRoot, type UploadedPart } from '../documents/documents.service';
+import { checkXlsxSize } from '../documents/xlsx-guard';
 import type { Prisma } from '../generated/prisma/client';
 import { isUniqueViolation } from '../prisma/errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -173,6 +174,7 @@ export class WorkersService {
   /** All-or-nothing; every bad row is reported at once (D-080 butir 5). */
   async import(actor: AuthUser, file: UploadedPart | undefined): Promise<WorkerImportResult> {
     if (!file) throw new BadRequestException('Pilih file Excel (.xlsx).');
+    checkXlsxSize(file.buffer, () => new BadRequestException('File bukan Excel .xlsx yang valid atau isinya terlalu besar.'));
     const wb = new ExcelJS.Workbook();
     try {
       await wb.xlsx.load(file.buffer as unknown as ArrayBuffer);

@@ -26,6 +26,22 @@ export function Scenarios({
   const [scheduleId, setScheduleId] = useState(schedules[0]?.id ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [deleting, setDeleting] = useState<string>();
+  const [listError, setListError] = useState<string>();
+
+  async function remove(s: ScenarioSummaryDto) {
+    if (!window.confirm(`Hapus skenario "${s.name}"? Jadwal resmi tidak berubah.`)) return;
+    setDeleting(s.id);
+    setListError(undefined);
+    try {
+      await api('DELETE', `/projects/${projectId}/schedule-scenarios/${s.id}`);
+      router.refresh();
+    } catch (err) {
+      setListError(errorMessage(err));
+    } finally {
+      setDeleting(undefined);
+    }
+  }
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -92,6 +108,11 @@ export function Scenarios({
           )}
         </form>
       )}
+      {listError && (
+        <p role="alert" className="surface-body field-error">
+          {listError}
+        </p>
+      )}
       {scenarios.length === 0 ? (
         <div className="surface-body">
           <EmptyState>Belum ada skenario.</EmptyState>
@@ -134,12 +155,25 @@ export function Scenarios({
                     {s.updatedBy.name}, {formatDate(s.updatedAt.slice(0, 10))}
                   </td>
                   <td role="cell" data-label="Aksi">
-                    <Link
-                      className="btn btn-secondary"
-                      href={`/projects/${projectId}/schedule/scenarios/${s.id}`}
-                    >
-                      Buka
-                    </Link>
+                    <div className="row-actions">
+                      <Link
+                        className="btn btn-secondary"
+                        href={`/projects/${projectId}/schedule/scenarios/${s.id}`}
+                      >
+                        Buka
+                      </Link>
+                      {canEdit && (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          disabled={deleting === s.id}
+                          aria-label={`Hapus skenario ${s.name}`}
+                          onClick={() => void remove(s)}
+                        >
+                          {deleting === s.id ? 'Menghapus…' : 'Hapus'}
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

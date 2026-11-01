@@ -47,6 +47,7 @@ describe('workers (D-080)', () => {
     const ktp = await fetch(`${t.baseUrl}/workers/${id}/ktp`, { headers: { cookie: admin.cookie! } });
     expect(ktp.status).toBe(200);
     expect(ktp.headers.get('content-type')).toBe('image/png');
+    expect(ktp.headers.get('cache-control')).toBe('private, no-store');
     expect(Buffer.from(await ktp.arrayBuffer())).toEqual(PNG);
 
     await createUser(t.prisma, { email: 'biasa@example.com' });

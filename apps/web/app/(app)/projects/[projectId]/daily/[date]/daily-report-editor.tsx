@@ -11,10 +11,10 @@ import {
   type WeatherCondition,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
 import { useLeaveWarning } from '@/components/grid-tools';
-import { Alert, Badge, Button, Section, Select } from '@/components/ui';
+import { Alert, Badge, Button, Section, Select, SuggestInput } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { formatDate, formatNumber } from '@/lib/project-fields';
 import { DAILY_STATUS_BADGE } from '@/lib/rab-ui';
@@ -41,6 +41,19 @@ const withKeys = (lines: DailyResourceLineDto[]): Line[] =>
   }));
 
 /** D-079: one project day — work from the allocation, labor, materials/equipment (AHSP vs actual), weather. */
+const COLUMN: Record<ResourceCategoryCode, string> = {
+  LABOR: 'Keahlian',
+  MATERIAL: 'Bahan',
+  EQUIPMENT: 'Alat',
+};
+/** Per-viewer display filter for tiny AHSP lines (D-079 butir 8); empty = show all. */
+const MIN_KEY = 'daily-report-min-shown';
+const DEFAULT_MIN: Record<ResourceCategoryCode, string> = {
+  LABOR: '0.5',
+  MATERIAL: '',
+  EQUIPMENT: '',
+};
+
 export function DailyReportEditor({
   projectId,
   initial,
@@ -62,6 +75,25 @@ export function DailyReportEditor({
   const [notice, setNotice] = useState<string>();
   const [confirmWarnings, setConfirmWarnings] = useState<string[]>();
   const [reopening, setReopening] = useState(false);
+  const [minShown, setMinShown] = useState(DEFAULT_MIN);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(MIN_KEY) ?? 'null');
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read browser storage once after hydration
+      if (saved) setMinShown({ ...DEFAULT_MIN, ...saved });
+    } catch {
+      // storage unavailable: keep defaults
+    }
+  }, []);
+  const setMin = (category: ResourceCategoryCode, value: string) => {
+    const next = { ...minShown, [category]: value };
+    setMinShown(next);
+    try {
+      window.localStorage.setItem(MIN_KEY, JSON.stringify(next));
+    } catch {
+      // storage unavailable: the filter still applies for this visit
+    }
+  };
   useLeaveWarning(dirty);
 
   const status = data.report?.status ?? null;
@@ -113,6 +145,7 @@ export function DailyReportEditor({
     }
   }
   const payload = (): SaveDailyReportInput => ({
+    baseUpdatedAt: data.report?.updatedAt ?? null,
     note: note.trim() || undefined,
     resources: lines
       .filter((l) => l.name.trim())
@@ -171,38 +204,66 @@ export function DailyReportEditor({
   const next = addDays(data.date, 1);
   const first = data.week.weekNumber === 1 && data.day === 1;
 
-  const resourceSection = (
-    category: 'MATERIAL' | 'EQUIPMENT',
-    title: string,
-    description: string,
-  ) => {
-    const rows = lines.filter((l) => l.category === category);
+  const resourceSection = (category: ResourceCategoryCode, title: string, description: string) => {
+    const all = lines.filter((l) => l.category === category);
+    const min = normalized(minShown[category]);
+    // Typed lines and lines with an actual stay visible; only small, untouched AHSP lines hide.
+    const rows = QTY.test(min)
+      ? all.filter((l) => !l.sourceKey || l.actual || new Decimal(l.calculated ?? 0).gte(min))
+      : all;
+    const hidden = all.length - rows.length;
     return (
       <Section
         title={title}
         description={description}
         body={false}
         action={
-          editable && (
-            <Button type="button" variant="secondary" onClick={() => addLine(category)}>
-              + Tambah baris
-            </Button>
-          )
+          <div className="row-actions">
+            <label className="flex items-center gap-1 text-sm text-slate-600">
+              Sembunyikan hitungan &lt;
+              <input
+                className="field grid-input"
+                style={{ width: '4.5rem' }}
+                inputMode="decimal"
+                aria-label={`Sembunyikan ${COLUMN[category].toLowerCase()} dengan hitungan di bawah`}
+                placeholder="–"
+                value={minShown[category]}
+                onChange={(e) => setMin(category, e.target.value)}
+              />
+            </label>
+            {editable && (
+              <Button type="button" variant="secondary" onClick={() => addLine(category)}>
+                + Tambah baris
+              </Button>
+            )}
+          </div>
         }
       >
-        {rows.length === 0 ? (
+        {hidden > 0 && (
           <p className="surface-body text-sm text-slate-500">
-            {category === 'MATERIAL'
-              ? 'Tidak ada bahan terhitung untuk pekerjaan hari ini.'
-              : 'Tidak ada alat terhitung; tambah alat yang dipakai bila perlu.'}
+            {hidden} baris dengan hitungan di bawah {minShown[category]} disembunyikan.{' '}
+            <button type="button" className="link-button" onClick={() => setMin(category, '')}>
+              Tampilkan semua
+            </button>
           </p>
+        )}
+        {rows.length === 0 ? (
+          hidden > 0 ? null : (
+            <p className="surface-body text-sm text-slate-500">
+              {category === 'LABOR'
+                ? 'Tidak ada tenaga kerja terhitung dari AHSP; tambah tenaga yang bekerja bila perlu.'
+                : category === 'MATERIAL'
+                  ? 'Tidak ada bahan terhitung untuk pekerjaan hari ini.'
+                  : 'Tidak ada alat terhitung; tambah alat yang dipakai bila perlu.'}
+            </p>
+          )
         ) : (
           <div className="data-panel">
             <table role="table" className="data-table">
               <thead role="rowgroup">
                 <tr role="row">
                   <th role="columnheader" scope="col">
-                    {category === 'MATERIAL' ? 'Bahan' : 'Alat'}
+                    {COLUMN[category]}
                   </th>
                   <th role="columnheader" scope="col">
                     Sat.
@@ -222,21 +283,24 @@ export function DailyReportEditor({
               <tbody role="rowgroup">
                 {rows.map((l) => (
                   <tr role="row" key={l.draftKey}>
-                    <td role="cell" data-label={category === 'MATERIAL' ? 'Bahan' : 'Alat'}>
-                      {l.sourceKey || !editable ? (
+                    <td role="cell" data-label={COLUMN[category]}>
+                      {!editable ? (
                         l.name
                       ) : (
-                        <input
-                          className="field"
+                        <SuggestInput
                           aria-label="Nama"
+                          suggestions={category === 'LABOR' ? data.laborOptions : []}
+                          placeholder={
+                            category === 'LABOR' ? 'mis. Pekerja, Tukang Batu, Mandor' : undefined
+                          }
                           value={l.name}
                           maxLength={500}
-                          onChange={(e) => setLine(l.draftKey, { name: e.target.value })}
+                          onChange={(name) => setLine(l.draftKey, { name })}
                         />
                       )}
                     </td>
                     <td role="cell" data-label="Sat.">
-                      {l.sourceKey || !editable ? (
+                      {!editable ? (
                         (l.unit ?? '')
                       ) : (
                         <input
@@ -276,7 +340,17 @@ export function DailyReportEditor({
                             <button
                               type="button"
                               className="link-button block text-xs"
-                              onClick={() => setLine(l.draftKey, { actual: short(l.calculated) })}
+                              onClick={() =>
+                                setLine(l.draftKey, {
+                                  // People are whole: labor rounds half up (D-079 butir 5).
+                                  actual:
+                                    category === 'LABOR'
+                                      ? new Decimal(l.calculated!)
+                                          .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+                                          .toFixed()
+                                      : short(l.calculated),
+                                })
+                              }
                             >
                               pakai hitungan
                             </button>
@@ -536,98 +610,11 @@ export function DailyReportEditor({
         )}
       </Section>
 
-      <Section
-        title="Tenaga kerja"
-        description={`Jumlah orang per keahlian. Total ${formatNumber(laborTotal.toFixed(), { trim: true })} orang.`}
-        body={false}
-        action={
-          editable && (
-            <Button type="button" variant="secondary" onClick={() => addLine('LABOR')}>
-              + Tambah tenaga
-            </Button>
-          )
-        }
-      >
-        <datalist id="labor-options">
-          {data.laborOptions.map((o) => (
-            <option key={o} value={o} />
-          ))}
-        </datalist>
-        {lines.filter((l) => l.category === 'LABOR').length === 0 ? (
-          <p className="surface-body text-sm text-slate-500">Belum ada tenaga kerja.</p>
-        ) : (
-          <div className="data-panel">
-            <table role="table" className="data-table">
-              <thead role="rowgroup">
-                <tr role="row">
-                  <th role="columnheader" scope="col">
-                    Keahlian
-                  </th>
-                  <th role="columnheader" scope="col" className="num">
-                    Jumlah
-                  </th>
-                  <th role="columnheader" scope="col">
-                    Sat.
-                  </th>
-                  {editable && <th role="columnheader" scope="col" aria-label="Aksi" />}
-                </tr>
-              </thead>
-              <tbody role="rowgroup">
-                {lines
-                  .filter((l) => l.category === 'LABOR')
-                  .map((l) => (
-                    <tr role="row" key={l.draftKey}>
-                      <td role="cell" data-label="Keahlian">
-                        {editable ? (
-                          <input
-                            className="field"
-                            list="labor-options"
-                            aria-label="Keahlian"
-                            placeholder="mis. Pekerja, Tukang Batu, Mandor"
-                            value={l.name}
-                            maxLength={500}
-                            onChange={(e) => setLine(l.draftKey, { name: e.target.value })}
-                          />
-                        ) : (
-                          l.name
-                        )}
-                      </td>
-                      <td role="cell" data-label="Jumlah" className="num">
-                        {editable ? (
-                          <input
-                            className="field schedule-cell grid-input"
-                            inputMode="numeric"
-                            aria-label={`${l.name} jumlah`}
-                            value={l.actual ?? ''}
-                            onChange={(e) => setLine(l.draftKey, { actual: e.target.value })}
-                          />
-                        ) : (
-                          shown(l.actual)
-                        )}
-                      </td>
-                      <td role="cell" data-label="Sat.">
-                        {l.unit ?? 'Org'}
-                      </td>
-                      {editable && (
-                        <td role="cell" data-label="Aksi">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            aria-label={`Hapus ${l.name || 'baris'}`}
-                            onClick={() => removeLine(l.draftKey)}
-                          >
-                            Hapus
-                          </Button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Section>
-
+      {resourceSection(
+        'LABOR',
+        'Tenaga kerja',
+        `Hitungan AHSP = volume pekerjaan hari ini × koefisien upah (orang-hari). Isi jumlah orang yang bekerja. Total aktual ${formatNumber(laborTotal.toFixed(), { trim: true })} orang.`,
+      )}
       {resourceSection(
         'MATERIAL',
         'Penggunaan bahan',

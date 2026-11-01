@@ -4,7 +4,7 @@ import type { Paginated, WorkerDto, WorkerImportResult } from '@laporan-proyek/s
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '@/components/icon';
-import { Alert, Badge, Button, EmptyState, Field, Loading, Select } from '@/components/ui';
+import { Alert, Badge, Button, EmptyState, Field, Loading, Select, SuggestInput } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 
 const PAGE_SIZE = 50;
@@ -66,11 +66,6 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <datalist id="worker-positions">
-        {positions.map((p) => (
-          <option key={p} value={p} />
-        ))}
-      </datalist>
       <div className="toolbar">
         <form
           className="flex min-w-0 flex-1 flex-wrap items-end gap-2"
@@ -115,6 +110,7 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
           ) : (
             <WorkerForm
               worker={modal === 'new' ? undefined : modal}
+              positions={positions}
               onCancel={() => setModal(undefined)}
               onSaved={(w) => saved(modal === 'new' ? `${w.name} ditambahkan.` : `Data ${w.name} disimpan.`)}
             />
@@ -220,7 +216,8 @@ export function WorkersAdmin({ canManage }: { canManage: boolean }) {
 }
 
 /** Create or edit; a chosen KTP file is uploaded right after the data is saved. */
-function WorkerForm({ worker, onCancel, onSaved }: { worker?: WorkerDto; onCancel: () => void; onSaved: (w: WorkerDto) => void }) {
+function WorkerForm({ worker, positions, onCancel, onSaved }: { worker?: WorkerDto; positions: string[]; onCancel: () => void; onSaved: (w: WorkerDto) => void }) {
+  const [position, setPosition] = useState(worker?.position ?? '');
   const [error, setError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -256,7 +253,23 @@ function WorkerForm({ worker, onCancel, onSaved }: { worker?: WorkerDto; onCance
       {error && <Alert>{error}</Alert>}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field id={`w-name-${key}`} name="name" label="Nama" defaultValue={worker?.name} required error={fieldErrors.name} />
-        <Field id={`w-position-${key}`} name="position" label="Posisi" list="worker-positions" defaultValue={worker?.position} required error={fieldErrors.position} />
+        <div>
+          <label htmlFor={`w-position-${key}`} className="field-label">
+            Posisi
+          </label>
+          <SuggestInput
+            id={`w-position-${key}`}
+            name="position"
+            required
+            maxLength={150}
+            placeholder="mis. Mandor, Tukang Batu"
+            aria-invalid={Boolean(fieldErrors.position)}
+            value={position}
+            suggestions={positions}
+            onChange={setPosition}
+          />
+          {fieldErrors.position && <p className="field-error">{fieldErrors.position}</p>}
+        </div>
         <Field
           id={`w-nik-${key}`}
           name="nik"

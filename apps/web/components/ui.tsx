@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Icon } from './icon';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 
 type Variant = 'primary' | 'secondary' | 'danger';
 
@@ -37,9 +37,7 @@ export function Field({ label, error, id, ...props }: InputHTMLAttributes<HTMLIn
   );
 }
 
-export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${CONTROL} ${className}`} {...props} />;
-}
+export { Select, SuggestInput } from './select';
 
 export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info' | 'warning'; children: ReactNode }) {
   return (

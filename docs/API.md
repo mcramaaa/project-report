@@ -316,7 +316,8 @@ D-079 (dipakai):
 ```text
 GET  /projects/:projectId/daily-reports/weeks/:weekNumber   hari-hari minggu itu + status laporan
 GET  /projects/:projectId/daily-reports/:date               isi laporan (pekerjaan, tenaga kerja, bahan/alat AHSP vs aktual, cuaca)
-PUT  /projects/:projectId/daily-reports/:date               { note, resources[], weather[] } (progress.input; DRAFT/REOPENED)
+PUT  /projects/:projectId/daily-reports/:date               { baseUpdatedAt, note, resources[], weather[] } (progress.input; DRAFT/REOPENED;
+                                                            409 bila laporan sudah diubah sejak baseUpdatedAt / null untuk laporan baru)
 POST /projects/:projectId/daily-reports/:date/finalize      { acknowledgeWarnings? } → 409 errors / warnings
 POST /projects/:projectId/daily-reports/:date/reopen        { reason } (report.reopen)
 ```
@@ -346,6 +347,7 @@ PUT /daily-reports/:id/weather
 Daftar global. Semua user login boleh membaca; NIK tersamar tanpa `workers.manage`.
 
 - `GET /workers?search=&active=true|false|all&page=&pageSize=`: cari nama/posisi (NIK hanya dengan `workers.manage`)
+- `GET /workers/:workerId/ktp` dikirim dengan `Cache-Control: private, no-store`.
 - `GET /workers/template`: template impor .xlsx (`workers.manage`)
 - `POST /workers/import` multipart `files` (1 .xlsx): semua baris atau tidak sama sekali → `{ created, updated }`; 400 `{ message, errors: string[] }` per baris (`workers.manage`, D-080 butir 5)
 - `GET /workers/positions`: saran posisi (komponen upah AHSP + posisi tersimpan)

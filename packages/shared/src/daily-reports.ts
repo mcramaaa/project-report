@@ -17,6 +17,8 @@ const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Jam berfo
 
 /** The whole editable part of a draft report; lines replace the previous ones. */
 export const saveDailyReportSchema = z.object({
+  /** `report.updatedAt` the editor loaded (null for a new report); a newer save by someone else is refused. */
+  baseUpdatedAt: z.string().datetime().nullable(),
   note: z.string().trim().max(5000).optional(),
   resources: z
     .array(

@@ -63,7 +63,7 @@ export class DailyReportsService {
       ? report.work.map((w) => ({ workItemId: w.workItemId, workItemCode: w.workItem.internalCode, description: w.workItem.canonicalDescription, unit: null as string | null, volume: new Decimal(w.volume.toString()).toFixed(), method: 'FINAL' as const, mismatch: false }))
       : live;
 
-    // AHSP of each work item in the week's baseline (D-079 butir 4).
+    // AHSP of each work item in the week's baseline (D-079 butir 4–5).
     const rabItems = baseline
       ? await this.prisma.rabVersionItem.findMany({
           where: { rabVersionId: baseline.rabVersionId, workItemId: { in: workRows.map((w) => w.workItemId) } },
@@ -75,7 +75,7 @@ export class DailyReportsService {
     const needs = resourceNeeds(
       workRows.map((w) => ({ analysisId: byWorkItem.get(w.workItemId)?.analysisVersionId ?? null, volume: w.volume })),
       analyses,
-      ['MATERIAL', 'EQUIPMENT'],
+      ['LABOR', 'MATERIAL', 'EQUIPMENT'],
     );
 
     // Lines: calculated needs merged with what was saved; hand-typed lines as saved.
@@ -98,7 +98,8 @@ export class DailyReportsService {
       const calculated = needs.map((n): DailyResourceLineDto => {
         const s = savedByKey.get(`${n.category}:${n.key}`);
         savedByKey.delete(`${n.category}:${n.key}`);
-        return { ...(s ? lineOf(s) : { id: null, actual: null, note: null }), category: n.category, sourceKey: n.key, name: n.name, unit: n.unit, calculated: n.quantity };
+        // Name and unit may be renamed by the user (D-079 butir 8); the AHSP key keeps the link.
+        return { ...(s ? lineOf(s) : { id: null, actual: null, note: null, name: n.name, unit: n.unit }), category: n.category, sourceKey: n.key, calculated: n.quantity };
       });
       // A saved calculated line whose work is gone keeps its actual, with nothing calculated now.
       const orphaned = [...savedByKey.values()].map((r) => ({ ...lineOf(r), calculated: '0' }));
@@ -107,15 +108,24 @@ export class DailyReportsService {
         const previous = await this.prisma.dailyReport.findFirst({
           where: { projectId, reportDate: { lt: toDbDate(date) } },
           orderBy: { reportDate: 'desc' },
-          select: { reportDate: true, resources: { where: { OR: [{ category: 'LABOR' }, { category: 'EQUIPMENT', sourceKey: null }] }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }] } },
+          select: { reportDate: true, resources: { where: { OR: [{ category: 'LABOR' }, { sourceKey: { not: null } }, { category: 'EQUIPMENT', sourceKey: null }] }, orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }] } },
         });
         if (previous?.resources.length) {
           prefilledFrom = fromDbDate(previous.reportDate);
-          typed = previous.resources.map((r) => ({ ...lineOf(r), id: null }));
+          typed = previous.resources.filter((r) => !r.sourceKey && r.category !== 'MATERIAL').map((r) => ({ ...lineOf(r), id: null }));
+          // Renamed AHSP lines keep their names; crews change little day to day, so labor keeps yesterday's head count.
+          const before = new Map(previous.resources.filter((r) => r.sourceKey).map((r) => [`${r.category}:${r.sourceKey}`, lineOf(r)]));
+          for (const l of calculated) {
+            const p = before.get(`${l.category}:${l.sourceKey}`);
+            if (!p) continue;
+            l.name = p.name;
+            l.unit = p.unit;
+            if (l.category === 'LABOR') l.actual = p.actual;
+          }
         }
       }
       const order = { LABOR: 0, MATERIAL: 1, EQUIPMENT: 2 } as const;
-      resources = [...typed.filter((r) => r.category === 'LABOR'), ...calculated, ...orphaned, ...typed.filter((r) => r.category !== 'LABOR')].sort(
+      resources = [...calculated, ...orphaned, ...typed].sort(
         (a, b) => order[a.category] - order[b.category],
       );
     }
@@ -160,8 +170,11 @@ export class DailyReportsService {
       if (w.fromTime && w.toTime && w.fromTime > w.toTime) throw new BadRequestException(`Jam cuaca ${w.fromTime}–${w.toTime}: jam mulai setelah jam selesai.`);
     await this.prisma.$transaction(async (tx) => {
       const { week } = await lockOpenDate(tx, projectId, date);
-      const existing = await tx.dailyReport.findUnique({ where: { projectId_reportDate: { projectId, reportDate: toDbDate(date) } }, select: { id: true, status: true } });
+      const existing = await tx.dailyReport.findUnique({ where: { projectId_reportDate: { projectId, reportDate: toDbDate(date) } }, select: { id: true, status: true, updatedAt: true } });
       if (existing?.status === 'FINAL') throw new ConflictException('Laporan sudah final; buka kembali untuk mengubahnya.');
+      // Lines are replaced wholesale, so a save based on an older copy would silently drop someone else's changes.
+      if (existing && existing.updatedAt.toISOString() !== input.baseUpdatedAt)
+        throw new ConflictException('Laporan baru saja diubah orang lain; muat ulang halaman lalu isi kembali perubahan Anda.');
       const id = existing
         ? (await tx.dailyReport.update({ where: { id: existing.id }, data: { note: input.note || null, updatedBy: actor.id }, select: { id: true } })).id
         : (await tx.dailyReport.create({ data: { projectId, weekId: week.id, reportDate: toDbDate(date), note: input.note || null, createdBy: actor.id, updatedBy: actor.id }, select: { id: true } })).id;
@@ -172,7 +185,7 @@ export class DailyReportsService {
           dailyReportId: id,
           category: r.category,
           sortOrder: i,
-          sourceKey: r.category === 'LABOR' ? null : (r.sourceKey ?? null),
+          sourceKey: r.sourceKey ?? null,
           name: r.name,
           unit: r.unit || null,
           actualQuantity: r.actual ?? null,
