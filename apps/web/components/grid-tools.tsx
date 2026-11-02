@@ -46,7 +46,14 @@ export function GridTools() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const input = e.target as HTMLElement;
-      if (!input.classList?.contains('grid-input') || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (
+        !input.classList?.contains('grid-input') ||
+        e.shiftKey ||
+        e.altKey ||
+        e.ctrlKey ||
+        e.metaKey
+      )
+        return;
       const down = e.key === 'Enter' || e.key === 'ArrowDown';
       if (!down && e.key !== 'ArrowUp') return;
       const cell = input.closest('td');
@@ -55,7 +62,11 @@ export function GridTools() {
       e.preventDefault();
       const column = cell.cellIndex;
       // Skip heading rows (no input in that column) until a row that has one.
-      while ((row = (down ? row.nextElementSibling : row.previousElementSibling) as HTMLTableRowElement | null)) {
+      while (
+        (row = (
+          down ? row.nextElementSibling : row.previousElementSibling
+        ) as HTMLTableRowElement | null)
+      ) {
         const target = row.cells[column]?.querySelector<HTMLInputElement>('input.grid-input');
         if (target) {
           target.focus();
@@ -81,13 +92,30 @@ export function GridTools() {
   const i = STEPS.indexOf(zoom);
   return (
     <div className="grid-tools" role="group" aria-label="Ukuran tabel">
-      <button type="button" className="grid-tools-btn" aria-label="Perkecil tabel" disabled={i <= 0} onClick={() => set(STEPS[i - 1]!)}>
+      <button
+        type="button"
+        className="grid-tools-btn"
+        aria-label="Perkecil tabel"
+        disabled={i <= 0}
+        onClick={() => set(STEPS[i - 1]!)}
+      >
         −
       </button>
-      <button type="button" className="grid-tools-btn grid-tools-value" title="Kembalikan ke 100%" onClick={() => set(1)}>
+      <button
+        type="button"
+        className="grid-tools-btn grid-tools-value"
+        title="Kembalikan ke 100%"
+        onClick={() => set(1)}
+      >
         {Math.round(zoom * 100)}%
       </button>
-      <button type="button" className="grid-tools-btn" aria-label="Perbesar tabel" disabled={i >= STEPS.length - 1} onClick={() => set(STEPS[i + 1]!)}>
+      <button
+        type="button"
+        className="grid-tools-btn"
+        aria-label="Perbesar tabel"
+        disabled={i >= STEPS.length - 1}
+        onClick={() => set(STEPS[i + 1]!)}
+      >
         +
       </button>
     </div>

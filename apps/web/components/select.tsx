@@ -35,17 +35,39 @@ const text = (node: ReactNode): string =>
 
 function readOptions(children: ReactNode): Opt[] {
   return Children.toArray(children).flatMap((c) => {
-    if (!isValidElement<{ value?: string | number; children?: ReactNode; disabled?: boolean }>(c) || c.type !== 'option') return [];
+    if (
+      !isValidElement<{ value?: string | number; children?: ReactNode; disabled?: boolean }>(c) ||
+      c.type !== 'option'
+    )
+      return [];
     const label = text(c.props.children);
-    return [{ value: c.props.value === undefined ? label : String(c.props.value), label, disabled: Boolean(c.props.disabled) }];
+    return [
+      {
+        value: c.props.value === undefined ? label : String(c.props.value),
+        label,
+        disabled: Boolean(c.props.disabled),
+      },
+    ];
   });
 }
 
 const norm = (s: string) => s.toLocaleLowerCase('id').normalize('NFD').replace(/\p{M}/gu, '');
 
 /** Popover pinned under the trigger with position: fixed, so table and panel overflow never clip it. */
-function usePopover(open: boolean, close: () => void, anchor: RefObject<HTMLElement | null>, pop: RefObject<HTMLElement | null>) {
-  const [rect, setRect] = useState<{ left: number; top: number; width: number; up: boolean; maxHeight: number; host: Element }>();
+function usePopover(
+  open: boolean,
+  close: () => void,
+  anchor: RefObject<HTMLElement | null>,
+  pop: RefObject<HTMLElement | null>,
+) {
+  const [rect, setRect] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    up: boolean;
+    maxHeight: number;
+    host: Element;
+  }>();
   useLayoutEffect(() => {
     if (!open) return;
     const place = () => {
@@ -56,11 +78,19 @@ function usePopover(open: boolean, close: () => void, anchor: RefObject<HTMLElem
       const host = anchor.current?.closest('dialog[open]') ?? document.body;
       const room = (up ? r.top : window.innerHeight - r.bottom) - 12;
       const width = Math.min(Math.max(r.width, 220), window.innerWidth - 16);
-      setRect({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), top: up ? r.top - 4 : r.bottom + 4, width, up, maxHeight: Math.max(140, Math.min(320, room)), host });
+      setRect({
+        left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+        top: up ? r.top - 4 : r.bottom + 4,
+        width,
+        up,
+        maxHeight: Math.max(140, Math.min(320, room)),
+        host,
+      });
     };
     place();
     const outside = (e: PointerEvent) => {
-      if (!anchor.current?.contains(e.target as Node) && !pop.current?.contains(e.target as Node)) close();
+      if (!anchor.current?.contains(e.target as Node) && !pop.current?.contains(e.target as Node))
+        close();
     };
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
@@ -120,7 +150,8 @@ function OptionList({
 }
 
 const step = (options: Opt[], from: number, dir: 1 | -1) => {
-  for (let i = from + dir; i >= 0 && i < options.length; i += dir) if (!options[i]!.disabled) return i;
+  for (let i = from + dir; i >= 0 && i < options.length; i += dir)
+    if (!options[i]!.disabled) return i;
   return from;
 };
 
@@ -143,10 +174,16 @@ export function Select({
   'aria-label': ariaLabel,
 }: SelectHTMLAttributes<HTMLSelectElement> & { searchable?: boolean }) {
   const options = readOptions(children);
-  const [inner, setInner] = useState(() => String(defaultValue ?? options.find((o) => !o.disabled)?.value ?? ''));
+  const [inner, setInner] = useState(() =>
+    String(defaultValue ?? options.find((o) => !o.disabled)?.value ?? ''),
+  );
   // Uncontrolled like <select>: options that arrive later (or a filter that drops the choice) fall back to the first enabled one.
   const current =
-    value !== undefined ? String(value) : options.some((o) => o.value === inner) ? inner : (options.find((o) => !o.disabled)?.value ?? '');
+    value !== undefined
+      ? String(value)
+      : options.some((o) => o.value === inner)
+        ? inner
+        : (options.find((o) => !o.disabled)?.value ?? '');
   const chosen = options.find((o) => o.value === current);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -164,7 +201,12 @@ export function Select({
     if (disabled) return;
     const list = q ? options.filter((o) => norm(o.label).includes(norm(q))) : options;
     setQuery(q);
-    setActive(Math.max(0, list.findIndex((o) => o.value === current)));
+    setActive(
+      Math.max(
+        0,
+        list.findIndex((o) => o.value === current),
+      ),
+    );
     setOpen(true);
   };
   const placed = rect !== undefined;
@@ -179,7 +221,10 @@ export function Select({
     if (o.value === current) return;
     setInner(o.value);
     // Callers were written against <select>; they read only e.target.value.
-    onChange?.({ target: { value: o.value, name }, currentTarget: { value: o.value, name } } as unknown as ChangeEvent<HTMLSelectElement>);
+    onChange?.({
+      target: { value: o.value, name },
+      currentTarget: { value: o.value, name },
+    } as unknown as ChangeEvent<HTMLSelectElement>);
   };
 
   const keys = (e: KeyboardEvent) => {
@@ -235,7 +280,12 @@ export function Select({
           <div
             ref={pop}
             className="dropdown-pop"
-            style={{ left: rect.left, width: rect.width, maxHeight: rect.maxHeight, ...(rect.up ? { bottom: window.innerHeight - rect.top } : { top: rect.top }) }}
+            style={{
+              left: rect.left,
+              width: rect.width,
+              maxHeight: rect.maxHeight,
+              ...(rect.up ? { bottom: window.innerHeight - rect.top } : { top: rect.top }),
+            }}
             onKeyDown={keys}
           >
             {withSearch && (
@@ -255,7 +305,15 @@ export function Select({
                 />
               </div>
             )}
-            <OptionList id={listId} options={shown} active={active} selected={current} onPick={pick} onHover={setActive} empty="Tidak ada yang cocok." />
+            <OptionList
+              id={listId}
+              options={shown}
+              active={active}
+              selected={current}
+              onPick={pick}
+              onHover={setActive}
+              empty="Tidak ada yang cocok."
+            />
           </div>,
           rect.host,
         )}
@@ -290,7 +348,9 @@ export function SuggestInput({
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!open) setOpen(true);
-      setActive((a) => (e.key === 'ArrowDown' ? Math.min(a + 1, shown.length - 1) : Math.max(a - 1, 0)));
+      setActive((a) =>
+        e.key === 'ArrowDown' ? Math.min(a + 1, shown.length - 1) : Math.max(a - 1, 0),
+      );
     } else if (e.key === 'Enter' && open && shown[active]) {
       e.preventDefault();
       onChange(shown[active].value);
@@ -327,7 +387,16 @@ export function SuggestInput({
         rect &&
         shown.length > 0 &&
         createPortal(
-          <div ref={pop} className="dropdown-pop" style={{ left: rect.left, width: rect.width, maxHeight: rect.maxHeight, ...(rect.up ? { bottom: window.innerHeight - rect.top } : { top: rect.top }) }}>
+          <div
+            ref={pop}
+            className="dropdown-pop"
+            style={{
+              left: rect.left,
+              width: rect.width,
+              maxHeight: rect.maxHeight,
+              ...(rect.up ? { bottom: window.innerHeight - rect.top } : { top: rect.top }),
+            }}
+          >
             <OptionList
               id={listId}
               options={shown}

@@ -163,10 +163,17 @@ export function ProgressEditor({
               Minggu ini belum memiliki baseline. Aktifkan baseline di halaman RAB.
             </Alert>
           )}
-          {!week.open && (
+          {week.locked ? (
             <Alert kind="info">
-              Minggu ini belum dimulai atau proyek sudah ditutup; progres belum dapat diisi.
+              Laporan mingguan minggu ini atau minggu sesudahnya sudah final, jadi progres terkunci.
+              Buka kembali laporan itu untuk mengubahnya.
             </Alert>
+          ) : (
+            !week.open && (
+              <Alert kind="info">
+                Minggu ini belum dimulai atau proyek sudah ditutup; progres belum dapat diisi.
+              </Alert>
+            )
           )}
           {notice && <Alert kind="success">{notice}</Alert>}
           {error && (

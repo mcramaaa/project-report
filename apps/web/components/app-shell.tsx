@@ -58,6 +58,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
         ]
       : []),
     { href: '/profile', label: 'Profil & keamanan', short: 'Profil', icon: 'user', group: 'Akun' },
+    { href: '/panduan', label: 'Panduan', short: 'Panduan', icon: 'info', group: 'Bantuan' },
   ];
   const active = (href: string) =>
     href === accessHref
@@ -112,27 +113,33 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
                     { label: 'Jadwal', href: `/projects/${parts[1]}/schedule` },
                     ...(parts[3] ? [{ label: 'Isi jadwal' }] : []),
                   ]
-                : parts[2] === 'daily'
-                  ? [
-                      { label: 'Progres', href: `/projects/${parts[1]}/progress` },
-                      { label: `Laporan harian ${parts[3] ?? ''}`.trim() },
-                    ]
-                  : parts[2] === 'progress'
+                : parts[2] === 'report-templates'
+                  ? [{ label: 'Template laporan' }]
+                  : parts[2] === 'daily'
                     ? [
                         { label: 'Progres', href: `/projects/${parts[1]}/progress` },
-                        ...(parts[3]
-                          ? [
-                              {
-                                label: `Minggu ${parts[3]}`,
-                                href: `/projects/${parts[1]}/progress/${parts[3]}`,
-                              },
-                            ]
-                          : []),
-                        ...(parts[4] === 'daily' ? [{ label: 'Alokasi harian' }] : []),
+                        { label: `Laporan harian ${parts[3] ?? ''}`.trim() },
                       ]
-                    : parts[2] === 'documents'
-                      ? [{ label: 'Sumber Excel' }]
-                      : []),
+                    : parts[2] === 'progress'
+                      ? [
+                          { label: 'Progres', href: `/projects/${parts[1]}/progress` },
+                          ...(parts[3]
+                            ? [
+                                {
+                                  label: `Minggu ${parts[3]}`,
+                                  href: `/projects/${parts[1]}/progress/${parts[3]}`,
+                                },
+                              ]
+                            : []),
+                          ...(parts[4] === 'daily'
+                            ? [{ label: 'Alokasi harian' }]
+                            : parts[4] === 'report'
+                              ? [{ label: 'Laporan mingguan' }]
+                              : []),
+                        ]
+                      : parts[2] === 'documents'
+                        ? [{ label: 'Sumber Excel' }]
+                        : []),
         ]
       : [{ label: currentLabel }];
   const role = user.isSystemAdmin

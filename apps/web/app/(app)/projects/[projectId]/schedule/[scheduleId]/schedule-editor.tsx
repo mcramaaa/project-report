@@ -15,7 +15,8 @@ import { SCHEDULE_STATUS_BADGE } from '@/lib/rab-ui';
 
 const WEIGHT = /^\d{1,3}(\.\d{1,18})?$/;
 const key = (groupId: string, week: number) => `${groupId}/${week}`;
-const cellsOf = (s: ScheduleDetailDto) => Object.fromEntries(s.entries.map((e) => [key(e.groupId, e.weekNumber), e.weight]));
+const cellsOf = (s: ScheduleDetailDto) =>
+  Object.fromEntries(s.entries.map((e) => [key(e.groupId, e.weekNumber), e.weight]));
 /** Users type Indonesian decimals; the API takes a dot. */
 const normalized = (v: string) => v.trim().replace(',', '.');
 
@@ -66,7 +67,8 @@ export function ScheduleEditor({
   const curve = useMemo(() => plannedCurve(entries, weekCount), [entries, weekCount]);
   const groupSums = useMemo(() => {
     const sums = new Map<string, Decimal>();
-    for (const e of entries) sums.set(e.groupId, (sums.get(e.groupId) ?? new Decimal(0)).plus(e.weight));
+    for (const e of entries)
+      sums.set(e.groupId, (sums.get(e.groupId) ?? new Decimal(0)).plus(e.weight));
     return sums;
   }, [entries]);
 
@@ -84,8 +86,14 @@ export function ScheduleEditor({
       setAdjusted(next.importAdjustments ?? []);
       return true;
     } catch (err) {
-      const list = err instanceof ApiError ? ((err.details as { errors?: unknown } | undefined)?.errors ?? []) : [];
-      setError({ message: errorMessage(err), list: Array.isArray(list) ? list.filter((e): e is string => typeof e === 'string') : [] });
+      const list =
+        err instanceof ApiError
+          ? ((err.details as { errors?: unknown } | undefined)?.errors ?? [])
+          : [];
+      setError({
+        message: errorMessage(err),
+        list: Array.isArray(list) ? list.filter((e): e is string => typeof e === 'string') : [],
+      });
       return false;
     } finally {
       setBusy(false);
@@ -94,10 +102,16 @@ export function ScheduleEditor({
 
   function save() {
     if (invalid.size) {
-      setError({ message: `${invalid.size} isian bukan angka % yang valid (gunakan angka ≥ 0, maks. 18 desimal).`, list: [] });
+      setError({
+        message: `${invalid.size} isian bukan angka % yang valid (gunakan angka ≥ 0, maks. 18 desimal).`,
+        list: [],
+      });
       return;
     }
-    void run(() => api<ScheduleDetailDto>('PUT', `${base}/entries`, { entries }), 'Isian jadwal disimpan.');
+    void run(
+      () => api<ScheduleDetailDto>('PUT', `${base}/entries`, { entries }),
+      'Isian jadwal disimpan.',
+    );
   }
 
   function importSheet(event: FormEvent<HTMLFormElement>) {
@@ -105,7 +119,11 @@ export function ScheduleEditor({
     const form = new FormData(event.currentTarget);
     const sheet = String(form.get('sheet') ?? '').trim();
     void run(
-      () => api<ScheduleDetailDto>('POST', `${base}/import`, { documentId: String(form.get('documentId')), ...(sheet ? { sheet } : {}) }),
+      () =>
+        api<ScheduleDetailDto>('POST', `${base}/import`, {
+          documentId: String(form.get('documentId')),
+          ...(sheet ? { sheet } : {}),
+        }),
       'Jadwal diimpor dari Excel.',
     );
   }
@@ -123,7 +141,9 @@ export function ScheduleEditor({
           <>
             % bobot proyek per kelompok pekerjaan per minggu, seperti sheet Master Curva S.
             {data.sourceDocument && ` Impor terakhir: ${data.sourceDocument.filename}.`}
-            {data.approvedBy && data.approvedAt && ` Approved oleh ${data.approvedBy.name}, ${formatDate(data.approvedAt.slice(0, 10))}.`}
+            {data.approvedBy &&
+              data.approvedAt &&
+              ` Approved oleh ${data.approvedBy.name}, ${formatDate(data.approvedAt.slice(0, 10))}.`}
           </>
         }
         action={
@@ -138,14 +158,30 @@ export function ScheduleEditor({
                 type="button"
                 variant="secondary"
                 disabled={busy || dirty || data.issues.length > 0}
-                title={dirty ? 'Simpan isian dulu' : data.issues.length ? 'Selesaikan pemeriksaan dulu' : undefined}
-                onClick={() => void run(() => api<ScheduleDetailDto>('POST', `${base}/approve`, {}), 'Jadwal di-approve.')}
+                title={
+                  dirty
+                    ? 'Simpan isian dulu'
+                    : data.issues.length
+                      ? 'Selesaikan pemeriksaan dulu'
+                      : undefined
+                }
+                onClick={() =>
+                  void run(
+                    () => api<ScheduleDetailDto>('POST', `${base}/approve`, {}),
+                    'Jadwal di-approve.',
+                  )
+                }
               >
                 Approve
               </Button>
             )}
             {canApprove && data.status === 'APPROVED' && !reopening && (
-              <Button type="button" variant="secondary" disabled={busy} onClick={() => setReopening(true)}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setReopening(true)}
+              >
                 Buka untuk revisi
               </Button>
             )}
@@ -161,7 +197,12 @@ export function ScheduleEditor({
               label="Alasan revisi (wajib)"
               confirmLabel="Buka untuk revisi"
               busy={busy}
-              onSubmit={(reason) => void run(() => api<ScheduleDetailDto>('POST', `${base}/reopen`, { reason }), 'Jadwal dibuka untuk revisi.')}
+              onSubmit={(reason) =>
+                void run(
+                  () => api<ScheduleDetailDto>('POST', `${base}/reopen`, { reason }),
+                  'Jadwal dibuka untuk revisi.',
+                )
+              }
               onCancel={() => setReopening(false)}
             />
           )}
@@ -171,12 +212,14 @@ export function ScheduleEditor({
               {adjusted.length > 0 && (
                 <details className="mt-1">
                   <summary className="cursor-pointer">
-                    {adjusted.length} kelompok disesuaikan ke bobot {data.rabVersion.label}; sebaran mingguannya tetap seperti di Excel.
+                    {adjusted.length} kelompok disesuaikan ke bobot {data.rabVersion.label}; sebaran
+                    mingguannya tetap seperti di Excel.
                   </summary>
                   <ul className="mt-1 list-disc pl-5">
                     {adjusted.map((a) => (
                       <li key={a.group}>
-                        {a.group}: {formatRounded(a.from, SHOWN_DECIMALS)}% → {formatRounded(a.to, SHOWN_DECIMALS)}%
+                        {a.group}: {formatRounded(a.from, SHOWN_DECIMALS)}% →{' '}
+                        {formatRounded(a.to, SHOWN_DECIMALS)}%
                       </li>
                     ))}
                   </ul>
@@ -197,7 +240,9 @@ export function ScheduleEditor({
             </Alert>
           )}
           {dirty && <Alert kind="info">Ada isian yang belum disimpan.</Alert>}
-          {!dirty && data.entries.length === 0 && <Alert kind="info">Belum ada isian. Isi grid per minggu atau impor dari Excel.</Alert>}
+          {!dirty && data.entries.length === 0 && (
+            <Alert kind="info">Belum ada isian. Isi grid per minggu atau impor dari Excel.</Alert>
+          )}
           {!dirty && data.entries.length > 0 && data.issues.length > 0 && (
             <Alert kind="warning">
               Belum dapat di-approve:
@@ -212,12 +257,19 @@ export function ScheduleEditor({
       </Section>
 
       {editable && (
-        <form onSubmit={importSheet} className="panel form-panel space-y-3" aria-labelledby="schedule-import-title">
+        <form
+          onSubmit={importSheet}
+          className="panel form-panel space-y-3"
+          aria-labelledby="schedule-import-title"
+        >
           <h2 id="schedule-import-title" className="text-base font-semibold">
             Impor dari Excel
           </h2>
           {documents.length === 0 ? (
-            <p className="text-sm text-slate-600">Belum ada dokumen .xlsx di proyek ini. Unggah laporan mingguan di menu Impor RAB → dokumen.</p>
+            <p className="text-sm text-slate-600">
+              Belum ada dokumen .xlsx di proyek ini. Unggah laporan mingguan di menu Impor RAB →
+              dokumen.
+            </p>
           ) : (
             <>
               <div className="form-grid">
@@ -233,9 +285,18 @@ export function ScheduleEditor({
                     ))}
                   </Select>
                 </div>
-                <Field id="schedule-sheet" name="sheet" label="Sheet" defaultValue="Master Curva S" maxLength={100} />
+                <Field
+                  id="schedule-sheet"
+                  name="sheet"
+                  label="Sheet"
+                  defaultValue="Master Curva S"
+                  maxLength={100}
+                />
               </div>
-              <p className="field-hint">Mengganti seluruh isian draft. Kolom minggu dibaca dari header M.1, M.2, …; baris dari nomor kelompok (A, B.I, …).</p>
+              <p className="field-hint">
+                Mengganti seluruh isian draft. Kolom minggu dibaca dari header M.1, M.2, …; baris
+                dari nomor kelompok (A, B.I, …).
+              </p>
               <Button type="submit" variant="secondary" disabled={busy}>
                 Impor
               </Button>
@@ -262,7 +323,12 @@ export function ScheduleEditor({
                 Rencana %
               </th>
               {data.weeks.map((w) => (
-                <th key={w.weekNumber} scope="col" className="num" title={`${formatDate(w.startDate)} – ${formatDate(w.endDate)}`}>
+                <th
+                  key={w.weekNumber}
+                  scope="col"
+                  className="num"
+                  title={`${formatDate(w.startDate)} – ${formatDate(w.endDate)}`}
+                >
                   M.{w.weekNumber}
                 </th>
               ))}
@@ -277,7 +343,10 @@ export function ScheduleEditor({
                   <td className="rab-sticky-no">{g.displayNumber ?? '–'}</td>
                   <td className="rab-sticky-desc">{g.description}</td>
                   <td className="num">{formatRounded(g.weight, SHOWN_DECIMALS)}</td>
-                  <td className={`num ${off ? 'text-red-700' : ''}`} title={off ? 'Belum sama dengan bobot' : undefined}>
+                  <td
+                    className={`num ${off ? 'text-red-700' : ''}`}
+                    title={off ? 'Belum sama dengan bobot' : undefined}
+                  >
                     {formatRounded(sum.toFixed(), SHOWN_DECIMALS)}
                   </td>
                   {data.weeks.map((w) => {
@@ -292,7 +361,11 @@ export function ScheduleEditor({
                             aria-invalid={invalid.has(k)}
                             title={cells[k] || undefined}
                             // Rounded like the workbook while not edited; the exact value while focused.
-                            value={focused === k || !cells[k] || invalid.has(k) ? (cells[k] ?? '') : formatRounded(normalized(cells[k]), SHOWN_DECIMALS)}
+                            value={
+                              focused === k || !cells[k] || invalid.has(k)
+                                ? (cells[k] ?? '')
+                                : formatRounded(normalized(cells[k]), SHOWN_DECIMALS)
+                            }
                             onFocus={() => setFocused(k)}
                             onBlur={() => setFocused(undefined)}
                             onChange={(e) => {

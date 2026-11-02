@@ -1,12 +1,12 @@
 import { SourceValue } from '@/components/source-value';
 import { workbookSource, rabRowHref } from '@/lib/value-source';
 import { Fragment } from 'react';
-import { Decimal } from '@laporan-proyek/calc';
 import {
   rabVersionLabel,
   type AhspAnalysisDetailDto,
   type ProjectDto,
   type RabVersionType,
+  DECIMALS,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -311,11 +311,8 @@ export default async function AnalysisPage({
                                     note="Koefisien yang tercatat pada komponen versi analisa ini."
                                     sources={workbookSource(projectId, c.sourceLocator)}
                                   >
-                                    {formatNumber(
-                                      new Decimal(c.coefficient).toFixed(
-                                        Math.max(4, new Decimal(c.coefficient).decimalPlaces()),
-                                      ),
-                                    )}
+                                    {/* Shown with DECIMALS.ahsp (D-083); the exact value is in the popup and in every calculation. */}
+                                    {formatRounded(c.coefficient, DECIMALS.ahsp)}
                                   </SourceValue>
                                 </InlineEdit>
                               </td>

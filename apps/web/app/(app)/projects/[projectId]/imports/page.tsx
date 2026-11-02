@@ -14,8 +14,12 @@ export default async function ImportsPage({ params }: { params: Promise<{ projec
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const can = (p: string) => project.permissions.includes(p);
   const [documents, imports] = await Promise.all([
-    can('document.read') ? serverGet<DocumentDto[]>(`${base}/documents`) : Promise.resolve({ status: 403, data: undefined }),
-    can('rabImport.review') || can('rabImport.approve') ? serverGet<RabImportSummaryDto[]>(`${base}/rab-imports`) : Promise.resolve({ status: 403, data: undefined }),
+    can('document.read')
+      ? serverGet<DocumentDto[]>(`${base}/documents`)
+      : Promise.resolve({ status: 403, data: undefined }),
+    can('rabImport.review') || can('rabImport.approve')
+      ? serverGet<RabImportSummaryDto[]>(`${base}/rab-imports`)
+      : Promise.resolve({ status: 403, data: undefined }),
   ]);
 
   return (

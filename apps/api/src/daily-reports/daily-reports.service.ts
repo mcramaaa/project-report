@@ -5,7 +5,7 @@ import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProgressService, today } from '../progress/progress.service';
+import { assertNotLocked, lockedThrough, ProgressService, today } from '../progress/progress.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -37,11 +37,12 @@ export class DailyReportsService {
     const week = await this.prisma.projectWeek.findUnique({ where: { projectId_weekNumber: { projectId, weekNumber } }, select: { startDate: true, endDate: true } });
     if (!week) throw new NotFoundException(`Minggu ${weekNumber} tidak ada di proyek ini.`);
     const reports = await this.prisma.dailyReport.findMany({ where: { projectId, reportDate: { gte: week.startDate, lte: week.endDate } }, select: { reportDate: true, status: true } });
+    const locked = weekNumber <= (await lockedThrough(this.prisma, projectId));
     const status = new Map(reports.map((r) => [fromDbDate(r.reportDate), r.status]));
     const start = fromDbDate(week.startDate);
     return Array.from({ length: daysInclusive(start, fromDbDate(week.endDate)) }, (_, i) => {
       const date = addDays(start, i);
-      return { date, day: i + 1, status: status.get(date) ?? null, open: project.status === 'ACTIVE' && date <= today() };
+      return { date, day: i + 1, status: status.get(date) ?? null, open: project.status === 'ACTIVE' && !locked && date <= today() };
     });
   }
 
@@ -151,7 +152,8 @@ export class DailyReportsService {
         finalizedBy: report.finalizedByUser,
         finalizedAt: report.finalizedAt?.toISOString() ?? null,
       },
-      open: project.status === 'ACTIVE' && date <= today(),
+      open: project.status === 'ACTIVE' && !allocation.week.locked && date <= today(),
+      locked: allocation.week.locked,
       note: report?.note ?? null,
       work: workRows.map((w) => {
         const item = byWorkItem.get(w.workItemId);
@@ -254,6 +256,7 @@ export class DailyReportsService {
     await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
       if ((await findProject(tx, projectId)).status !== 'ACTIVE') throw new ConflictException('Proyek sudah ditutup; laporan tidak dapat diubah.');
+      await assertNotLocked(tx, projectId, (await findWeek(tx, projectId, date)).weekNumber);
       const report = await tx.dailyReport.findUnique({ where: { projectId_reportDate: { projectId, reportDate: toDbDate(checkDate(date)) } }, select: { id: true, status: true } });
       if (!report) throw new NotFoundException('Laporan harian tidak ditemukan.');
       if (report.status !== 'FINAL') throw new ConflictException('Hanya laporan final yang dapat dibuka kembali.');
@@ -308,6 +311,7 @@ async function lockOpenDate(tx: Prisma.TransactionClient, projectId: string, dat
   if ((await findProject(tx, projectId)).status !== 'ACTIVE') throw new ConflictException('Proyek sudah ditutup; laporan tidak dapat diubah.');
   const week = await findWeek(tx, projectId, date);
   if (date > today()) throw new ConflictException(`Tanggal ${date} belum tiba.`);
+  await assertNotLocked(tx, projectId, week.weekNumber);
   return { week };
 }
 

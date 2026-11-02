@@ -35,12 +35,17 @@ import { AI_CLIENT, RabImportsService } from './imports/rab-imports.service';
 import { RabController } from './rab/rab.controller';
 import { RabCorrectionsService } from './rab/corrections.service';
 import { RabService } from './rab/rab.service';
+import { ReportExportsController } from './report-templates/report-exports.controller';
+import { ReportTemplatesController } from './report-templates/report-templates.controller';
+import { ReportTemplatesService } from './report-templates/report-templates.service';
+import { WeeklyReportsController } from './weekly-reports/weekly-reports.controller';
+import { WeeklyReportsService } from './weekly-reports/weekly-reports.service';
 import { WorkersController } from './workers/workers.controller';
 import { WorkersService } from './workers/workers.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DailyReportsController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController, WorkersController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DailyReportsController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController, WorkersController, WeeklyReportsController, ReportTemplatesController, ReportExportsController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -65,6 +70,8 @@ import { WorkersService } from './workers/workers.service';
     AdminUsersService,
     AdminProjectsService,
     WorkersService,
+    WeeklyReportsService,
+    ReportTemplatesService,
   ],
 })
 export class AppModule {}

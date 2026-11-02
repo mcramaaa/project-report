@@ -92,6 +92,20 @@ export const PERMISSIONS = [
     description: 'Membuka kembali laporan harian yang sudah FINAL, dengan alasan (D-079).',
   },
   {
+    code: 'report.review',
+    scope: 'PROJECT',
+    module: 'Laporan',
+    name: 'Periksa laporan mingguan',
+    description: 'Memeriksa laporan mingguan yang diajukan; tidak untuk minggu yang progresnya ikut diisi sendiri (D-081).',
+  },
+  {
+    code: 'report.finalize',
+    scope: 'PROJECT',
+    module: 'Laporan',
+    name: 'Finalkan laporan mingguan',
+    description: 'Memfinalkan laporan mingguan yang sudah diperiksa; isinya dibekukan dan progres minggu itu terkunci (D-081).',
+  },
+  {
     code: 'schedule.edit',
     scope: 'PROJECT',
     module: 'Jadwal',
@@ -149,8 +163,8 @@ export const SYSTEM_PROJECT_ROLES = [
 ] as const;
 export const SYSTEM_ROLE_DEFAULT_PERMISSIONS: Record<(typeof SYSTEM_PROJECT_ROLES)[number]['code'], ProjectPermission[]> = {
   FILLER: ['project.read', 'rab.read', 'progress.input', 'ahsp.read'],
-  REVIEWER: ['project.read', 'rab.read', 'ahsp.read'],
-  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'progress.input', 'report.reopen', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
+  REVIEWER: ['project.read', 'rab.read', 'ahsp.read', 'report.review'],
+  MANAGER: ['project.read', 'project.update', 'rab.read', 'rab.edit', 'rab.approve', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'progress.input', 'report.reopen', 'report.review', 'report.finalize', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review', 'rabImport.approve'],
   ADMIN: ['project.read', 'rab.read', 'rab.edit', 'ahsp.read', 'document.read', 'document.upload', 'rabImport.review'],
   RAB_EDITOR: ['project.read', 'rab.read', 'rab.edit', 'rab.approve', 'rab.reopen', 'baseline.activate', 'schedule.edit', 'schedule.approve', 'ahsp.read', 'ahsp.edit', 'document.read'],
 };

@@ -42,17 +42,20 @@ export default async function RabVersionsPage({
             description="Kontrak dan setiap MC. Buka versi untuk melihat atau mengedit isinya."
             body={versions.data.length === 0}
             action={
-              IMPORT_PERMISSIONS.some((p) => project.permissions.includes(p)) && (
-                <Link className="btn btn-secondary" href={`${base}/imports`}>
-                  Impor RAB dari Excel
-                </Link>
-              )
+              <div className="row-actions">
+                {IMPORT_PERMISSIONS.some((p) => project.permissions.includes(p)) && (
+                  <Link className="btn btn-secondary" href={`${base}/imports`}>
+                    Impor dari Excel
+                  </Link>
+                )}
+                {canEdit && <CreateRabVersion projectId={project.id} versions={versions.data} />}
+              </div>
             }
           >
             {versions.data.length === 0 ? (
               <EmptyState>
-                Belum ada versi RAB. Mulai dengan RAB Kontrak, ketik manual di bawah atau impor dari
-                Excel.
+                Belum ada versi RAB. Mulai dengan RAB Kontrak: klik &quot;Buat RAB Kontrak&quot;
+                untuk mengetik manual, atau impor dari Excel.
               </EmptyState>
             ) : (
               <div className="data-panel">
@@ -150,7 +153,6 @@ export default async function RabVersionsPage({
               </div>
             )}
           </Section>
-          {canEdit && <CreateRabVersion projectId={project.id} versions={versions.data} />}
           {baselines.data ? (
             <BaselinePanel
               projectId={project.id}

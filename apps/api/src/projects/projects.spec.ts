@@ -176,6 +176,8 @@ describe('update identity', () => {
       'baseline.activate',
       'progress.input',
       'report.reopen',
+      'report.review',
+      'report.finalize',
       'schedule.edit',
       'schedule.approve',
       'document.read',

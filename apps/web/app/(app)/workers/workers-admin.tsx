@@ -1,9 +1,8 @@
 'use client';
 
 import type { Paginated, WorkerDto, WorkerImportResult } from '@laporan-proyek/shared';
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
-import { Icon } from '@/components/icon';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Modal } from '@/components/modal';
 import { Alert, Badge, Button, EmptyState, Field, Loading, Select, SuggestInput } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 
@@ -298,31 +297,6 @@ function WorkerForm({ worker, positions, onCancel, onSaved }: { worker?: WorkerD
         </Button>
       </div>
     </form>
-  );
-}
-
-/** Native modal dialog: Esc and the backdrop close it, focus stays inside while open. */
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const id = useId();
-  useEffect(() => dialog.current?.showModal(), []);
-  return createPortal(
-    <dialog
-      ref={dialog}
-      className="source-dialog"
-      aria-labelledby={id}
-      onClose={onClose}
-      onClick={(e) => e.target === e.currentTarget && dialog.current?.close()}
-    >
-      <header className="source-dialog-header">
-        <h2 id={id}>{title}</h2>
-        <button type="button" className="icon-button" aria-label="Tutup" onClick={() => dialog.current?.close()}>
-          <Icon name="close" />
-        </button>
-      </header>
-      <div className="source-dialog-body">{children}</div>
-    </dialog>,
-    document.body,
   );
 }
 

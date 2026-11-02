@@ -26,6 +26,18 @@ type Week = { id: string; weekNumber: number; startDate: string; endDate: string
  */
 export const today = () => new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
 
+/** D-081 butir 5: the latest week with a FINAL weekly report (0 if none); it and every earlier week are read-only. */
+export async function lockedThrough(db: Db, projectId: string): Promise<number> {
+  const last = await db.weeklyReport.findFirst({ where: { projectId, status: 'FINAL' }, orderBy: { week: { weekNumber: 'desc' } }, select: { week: { select: { weekNumber: true } } } });
+  return last?.week.weekNumber ?? 0;
+}
+
+export async function assertNotLocked(db: Db, projectId: string, weekNumber: number): Promise<void> {
+  const through = await lockedThrough(db, projectId);
+  if (weekNumber <= through)
+    throw new ConflictException(`Laporan mingguan minggu ${through} sudah final; minggu ${weekNumber} terkunci. Buka kembali laporan itu untuk mengubah data.`);
+}
+
 /** D-073: weekly realised volume per work item; cumulative, percent and remaining are computed. */
 @Injectable()
 export class ProgressService {
@@ -33,13 +45,14 @@ export class ProgressService {
 
   async weeks(projectId: string): Promise<ProgressWeekSummaryDto[]> {
     const project = await findProject(this.prisma, projectId);
-    const [weeks, assignments, counts] = await Promise.all([
+    const [weeks, assignments, counts, locked] = await Promise.all([
       loadWeeks(this.prisma, projectId),
       liveAssignments(this.prisma, projectId),
       this.prisma.weeklyProgress.groupBy({ by: ['weekId'], where: { projectId }, _count: { _all: true } }),
+      lockedThrough(this.prisma, projectId),
     ]);
     const filled = new Map(counts.map((c) => [c.weekId, c._count._all]));
-    return weeks.map((w) => summary(w, baselineOf(assignments, w), project.status === 'ACTIVE', filled.get(w.id) ?? 0));
+    return weeks.map((w) => summary(w, baselineOf(assignments, w), project.status === 'ACTIVE', filled.get(w.id) ?? 0, locked));
   }
 
   async get(projectId: string, weekNumber: number): Promise<WeeklyProgressDto> {
@@ -121,7 +134,7 @@ export class ProgressService {
         ...progressOf(workItemId, null),
       });
 
-    return { week: summary(week, baseline, project.status === 'ACTIVE', current.size), rows };
+    return { week: summary(week, baseline, project.status === 'ACTIVE', current.size, await lockedThrough(this.prisma, projectId)), rows };
   }
 
   async save(actor: AuthUser, projectId: string, weekNumber: number, input: SaveWeeklyProgressInput): Promise<WeeklyProgressDto> {
@@ -129,6 +142,7 @@ export class ProgressService {
       await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
       const project = await findProject(tx, projectId);
       if (project.status !== 'ACTIVE') throw new ConflictException('Proyek sudah ditutup; progres tidak dapat diubah.');
+      await assertNotLocked(tx, projectId, weekNumber);
       const week = await findWeek(tx, projectId, weekNumber);
       if (week.startDate > today()) throw new ConflictException(`Minggu ${weekNumber} belum dimulai (mulai ${week.startDate}).`);
       const assignments = await liveAssignments(tx, projectId);
@@ -257,6 +271,7 @@ export class ProgressService {
       await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
       const project = await findProject(tx, projectId);
       if (project.status !== 'ACTIVE') throw new ConflictException('Proyek sudah ditutup; alokasi harian tidak dapat diubah.');
+      await assertNotLocked(tx, projectId, weekNumber);
       const week = await findWeek(tx, projectId, weekNumber);
       if (week.startDate > today()) throw new ConflictException(`Minggu ${weekNumber} belum dimulai (mulai ${week.startDate}).`);
       const p = await tx.weeklyProgress.findUnique({
@@ -342,13 +357,15 @@ function baselineOf(assignments: Awaited<ReturnType<typeof liveAssignments>>, we
   return assignments.filter((a) => a.effectiveFrom <= week.endDate).at(-1) ?? null;
 }
 
-function summary(week: Week, baseline: ReturnType<typeof baselineOf>, active: boolean, filledCount: number): ProgressWeekSummaryDto {
+function summary(week: Week, baseline: ReturnType<typeof baselineOf>, active: boolean, filledCount: number, lockedThroughWeek: number): ProgressWeekSummaryDto {
+  const locked = week.weekNumber <= lockedThroughWeek;
   return {
     weekNumber: week.weekNumber,
     startDate: week.startDate,
     endDate: week.endDate,
     baseline: baseline && { rabVersionId: baseline.rabVersionId, label: baseline.label },
-    open: active && week.startDate <= today(),
+    open: active && !locked && week.startDate <= today(),
+    locked,
     filledCount,
   };
 }

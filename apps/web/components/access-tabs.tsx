@@ -9,7 +9,12 @@ export function AccessTabs({ me, active }: { me: MeResponse; active: Tab }) {
   const tabs: { key: Tab; href: string; label: string; show: boolean }[] = [
     { key: 'users', href: '/admin/users', label: 'Pengguna', show: can(me, 'users.read') },
     { key: 'roles', href: '/admin/roles', label: 'Role & permission', show: can(me, 'roles.read') },
-    { key: 'projects', href: '/admin/projects', label: 'Akses proyek', show: can(me, 'assignments.read') },
+    {
+      key: 'projects',
+      href: '/admin/projects',
+      label: 'Akses proyek',
+      show: can(me, 'assignments.read'),
+    },
   ];
   return (
     <nav className="access-tabs" aria-label="Manajemen akses">

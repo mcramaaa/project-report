@@ -597,6 +597,18 @@ format:
 - PDF
 - PPTX
 
+### report_templates, project_logos (D-082)
+
+`report_templates`: satu per (`project_id`, `report_type` DAILY/WEEKLY/MONTHLY), `config` JSON (kertas, kop, judul,
+identitas, bagian+kolom, tanda tangan, desimal). `project_logos`: satu per (`project_id`, `kind` AGENCY/CONSULTANT/
+CONTRACTOR), file di `storage/projects/<id>/logos/`.
+
+### weekly_reports, weekly_report_snapshots (D-081)
+
+`weekly_reports`: satu per minggu (`week_id` UNIQUE), `status` DRAFT/REVIEWED/FINAL/REOPENED, `submitted_*`,
+`reviewed_*` + `review_note`, `finalized_*`. `weekly_report_snapshots`: `payload` JSON isi laporan saat FINAL;
+tidak dihapus atau diubah, reopen lalu final menambah baris baru.
+
 ### workers (D-080)
 
 Daftar pekerja global: `name`, `position`, `nik` CHAR(16) UNIQUE, `ktp_filename`/`ktp_mime_type`/`ktp_file_size`

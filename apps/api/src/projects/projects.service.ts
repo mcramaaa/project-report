@@ -198,6 +198,16 @@ export class ProjectsService {
       if (current.startDate === input.startDate && current.durationDays === input.durationDays) {
         throw new BadRequestException('Tanggal mulai dan masa pelaksanaan tidak berubah.');
       }
+      // D-038: weeks keep their ids when dates move, so data already tied to dates would land in other days.
+      if (current.startDate !== input.startDate) {
+        const [progress, daily, weekly] = await Promise.all([
+          tx.weeklyProgress.count({ where: { projectId } }),
+          tx.dailyReport.count({ where: { projectId } }),
+          tx.weeklyReport.count({ where: { projectId } }),
+        ]);
+        if (progress + daily + weekly > 0)
+          throw new ConflictException('Tanggal mulai tidak dapat diubah karena sudah ada progres atau laporan pada minggu proyek. Masa pelaksanaan masih dapat diubah.');
+      }
       const before = { weeks: await tx.projectWeek.count({ where: { projectId } }), periods: await tx.reportPeriod.count({ where: { projectId } }) };
       await tx.project.update({ where: { id: projectId }, data: { startDate: toDbDate(input.startDate), durationDays: input.durationDays } });
       const after = await syncProjectCalendar(tx, projectId, input.startDate, input.durationDays);

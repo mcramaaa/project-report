@@ -27,6 +27,19 @@ dependency dari OLMAT.
   browser: tampilan sama di semua halaman, kotak pencarian otomatis bila pilihan lebih dari 7,
   keyboard (panah, Enter, Esc, ketik untuk mencari). Isian bebas dengan saran memakai
   `SuggestInput` (pengganti `<datalist>`). Pop-up dipasang di dalam modal bila pemicunya di modal.
+- Tampilan angka (D-083, `DECIMALS`): uang dan volume 2, koefisien AHSP 4, bobot 3 desimal; jumlah orang bulat.
+  Nilai eksak tetap tersimpan dan terlihat di popup asal nilai. Semua hitungan memakai nilai eksak.
+- Ukuran `text-xs`/`text-sm` Tailwind dipetakan ke skala aplikasi (11,5/12,5 px) supaya teks kecil tidak lebih besar dari teks isi (13 px).
+- Tab Informasi: kartu "Data proyek" (Identitas, Kontrak, SPMK & jadwal; ubah langsung di tempat) di kiri, Tim di kanan
+  (≥1180 px), Minggu & periode di bawah (kartu B.n 2–3 kolom). Kartu tanda tangan tidak ditampilkan di web (OD-014).
+- Panduan pengguna di `/panduan` (menu Bantuan) dengan daftar isi menempel.
+- Template laporan (`/projects/:id/report-templates`, dari kartu di tab Informasi): logo, impor dari proyek lain, pengaturan
+  per jenis laporan di kiri, pratinjau cetak (data minggu terakhir yang selesai) di kanan. Komponen `ReportDocument` dipakai
+  bersama oleh pratinjau dan halaman cetak `/print/...`; PDF = Cetak / Simpan PDF dari browser (D-082).
+- Laporan harian bawaan memakai layout kolom berdampingan (format Mengwi, D-084); tombol Ekspor PDF dan Ekspor Excel di
+  halaman laporan harian, Unduh Excel di halaman cetak.
+- Tab RAB: "Buat MC-n"/"Buat RAB Kontrak" di header kartu Versi RAB (modal); baseline per minggu sebagai pita minggu
+  (ramp biru berurutan, versi lama lebih terang; minggu terbelah dua warna) + tabel riwayat aktivasi; zoom grid di toolbar.
 - Scrollbar seragam (`globals.css`, token `--scroll-*`): pil tipis warna garis biru, track tak
   terlihat; di grid/tabel lebar ada jalur samar agar terlihat bisa digeser. Firefox memakai
   `scrollbar-color` yang sama.

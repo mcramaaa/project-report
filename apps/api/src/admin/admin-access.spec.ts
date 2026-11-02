@@ -55,8 +55,8 @@ describe('roles', () => {
     expect(res.body.map((r: { code: string; isSystem: boolean; permissionCodes: string[] }) => [r.code, r.isSystem, r.permissionCodes])).toEqual(
       expect.arrayContaining([
         ['FILLER', true, ['ahsp.read', 'progress.input', 'project.read', 'rab.read']],
-        ['REVIEWER', true, ['ahsp.read', 'project.read', 'rab.read']],
-        ['MANAGER', true, ['ahsp.read', 'baseline.activate', 'document.read', 'document.upload', 'progress.input', 'project.read', 'project.update', 'rab.approve', 'rab.edit', 'rab.read', 'rabImport.approve', 'rabImport.review', 'report.reopen', 'schedule.approve', 'schedule.edit']],
+        ['REVIEWER', true, ['ahsp.read', 'project.read', 'rab.read', 'report.review']],
+        ['MANAGER', true, ['ahsp.read', 'baseline.activate', 'document.read', 'document.upload', 'progress.input', 'project.read', 'project.update', 'rab.approve', 'rab.edit', 'rab.read', 'rabImport.approve', 'rabImport.review', 'report.finalize', 'report.reopen', 'report.review', 'schedule.approve', 'schedule.edit']],
         ['ADMIN', true, ['ahsp.read', 'document.read', 'document.upload', 'project.read', 'rab.edit', 'rab.read', 'rabImport.review']],
       ]),
     );

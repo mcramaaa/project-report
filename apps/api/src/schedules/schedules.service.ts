@@ -53,12 +53,16 @@ export class SchedulesService {
   }
 
   /** D-076: plan and realisation on the weights of the baseline in force at the end of the current week. */
-  async sCurve(projectId: string): Promise<SCurveDto> {
+  /** `asOfWeek` (D-081): weights and plan of the baseline in force at that week instead of the current week. */
+  async sCurve(projectId: string, asOfWeek?: number): Promise<SCurveDto> {
     const weekRows = await this.prisma.projectWeek.findMany({ where: { projectId }, select: { weekNumber: true, startDate: true, endDate: true }, orderBy: { weekNumber: 'asc' } });
     if (!weekRows.length) throw new NotFoundException('Proyek tidak ditemukan.');
     const weeks = weekRows.map((w) => ({ weekNumber: w.weekNumber, startDate: fromDbDate(w.startDate), endDate: fromDbDate(w.endDate) }));
     const now = today();
-    const current = (weeks.find((w) => w.startDate <= now && now <= w.endDate) ?? (now < weeks[0]!.startDate ? weeks[0]! : weeks.at(-1)!));
+    const current =
+      (asOfWeek ? weeks[asOfWeek - 1] : undefined) ??
+      weeks.find((w) => w.startDate <= now && now <= w.endDate) ??
+      (now < weeks[0]!.startDate ? weeks[0]! : weeks.at(-1)!);
     const assignment = await this.prisma.baselineAssignment.findFirst({
       where: { projectId, revokedAt: null, effectiveFrom: { lte: weekRows[current.weekNumber - 1]!.endDate } },
       orderBy: { effectiveFrom: 'desc' },

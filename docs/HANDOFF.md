@@ -1,5 +1,7 @@
 # Handoff: Ubuntu laptop ⇄ WSL PC kantor
 
+Panduan pengguna ada di aplikasi (menu Panduan, `apps/web/app/(app)/panduan/page.tsx`). Template laporan + cetak/PDF harian & mingguan sudah ada (D-082 tahap 1). Berikutnya: ekspor Excel (tahap 2), laporan bulanan B.n (tahap 3).
+
 Dokumen ini tidak memuat password, token, atau isi `.env`.
 Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
 `docs/AI_ENGINEERING_STANDARDS.md` untuk standar kerja frontend/backend.
@@ -198,7 +200,8 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M12 Kurva S (D-076)                                                                    | Kurva S + analisis keterlambatan (D-077) + simulasi skenario jadwal (D-078)            |
 | M11 Daily Reports (D-079)                                                              | pekerjaan dari alokasi, tenaga kerja, bahan/alat AHSP vs aktual, cuaca, Draft→Final  |
 | Database pekerja (D-080) | daftar global nama, posisi, NIK (tersamar tanpa `workers.manage`), foto KTP privat |
-| M12–M16 (laporan mingguan/4 minggu, finalisasi, export, deploy)                        | belum dimulai; M12 perlu sisa OD-005                                                   |
+| M12 Laporan mingguan (D-081) | rekap per kelompok, ringkasan, Kurva S, rangkuman harian, detail item; ajukan → periksa → final (snapshot, kunci) | 
+| M13–M16 (laporan 4 minggu, export, deploy)                        | belum dimulai; M13 perlu sisa OD-005                                                   |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap
 workbook kantor. Kontrak dan MC-0 cocok per item (416/416) dan total (D-063).

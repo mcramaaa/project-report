@@ -5,7 +5,11 @@ import { Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { ScheduleEditor } from './schedule-editor';
 
-export default async function SchedulePage({ params }: { params: Promise<{ projectId: string; scheduleId: string }> }) {
+export default async function SchedulePage({
+  params,
+}: {
+  params: Promise<{ projectId: string; scheduleId: string }>;
+}) {
   const { projectId, scheduleId } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const [{ status, data: project }, schedule] = await Promise.all([
@@ -16,7 +20,10 @@ export default async function SchedulePage({ params }: { params: Promise<{ proje
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const active = project.status === 'ACTIVE';
   const canEdit = active && project.permissions.includes('schedule.edit');
-  const documents = canEdit && project.permissions.includes('document.read') ? (await serverGet<DocumentDto[]>(`${base}/documents`)).data : undefined;
+  const documents =
+    canEdit && project.permissions.includes('document.read')
+      ? (await serverGet<DocumentDto[]>(`${base}/documents`)).data
+      : undefined;
 
   return (
     <>
@@ -31,7 +38,9 @@ export default async function SchedulePage({ params }: { params: Promise<{ proje
           initial={schedule.data}
           canEdit={canEdit}
           canApprove={active && project.permissions.includes('schedule.approve')}
-          documents={documents?.filter((d) => d.originalFilename.toLowerCase().endsWith('.xlsx')) ?? []}
+          documents={
+            documents?.filter((d) => d.originalFilename.toLowerCase().endsWith('.xlsx')) ?? []
+          }
         />
       )}
     </>

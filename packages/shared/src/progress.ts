@@ -31,8 +31,10 @@ export interface ProgressWeekSummaryDto {
   endDate: string;
   /** Version in force on the last day of the week (D-073 butir 3); null without a baseline. */
   baseline: { rabVersionId: string; label: string } | null;
-  /** Started (start date ≤ today) and the project is ACTIVE. */
+  /** Editable: started (start date ≤ today), the project is ACTIVE and the week is not locked. */
   open: boolean;
+  /** A FINAL weekly report covers this week (D-081 butir 5). */
+  locked: boolean;
   /** Work items with a progress row this week. */
   filledCount: number;
 }

@@ -288,6 +288,8 @@ Milestone 3:
 - Nomor minggu/periode yang sama mempertahankan ID baris; hanya tanggalnya yang diperbarui. Minggu/periode baru ditambahkan di akhir.
 - Baris di akhir yang tidak lagi tercakup dihapus hanya bila tidak memiliki data terkait; foreign key `RESTRICT` menolak penghapusan bila ada data, dan perubahan dibatalkan (`409`).
 
+Diterapkan 2026-11-01: tanggal mulai ditolak (409) bila sudah ada progres mingguan, laporan harian, atau laporan mingguan; masa pelaksanaan tetap boleh diubah.
+
 Batasan untuk milestone berikutnya (belum selesai hanya karena regenerasi aman di M3):
 
 - Tanggal mulai dikunci setelah ada data terkait.
@@ -1228,6 +1230,122 @@ Tanggal: 2026-10-31. Diputuskan pengguna.
 6. **Seed development** `db:seed:workers` (terpisah dari `db:seed:dev`, tidak membuat proyek) menambah pekerja contoh dengan NIK
    berawalan 99 (bukan kode provinsi, jadi jelas fiktif); idempoten.
 
+## D-081 Laporan Mingguan (M12)
+
+Tanggal: 2026-11-01. Diputuskan pengguna (menutup OD-005 bagian laporan
+mingguan); format mengikuti `04. LAPORAN MINGGUAN … (MC 0)` sheet C.n
+(cover), RM.n (rekap), M.n (detail item), Curva S M.n.
+
+1. **Satu laporan per minggu proyek**, diajukan setelah minggu berakhir
+   (tanggal akhir ≤ hari ini, WIT) pada proyek ACTIVE. Isinya dihitung dari
+   data yang sudah ada: rekap per kelompok jadwal (bobot, prestasi s/d minggu
+   lalu, minggu ini, s/d minggu ini), realisasi/rencana/deviasi kumulatif,
+   total/terpakai/sisa waktu, detail progres item, Kurva S sampai minggu itu
+   (baseline minggu itu, D-073 butir 3), dan rangkuman laporan harian minggu
+   itu (tenaga kerja orang-hari per keahlian, total bahan/alat aktual, hari
+   hujan/gerimis).
+2. **Status:** DRAFT (diajukan pemegang `progress.input`) → REVIEWED (izin baru
+   `report.review`, default REVIEWER dan MANAGER) → FINAL (izin baru
+   `report.finalize`, default MANAGER). Pemeriksa tidak boleh memeriksa
+   minggu yang progresnya ikut ia isi/ubah (PRD §2, berlaku juga untuk super
+   admin). FINAL → REOPENED oleh `report.reopen` dengan alasan, lalu diperiksa
+   dan difinalkan lagi. Tidak ada langkah "kembalikan": isi laporan dihitung
+   dari data sumber, jadi koreksi dilakukan di progres/laporan harian lalu
+   diperiksa ulang.
+3. **ERROR menahan** pemeriksaan/finalisasi: minggu tanpa baseline. **WARNING**
+   boleh lanjut dengan konfirmasi: jadwal belum approved (rencana kosong),
+   laporan harian belum ada/belum final.
+4. **Snapshot:** saat FINAL seluruh isi laporan (termasuk identitas proyek dan
+   penanda tangan) disimpan sebagai snapshot immutable; laporan FINAL selalu
+   ditampilkan dari snapshot. Reopen tidak menghapus snapshot lama; final
+   berikutnya menambah snapshot baru.
+5. **Kunci:** selama laporan minggu X FINAL, progres mingguan, alokasi harian,
+   dan laporan harian minggu X **dan minggu-minggu sebelumnya** tidak dapat
+   diubah (kumulatif minggu X bergantung pada minggu sebelumnya). Buka kembali
+   laporan untuk mengubahnya. Aktivasi/pencabutan baseline yang mulai berlaku pada
+   minggu terkunci juga ditolak.
+6. **Penanda tangan** disimpan per proyek (`PUT /projects/:id/signatories`,
+   izin `project.update`): Pejabat Pembuat Komitmen, PPTK, Konsultan Pengawas,
+   Kontraktor Pelaksana — nama, jabatan, NIP/instansi. Ikut dibekukan di
+   snapshot. **Diubah 2026-11-02 (permintaan pengguna):** web tidak
+   menampilkan kartu tanda tangan; pengisiannya pindah ke halaman pengaturan
+   template laporan (D-082).
+
+## D-082 Template Laporan dan Ekspor (M14)
+
+Tanggal: 2026-11-02. Diputuskan pengguna (menutup OD-014); format awal
+mengikuti workbook kantor `03 LAPORAN HARIAN`, `04. LAPORAN MINGGUAN`,
+`05. LAPORAN BULANAN` (MC 0).
+
+1. **Satu template per proyek per jenis laporan** (HARIAN, MINGGUAN,
+   BULANAN). Template bisa **diimpor dari proyek lain** (semua jenis sekaligus,
+   logo opsional) oleh pemegang `project.update` yang juga bisa membaca proyek
+   sumber. Ubah template dan logo: `project.update`; lihat: `rab.read`.
+2. **Pengaturan terstruktur, bukan desainer bebas:** kertas (A4/F4/Legal,
+   tegak/mendatar, margin, ukuran huruf); kop (3 logo dengan keterangan,
+   baris teks kop); judul; isian identitas (tampil, label, urutan); bagian
+   laporan (tampil, judul, urutan) dan kolom tabelnya (tampil, judul); blok
+   tanda tangan (1–6 kolom: keterangan, jabatan, instansi, nama, jabatan
+   rinci/NIP); jumlah desimal volume (bawaan 2; format angka lain D-083).
+3. **Logo** per proyek: Pemberi Tugas/Dinas (kop), Konsultan Pengawas,
+   Kontraktor (penyedia). PNG/JPG/WEBP maks. 2 MB, dicek dari isi file,
+   disimpan privat dan disajikan lewat API.
+4. **Tanda tangan ada di template** tiap jenis laporan (penanda tangan
+   berbeda per jenis). Menggantikan penanda tangan per proyek D-081 butir 6
+   (kolom `projects.signatories` dihapus; belum pernah dirilis).
+5. **Ekspor:** PDF dari halaman cetak di browser (tampilan sama dengan
+   pratinjau); Excel dibuat server dari template yang sama (tahap 2). Data
+   laporan FINAL diambil dari snapshot; layout memakai template saat ekspor.
+6. **Bertahap:** (1) template, logo, impor, pratinjau dan cetak/PDF harian &
+   mingguan; (2) ekspor Excel; (3) laporan bulanan B.n (M13) dan ekspornya.
+
+## D-083 Format Angka
+
+Tanggal: 2026-11-02. Diputuskan pengguna; berlaku di semua layar, cetak/PDF,
+dan ekspor Excel berikutnya. Konstanta `DECIMALS` di `packages/shared`.
+
+| Jenis angka | Desimal tampil |
+|---|---|
+| Uang (Rupiah, harga, jumlah) | 2 |
+| Volume dan jumlah bahan/alat | 2 |
+| AHSP (koefisien analisa) | 4 |
+| Bobot (% bobot proyek: bobot item/kelompok, realisasi, rencana, deviasi, sel jadwal) | 3 |
+
+Jumlah orang (tenaga kerja) tetap bilangan bulat. Pembulatan hanya untuk
+tampilan (HALF_UP); nilai tersimpan dan semua perhitungan tetap eksak
+(aturan decimal-safe), dan nilai eksak tetap terlihat di popup asal nilai
+serta di isian saat mengedit. Template laporan (D-082) hanya mengatur desimal
+volume; bobot selalu 3.
+
+## D-084 Format Laporan Harian Mengwi
+
+Tanggal: 2026-11-02. Diputuskan pengguna: cetak/PDF dan ekspor Excel laporan
+harian mengikuti `04. LAPORAN HARIAN SMP NEGERI 5 MENGWI 27-10-2026.xlsx`
+(sheet Har.n, satu hari per halaman A4 mendatar).
+
+1. **Layout template baru `columns`** (bawaan laporan harian): kepala berisi
+   identitas di kiri, logo Konsultan Pengawas dan Kontraktor Pelaksana dengan
+   keterangan di atas logo, judul "LAPORAN HARIAN" + Minggu ke/Hari/Tanggal di
+   kanan; empat tabel berdampingan sesuai urutan bagian di template (bawaan:
+   Tenaga kerja, Jenis alat, Penggunaan material, Pekerjaan yang diselesaikan);
+   di bawahnya Keadaan cuaca (Cerah / Mendung = berawan+gerimis / Hujan,
+   beserta jam) dan Catatan; tanda tangan (bawaan 2: Konsultan Pengawas,
+   Kontraktor Pelaksana). Layout `stacked` (format sebelumnya) tetap bisa
+   dipilih.
+2. **Kelompok tenaga kerja:** nama keahlian yang terdaftar sebagai "Staff
+   Kantor" di template tampil di kelompok itu, sisanya di "Tenaga Kerja";
+   baris JUMLAH menjumlahkan semua orang.
+3. Logo dengan keterangan kosong tidak ditampilkan.
+4. **Ekspor Excel laporan harian** (`GET …/daily-reports/:date/export`) dibuat
+   server dari template yang sama: satu sheet, kolom/sel gabungan/garis/logo
+   mengikuti layout, pengaturan cetak A4 sesuai template. Angka mengikuti
+   D-083.
+
+- Pengaturan format harian (template DAILY, `daily`): baris tabel minimal, muat satu halaman (cetak diperkecil otomatis seperti
+  "fit to 1 page" Excel), tinggi logo, label MINGGU KE/HARI/TANGGAL, label & satuan JUMLAH tenaga kerja, label cuaca,
+  tampilkan semua staf walau kosong; lebar relatif tiap tabel (`sections[].width`). PDF dan Excel memakai pengaturan yang sama.
+- Di PDF keempat daftar dicetak sebagai satu tabel sehingga barisnya sejajar.
+
 ## Keputusan Terbuka
 
 
@@ -1261,7 +1379,7 @@ Diputuskan sebelum: Milestone 10.
 
 ### OD-005 Status dan pemilik laporan mingguan & 4 minggu
 
-**Sebagian (2026-10-30):** laporan harian diputuskan di D-079 butir 2. Laporan mingguan/4 minggu masih terbuka (M12/M13).
+**Sebagian:** laporan harian diputuskan di D-079 butir 2 (2026-10-30), laporan mingguan di D-081 (2026-11-01). Laporan 4 minggu masih terbuka (M13).
 
 PRD §24 berlaku untuk semua laporan (DRAFT/REVIEWED/FINAL/REOPENED) dan aturan reviewer-own-entry membutuhkan "siapa yang menginput". `daily_reports` memiliki status/created_by, tetapi laporan mingguan dan periode hanya memiliki `weeks.status`, `report_periods.status`, dan `report_snapshots`. Di mana status, reviewer, dan penginput laporan mingguan/periode disimpan, dan siapa "penginput" laporan mingguan bila progres diisi beberapa user?
 
@@ -1316,3 +1434,14 @@ Sudah diputuskan: lihat D-051.
 
 **Ditutup 2026-10-27 oleh D-069:** setiap MC memakai aturan D-020 (default
 minggu berikutnya; tanggal pasti bila dokumen resmi mewajibkan).
+
+### OD-014 Template laporan dan ekspor PDF/Excel
+
+**Ditutup 2026-11-02 oleh D-082.** Dicatat 2026-11-02 (permintaan pengguna, belum dikerjakan). Halaman pengaturan
+layout template laporan harian, mingguan, dan bulanan yang bisa dikustom
+(termasuk blok tanda tangan), lalu ekspor laporan ke PDF dan Excel dari
+template itu. Ekspor laporan final memakai snapshot (PRD §26). Perlu
+diputuskan sebelum M13/M14: apa saja yang bisa dikustom (urutan/bagian,
+kop, kolom, tanda tangan), per proyek atau global, dan format Excel mengikuti
+workbook kantor atau bebas.
+

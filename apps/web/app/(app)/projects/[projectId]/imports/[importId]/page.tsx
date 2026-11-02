@@ -6,10 +6,17 @@ import { Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { ImportReview } from './import-review';
 
-export default async function ImportReviewPage({ params }: { params: Promise<{ projectId: string; importId: string }> }) {
+export default async function ImportReviewPage({
+  params,
+}: {
+  params: Promise<{ projectId: string; importId: string }>;
+}) {
   const { projectId, importId } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, detail] = await Promise.all([serverGet<ProjectDto>(base), serverGet<RabImportDetailDto>(`${base}/rab-imports/${encodeURIComponent(importId)}`)]);
+  const [{ status, data: project }, detail] = await Promise.all([
+    serverGet<ProjectDto>(base),
+    serverGet<RabImportDetailDto>(`${base}/rab-imports/${encodeURIComponent(importId)}`),
+  ]);
   if (status === 404 || detail.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
 

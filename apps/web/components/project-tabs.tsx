@@ -22,9 +22,24 @@ export function ProjectTabs({
   // Impor RAB lives under the RAB tab; a role that can only import still gets the tab, pointing at the imports page.
   const tabs: { key: ProjectTab; label: string; href: string; show: boolean }[] = [
     { key: 'info', label: 'Informasi', href: base, show: true },
-    { key: 'rab', label: 'RAB', href: permissions.includes('rab.read') ? `${base}/rab` : `${base}/imports`, show: permissions.includes('rab.read') || canImport },
-    { key: 'schedule', label: 'Jadwal', href: `${base}/schedule`, show: permissions.includes('rab.read') },
-    { key: 'progress', label: 'Progres', href: `${base}/progress`, show: permissions.includes('rab.read') },
+    {
+      key: 'rab',
+      label: 'RAB',
+      href: permissions.includes('rab.read') ? `${base}/rab` : `${base}/imports`,
+      show: permissions.includes('rab.read') || canImport,
+    },
+    {
+      key: 'schedule',
+      label: 'Jadwal',
+      href: `${base}/schedule`,
+      show: permissions.includes('rab.read'),
+    },
+    {
+      key: 'progress',
+      label: 'Progres',
+      href: `${base}/progress`,
+      show: permissions.includes('rab.read'),
+    },
   ];
   const current = active === 'imports' ? 'rab' : active;
   return (
@@ -50,7 +65,11 @@ export function ProjectHeader({ project: p, active }: { project: ProjectDto; act
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono">{p.code}</span>
             <span>TA {p.fiscalYear}</span>
-            {p.status === 'CLOSED' ? <Badge tone="red">Ditutup</Badge> : <Badge tone="green">Aktif</Badge>}
+            {p.status === 'CLOSED' ? (
+              <Badge tone="red">Ditutup</Badge>
+            ) : (
+              <Badge tone="green">Aktif</Badge>
+            )}
           </span>
         }
         subtitle={`${p.location} · ${formatDate(p.startDate)} – ${formatDate(p.plannedFinishDate)}`}

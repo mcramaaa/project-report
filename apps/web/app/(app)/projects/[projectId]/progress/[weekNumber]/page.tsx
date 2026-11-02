@@ -30,6 +30,14 @@ export default async function WeekProgressPage({
         <Icon name="arrow-left" size={14} />
         Semua minggu
       </Link>
+      <div className="mt-3">
+        <Link
+          className="btn btn-secondary"
+          href={`${base}/progress/${encodeURIComponent(weekNumber)}/report`}
+        >
+          Laporan mingguan M.{weekNumber}
+        </Link>
+      </div>
       {days.data && <DayStrip projectId={project.id} days={days.data} />}
       {progress.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat progres.</Alert>

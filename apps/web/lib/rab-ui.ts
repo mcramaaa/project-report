@@ -1,4 +1,4 @@
-import type { DailyReportStatus, RabRowType, RabVersionStatus, ScheduleStatus } from '@laporan-proyek/shared';
+import type { DailyReportStatus, RabRowType, RabVersionStatus, ScheduleStatus, WeeklyReportStatus } from '@laporan-proyek/shared';
 
 export const RAB_STATUS_BADGE: Record<
   RabVersionStatus,
@@ -48,8 +48,15 @@ export const RAB_COLUMNS = [
 ] as const;
 export type RabColumn = (typeof RAB_COLUMNS)[number]['key'];
 
+export const WEEKLY_STATUS_BADGE: Record<WeeklyReportStatus, { tone: 'blue' | 'green' | 'amber' | 'slate'; label: string }> = {
+  DRAFT: { tone: 'blue', label: 'Diajukan' },
+  REVIEWED: { tone: 'slate', label: 'Diperiksa' },
+  FINAL: { tone: 'green', label: 'Final' },
+  REOPENED: { tone: 'amber', label: 'Dibuka kembali' },
+};
+
 export const DAILY_STATUS_BADGE: Record<DailyReportStatus, { tone: 'blue' | 'green' | 'amber'; label: string }> = {
   DRAFT: { tone: 'blue', label: 'Draft' },
   FINAL: { tone: 'green', label: 'Final' },
-  REOPENED: { tone: 'amber', label: 'Dibuka kembali' },
+  REOPENED: { tone: 'amber', label: 'Revisi' },
 };

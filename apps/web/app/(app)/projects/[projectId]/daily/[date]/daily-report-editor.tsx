@@ -1,6 +1,6 @@
 'use client';
 
-import { addDays, Decimal } from '@laporan-proyek/calc';
+import { addDays, Decimal, parseIdNumber } from '@laporan-proyek/calc';
 import {
   WEATHER_CONDITIONS,
   WEATHER_LABELS,
@@ -9,6 +9,7 @@ import {
   type ResourceCategoryCode,
   type SaveDailyReportInput,
   type WeatherCondition,
+  DECIMALS,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -22,22 +23,27 @@ import { DAILY_STATUS_BADGE } from '@/lib/rab-ui';
 type Line = DailyResourceLineDto & { draftKey: string };
 type Weather = DailyReportDto['weather'][number];
 const QTY = /^\d{1,18}(\.\d{1,12})?$/;
-/** Users type Indonesian decimals; the API takes a dot. */
-const normalized = (v: string) => v.trim().replace(',', '.');
-const shown = (v: string | null) =>
-  v === null ? '' : formatNumber(new Decimal(v).toFixed(), { trim: true });
+const normalized = parseIdNumber;
+/** Editable value: Indonesian decimal comma, no thousands dots, so it reads back unchanged. */
+const toInput = (v: string) => new Decimal(v).toFixed().replace('.', ',');
+/** Quantities show DECIMALS.volume (D-083); raw API value in, display text out. */
 const short = (v: string | null) =>
   v === null
     ? '–'
-    : formatNumber(new Decimal(v).toDecimalPlaces(4, Decimal.ROUND_HALF_UP).toFixed(), {
-        trim: true,
-      });
+    : formatNumber(
+        new Decimal(v)
+          .toDecimalPlaces(DECIMALS.volume, Decimal.ROUND_HALF_UP)
+          .toFixed(DECIMALS.volume),
+      );
+/** Display of a typed value (read-only views). */
+const shownTyped = (v: string | null) =>
+  v && QTY.test(normalized(v)) ? short(normalized(v)) : (v ?? '');
 let seq = 0;
 const withKeys = (lines: DailyResourceLineDto[]): Line[] =>
   lines.map((l) => ({
     ...l,
     draftKey: `k${seq++}`,
-    actual: l.actual === null ? null : shown(l.actual),
+    actual: l.actual === null ? null : toInput(l.actual),
   }));
 
 /** D-079: one project day — work from the allocation, labor, materials/equipment (AHSP vs actual), weather. */
@@ -348,7 +354,11 @@ export function DailyReportEditor({
                                       ? new Decimal(l.calculated!)
                                           .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
                                           .toFixed()
-                                      : short(l.calculated),
+                                      : toInput(
+                                          new Decimal(l.calculated!)
+                                            .toDecimalPlaces(DECIMALS.volume, Decimal.ROUND_HALF_UP)
+                                            .toFixed(),
+                                        ),
                                 })
                               }
                             >
@@ -357,7 +367,7 @@ export function DailyReportEditor({
                           )}
                         </>
                       ) : (
-                        shown(l.actual) || '–'
+                        shownTyped(l.actual) || '–'
                       )}
                     </td>
                     <td role="cell" data-label="Catatan">
@@ -430,13 +440,50 @@ export function DailyReportEditor({
             <Link className="btn btn-secondary" href={`/projects/${projectId}/daily/${next}`}>
               Besok →
             </Link>
+            {data.report && (
+              <Link
+                className="btn btn-secondary"
+                href={`/print/projects/${projectId}/daily/${data.date}`}
+                target="_blank"
+              >
+                Ekspor PDF
+              </Link>
+            )}
+            {data.report && (
+              <a
+                className="btn btn-secondary"
+                href={`/api/projects/${projectId}/exports/daily/${data.date}`}
+              >
+                Ekspor Excel
+              </a>
+            )}
           </div>
         }
       >
         <div className="space-y-3">
-          {!data.open && (
+          {data.locked ? (
             <Alert kind="info">
-              Tanggal ini belum tiba atau proyek sudah ditutup; laporan belum dapat diisi.
+              Minggu {data.week.weekNumber} terkunci karena laporan mingguan sudah final. Untuk
+              merevisi laporan harian ini, buka kembali laporan mingguannya dulu.
+            </Alert>
+          ) : (
+            !data.open && (
+              <Alert kind="info">
+                Tanggal ini belum tiba atau proyek sudah ditutup; laporan belum dapat diisi.
+              </Alert>
+            )
+          )}
+          {status === 'FINAL' && !reopening && (
+            <Alert kind="success">
+              Laporan sudah final
+              {data.report?.finalizedBy &&
+                ` (${data.report.finalizedBy.name}${data.report.finalizedAt ? `, ${new Date(data.report.finalizedAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''})`}
+              . Isinya terkunci; gunakan <b>Revisi</b> untuk membukanya kembali.
+            </Alert>
+          )}
+          {status === 'REOPENED' && (
+            <Alert kind="warning">
+              Laporan sedang direvisi. Ubah isian, simpan, lalu finalkan lagi.
             </Alert>
           )}
           {data.prefilledFrom && (
@@ -494,15 +541,15 @@ export function DailyReportEditor({
           {reopening && (
             <InlineReasonForm
               id="daily-reopen-reason"
-              title="Buka kembali laporan harian"
-              description="Isi final disimpan di riwayat audit. Laporan harus difinalkan lagi setelah diubah."
-              label="Alasan membuka kembali (wajib)"
-              confirmLabel="Buka kembali"
+              title="Revisi laporan harian"
+              description="Laporan dibuka kembali untuk diubah. Isi final sebelumnya tercatat di riwayat audit; laporan harus difinalkan lagi setelah diubah."
+              label="Alasan revisi (wajib)"
+              confirmLabel="Buka untuk revisi"
               busy={busy}
               onSubmit={(reason) =>
                 void run(
                   () => api<DailyReportDto>('POST', `${base}/reopen`, { reason }),
-                  'Laporan dibuka kembali.',
+                  'Laporan dibuka untuk revisi.',
                 )
               }
               onCancel={() => setReopening(false)}
@@ -529,12 +576,31 @@ export function DailyReportEditor({
                 </Button>
               </>
             )}
-            {status === 'FINAL' && canReopen && data.open && !reopening && (
-              <Button type="button" variant="secondary" onClick={() => setReopening(true)}>
-                Buka kembali
+            {status === 'FINAL' && !reopening && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={!canReopen || !data.open}
+                title={
+                  !canReopen
+                    ? 'Revisi laporan final butuh izin buka kembali laporan (bawaan: MANAGER).'
+                    : data.locked
+                      ? 'Buka kembali laporan mingguan minggu ini dulu.'
+                      : !data.open
+                        ? 'Proyek sudah ditutup.'
+                        : undefined
+                }
+                onClick={() => setReopening(true)}
+              >
+                Revisi
               </Button>
             )}
           </div>
+          {status === 'FINAL' && !canReopen && (
+            <p className="field-hint">
+              Minta MANAGER (izin buka kembali laporan) untuk merevisi laporan final.
+            </p>
+          )}
           {invalid.length > 0 && (
             <p className="field-error">
               Jumlah aktual berupa angka ≥ 0 (koma atau titik untuk desimal).

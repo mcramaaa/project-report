@@ -59,6 +59,12 @@ model User {
   dailyAllocations      DailyAllocation[]    @relation("DailyAllocationUpdatedBy")
   createdWorkers        Worker[]             @relation("WorkerCreatedBy")
   updatedWorkers        Worker[]             @relation("WorkerUpdatedBy")
+  submittedWeekly       WeeklyReport[]       @relation("WeeklySubmittedBy")
+  reviewedWeekly        WeeklyReport[]       @relation("WeeklyReviewedBy")
+  finalizedWeekly       WeeklyReport[]       @relation("WeeklyFinalizedBy")
+  weeklySnapshots       WeeklyReportSnapshot[]
+  reportTemplates       ReportTemplate[]
+  reportLogos           ProjectLogo[]
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -119,6 +125,9 @@ model Project {
   scheduleScenarios   ScheduleScenario[]
   weeklyProgress      WeeklyProgress[]
   dailyReports        DailyReport[]
+  weeklyReports       WeeklyReport[]
+  reportTemplates     ReportTemplate[]
+  reportLogos         ProjectLogo[]
 
   @@map("projects")
 }
@@ -144,6 +153,7 @@ model ProjectWeek {
   scheduleEntries ScheduleEntry[]
   progress        WeeklyProgress[]
   dailyReports    DailyReport[]
+  weeklyReport    WeeklyReport?
 
   @@unique([projectId, weekNumber])
   @@index([reportPeriodId])
@@ -1017,4 +1027,100 @@ model Worker {
 
   @@index([isActive, name])
   @@map("workers")
+}
+
+enum WeeklyReportStatus {
+  DRAFT
+  REVIEWED
+  FINAL
+  REOPENED
+}
+
+/// D-081: one weekly report per project week; content is computed live until FINAL, then read from the latest snapshot.
+model WeeklyReport {
+  id          String             @id @default(uuid(7)) @db.Char(36)
+  projectId   String             @map("project_id") @db.Char(36)
+  weekId      String             @unique @map("week_id") @db.Char(36)
+  status      WeeklyReportStatus @default(DRAFT)
+  submittedBy String             @map("submitted_by") @db.Char(36)
+  submittedAt DateTime           @map("submitted_at") @db.DateTime(3)
+  reviewedBy  String?            @map("reviewed_by") @db.Char(36)
+  reviewedAt  DateTime?          @map("reviewed_at") @db.DateTime(3)
+  reviewNote  String?            @map("review_note") @db.Text
+  finalizedBy String?            @map("finalized_by") @db.Char(36)
+  finalizedAt DateTime?          @map("finalized_at") @db.DateTime(3)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project         Project                @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  week            ProjectWeek            @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  submittedByUser User                   @relation("WeeklySubmittedBy", fields: [submittedBy], references: [id])
+  reviewedByUser  User?                  @relation("WeeklyReviewedBy", fields: [reviewedBy], references: [id])
+  finalizedByUser User?                  @relation("WeeklyFinalizedBy", fields: [finalizedBy], references: [id])
+  snapshots       WeeklyReportSnapshot[]
+
+  @@index([projectId, status])
+  @@map("weekly_reports")
+}
+
+/// D-081 butir 4: immutable content of a FINAL weekly report; a reopen keeps it, the next final adds one.
+model WeeklyReportSnapshot {
+  id             String   @id @default(uuid(7)) @db.Char(36)
+  weeklyReportId String   @map("weekly_report_id") @db.Char(36)
+  payload        Json
+  createdBy      String   @map("created_by") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  weeklyReport  WeeklyReport @relation(fields: [weeklyReportId], references: [id], onDelete: Restrict)
+  createdByUser User         @relation(fields: [createdBy], references: [id])
+
+  @@index([weeklyReportId, createdAt])
+  @@map("weekly_report_snapshots")
+}
+
+enum ReportType {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// D-082: per-project layout of one report type; `config` is validated by the API (shared reportTemplateSchema).
+model ReportTemplate {
+  id         String     @id @default(uuid(7)) @db.Char(36)
+  projectId  String     @map("project_id") @db.Char(36)
+  reportType ReportType @map("report_type")
+  config     Json
+  updatedBy  String     @map("updated_by") @db.Char(36)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  updatedByUser User    @relation(fields: [updatedBy], references: [id])
+
+  @@unique([projectId, reportType])
+  @@map("report_templates")
+}
+
+enum ReportLogoKind {
+  AGENCY
+  CONSULTANT
+  CONTRACTOR
+}
+
+/// D-082 butir 3: one logo per kind per project; the file lives under storage/projects/<id>/logos/.
+model ProjectLogo {
+  id        String         @id @default(uuid(7)) @db.Char(36)
+  projectId String         @map("project_id") @db.Char(36)
+  kind      ReportLogoKind
+  filename  String         @db.VarChar(64)
+  mimeType  String         @map("mime_type") @db.VarChar(100)
+  fileSize  Int            @map("file_size")
+  updatedBy String         @map("updated_by") @db.Char(36)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  updatedByUser User    @relation(fields: [updatedBy], references: [id])
+
+  @@unique([projectId, kind])
+  @@map("project_logos")
 }

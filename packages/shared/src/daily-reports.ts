@@ -83,8 +83,10 @@ export interface DailyReportDto {
     finalizedBy: { id: string; name: string } | null;
     finalizedAt: string | null;
   } | null;
-  /** The date has come and the project is ACTIVE. */
+  /** The date has come, the project is ACTIVE and the week is not locked. */
   open: boolean;
+  /** A FINAL weekly report covers this week (D-081 butir 5); revise that report first. */
+  locked: boolean;
   note: string | null;
   work: { workItemId: string; workItemCode: string | null; description: string; unit: string | null; volume: string; method: 'DAILY_FACTOR' | 'MANUAL' | 'FINAL'; analysis: string | null }[];
   resources: DailyResourceLineDto[];

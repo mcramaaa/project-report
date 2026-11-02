@@ -357,13 +357,34 @@ Daftar global. Semua user login boleh membaca; NIK tersamar tanpa `workers.manag
 - `GET /workers/:workerId/ktp`: file KTP inline (`workers.manage`)
 - `DELETE /workers/:workerId/ktp` (`workers.manage`)
 
-## 13. Weekly Reports
+## 13a. Report Templates (D-082)
 
 ```text
-GET  /weeks/:weekId/report
-POST /weeks/:weekId/report/finalize
-POST /weeks/:weekId/report/reopen
+GET    /projects/:projectId/report-templates                     3 template (DAILY, WEEKLY, MONTHLY; bawaan bila belum disimpan) + logo (rab.read)
+PUT    /projects/:projectId/report-templates/:reportType         config template (project.update); dinormalkan ke bagian/kolom yang dikenal
+POST   /projects/:projectId/report-templates/import              { sourceProjectId, includeLogos } (project.update + rab.read di sumber; 404 bila tidak)
+GET    /projects/:projectId/report-templates/logos/:kind         gambar logo AGENCY | CONSULTANT | CONTRACTOR (rab.read)
+POST   /projects/:projectId/report-templates/logos/:kind         multipart `files` PNG/JPG/WEBP ≤ 2 MB (project.update)
+DELETE /projects/:projectId/report-templates/logos/:kind         (project.update)
+GET    /projects/:projectId/exports/daily/:date                 laporan harian .xlsx sesuai template DAILY (rab.read; D-084)
 ```
+
+Cetak/PDF: halaman web `/print/projects/:projectId/daily/:date` dan `/print/projects/:projectId/weekly/:weekNumber`.
+
+## 13. Weekly Reports
+
+D-081 (dipakai):
+
+```text
+GET  /projects/:projectId/weekly-reports                       status laporan per minggu (rab.read)
+GET  /projects/:projectId/weekly-reports/:weekNumber           isi laporan (live; FINAL dari snapshot terakhir) + issues + enteredBy
+POST /projects/:projectId/weekly-reports/:weekNumber/submit    (progress.input) minggu sudah berakhir → DRAFT
+POST /projects/:projectId/weekly-reports/:weekNumber/review    { note?, acknowledgeWarnings? } (report.review; bukan penginput minggu itu → 403)
+POST /projects/:projectId/weekly-reports/:weekNumber/finalize  { acknowledgeWarnings? } (report.finalize) REVIEWED → FINAL + snapshot
+POST /projects/:projectId/weekly-reports/:weekNumber/reopen    { reason } (report.reopen; minggu final terakhir dulu)
+```
+
+Selama minggu X FINAL: PUT progres/alokasi harian/laporan harian minggu ≤ X → 409 (D-081 butir 5).
 
 ## 14. 4-Week Reports
 
