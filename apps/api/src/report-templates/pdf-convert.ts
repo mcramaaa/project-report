@@ -50,10 +50,11 @@ async function convert(xlsx: Buffer): Promise<Buffer> {
   try {
     await writeFile(join(dir, 'laporan.xlsx'), xlsx);
     const soffice = [process.env.SOFFICE_PATH || 'soffice', `-env:UserInstallation=file://${PROFILE}`, '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', dir, join(dir, 'laporan.xlsx')];
-    // No network for the converter when the kernel allows an unprivileged network namespace.
-    const [cmd, ...args] = (await sandboxAvailable()) ? ['unshare', '-rn', ...soffice] : soffice;
+    // Fail closed: the converter only runs without network, and with an environment that carries no secrets.
+    if (!(await sandboxAvailable()))
+      throw new ServiceUnavailableException('Server tidak mendukung sandbox tanpa jaringan (unshare -rn), jadi PDF format Excel kantor tidak dibuat.');
     try {
-      await run(cmd!, args, { timeout: 180_000 });
+      await run('unshare', ['-rn', ...soffice], { timeout: 180_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new ServiceUnavailableException('LibreOffice belum terpasang di server, jadi PDF format Excel kantor belum bisa dibuat.');
       throw err;

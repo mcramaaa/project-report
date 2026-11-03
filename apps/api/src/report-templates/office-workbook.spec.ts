@@ -65,6 +65,14 @@ describe('office workbook cells (D-086)', () => {
       const x = await Xlsx.open(Buffer.from(await wb.xlsx.writeBuffer()));
       await expect(x.stripOutsideData(), formula).rejects.toBeInstanceOf(UnsafeWorkbookError);
     }
+    // Defined names and hex-entity spelling are checked too.
+    const named = new ExcelJS.Workbook();
+    named.addWorksheet('M.1').getCell('A1').value = 1;
+    named.definedNames.add("M.1!$A$1", 'x');
+    const raw = await Xlsx.open(Buffer.from(await named.xlsx.writeBuffer()));
+    const wbXml = (raw as unknown as { workbookXml: string }).workbookXml;
+    (raw as unknown as { workbookXml: string }).workbookXml = wbXml.replace(/(<definedName\b[^>]*>)[^<]*/, '$1&#x57;EBSERVICE("http://x/")');
+    await expect(raw.stripOutsideData()).rejects.toBeInstanceOf(UnsafeWorkbookError);
   });
 
   it('pairs by position when counts agree and by name otherwise', () => {

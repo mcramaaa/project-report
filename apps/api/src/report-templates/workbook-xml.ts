@@ -95,12 +95,24 @@ export class Xlsx {
    * so a recalculating LibreOffice cannot read local files or call URLs from an uploaded workbook.
    */
   async stripOutsideData(): Promise<void> {
-    const risky = /\b(WEBSERVICE|FILTERXML|INDIRECT|DDE|IMPORTXML|IMPORTDATA|IMPORTRANGE)\s*\(|\[\d+\]|file:/i;
-    for (const s of this.sheets) {
-      const xml = await text(this.zip, s.path);
-      for (const m of xml.matchAll(/<f\b[^>]*>([\s\S]*?)<\/f>/g))
-        if (risky.test(unescapeXml(m[1]!)))
-          throw new UnsafeWorkbookError(`Sheet ${s.name} memuat rumus yang mengambil data dari luar file (${unescapeXml(m[1]!).slice(0, 60)}); PDF tidak dibuat.`);
+    // Denylist over every formula-bearing element of every part (cells, defined names, conditional formats, data
+    // validation); the converter also runs without network (pdf-convert.ts), so this is one of two layers.
+    const risky = /\b(WEBSERVICE|FILTERXML|INDIRECT|DDE|IMPORTXML|IMPORTDATA|IMPORTRANGE|RTD|CALL|REGISTER|EXEC|HYPERLINK)\s*\(|\[\d+\]|[a-z][a-z0-9+.-]*:\/\/|file:/i;
+    // Self-closing elements (shared formula children) carry no text.
+    const formula = /<((?:\w+:)?(?:f|formula\d?|definedName))\b[^>]*(?<!\/)>([\s\S]*?)<\/\1>/g;
+    // Names pointing into an external link ([n]) die with the links removed below; drop them instead of refusing.
+    this.workbookXml = this.workbookXml
+      .replace(/<definedName\b[^>]*>[^<]*\[\d+\][^<]*<\/definedName>/g, '')
+      .replace(/<definedNames>\s*<\/definedNames>/, '');
+    for (const name of Object.keys(this.zip.files)) {
+      if (/^xl\/(connections\.xml|queryTables\/)/.test(name))
+        throw new UnsafeWorkbookError('File Excel memuat koneksi data luar (connections/query table); PDF tidak dibuat.');
+      if (!name.startsWith('xl/') || !name.endsWith('.xml') || name.startsWith('xl/externalLinks/')) continue;
+      const xml = name === 'xl/workbook.xml' ? this.workbookXml : await text(this.zip, name);
+      for (const m of xml.matchAll(formula)) {
+        const f = unescapeXml(m[2]!);
+        if (risky.test(f)) throw new UnsafeWorkbookError(`${name} memuat rumus yang mengambil data dari luar file (${f.slice(0, 60)}); PDF tidak dibuat.`);
+      }
     }
     for (const name of Object.keys(this.zip.files)) if (name.startsWith('xl/externalLinks/')) this.zip.remove(name);
     this.workbookXml = this.workbookXml.replace(/<externalReferences>[\s\S]*?<\/externalReferences>/, '');
@@ -223,5 +235,12 @@ export function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 export function unescapeXml(s: string): string {
-  return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_m, n: string) => String.fromCharCode(Number(n))).replace(/&amp;/g, '&');
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_m, n: string) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (_m, n: string) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, '&');
 }
