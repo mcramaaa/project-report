@@ -768,7 +768,7 @@ td:not(.num) > .inline-edit-form, td:not(.num) .inline-edit-form { margin-left: 
 @media (max-width: 767px) { .group-detail-row > td { display: block; padding: 10px 0; } }
 
 /* D-079: daily report chips on the weekly progress page. */
-.day-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.day-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .day-strip-label { margin-right: 4px; color: var(--muted); font-size: var(--fs-sm); font-weight: 600; }
 .day-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fff; color: var(--text-soft); font-size: var(--fs-sm); }
 .day-chip span { color: var(--muted); font-size: var(--fs-xs); }
@@ -945,3 +945,106 @@ a.day-chip:hover { border-color: var(--blue); color: var(--blue-dark); }
 .rd-dnote td { height: 3.4em; white-space: pre-wrap; vertical-align: middle; }
 .rd-dsigs { margin-top: 3mm; break-inside: avoid; }
 .rd-dsigs .rd-sig-name { padding-top: 16mm; }
+
+/* D-085 weekly/monthly office pack: one sheet per page (cover portrait, the rest landscape). */
+.rd-pack { display: grid; gap: 14px; }
+.rd-sheet { overflow: hidden; }
+@media print {
+  .rd-pack { display: block; }
+  .rd-sheet { break-after: page; }
+  .rd-sheet:last-child { break-after: auto; }
+  .rd-cover { page: cover; }
+}
+.rd-ohead h2 { margin: 0 0 3mm; font-size: 1.5em; font-weight: 700; text-align: center; text-decoration: underline; letter-spacing: .02em; }
+.rd-ohead-grid { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; margin-bottom: 3mm; }
+.rd-ohead .rd-identity td, .rd-ohead .rd-meta td { padding: .2mm 1.5mm .2mm 0; }
+.rd-ohead .rd-identity td:first-child, .rd-ohead .rd-meta td:first-child { font-weight: 700; }
+.rd-otable { table-layout: auto; }
+.rd-otable th { vertical-align: middle; }
+.rd-otable td { vertical-align: middle; }
+.rd-otable .rd-center, .rd-otable td.rd-center { text-align: center; }
+.rd-otable tfoot td { background: #e9edf2; }
+.rd-subtotal td { font-weight: 700; background: #f7f8fa; }
+.rd-osummary { margin: 3mm 0 0 auto; border-collapse: collapse; break-inside: avoid; }
+.rd-osummary td { padding: .3mm 2mm .3mm 0; font-weight: 700; }
+.rd-osummary td:nth-child(2) { text-align: right; min-width: 22mm; }
+.rd-osigs { margin-top: 4mm; }
+.rd-osigs .rd-sig-name { padding-top: 16mm; }
+.rd-cover { display: block; }
+.rd-cover .rd-fit { display: grid; gap: 0; text-align: center; }
+.rd-cover-kop { display: grid; grid-template-columns: 30mm 1fr; align-items: center; gap: 4mm; padding-bottom: 3mm; border-bottom: 2.5px double #111; }
+.rd-cover-kop img { width: 28mm; height: 30mm; object-fit: contain; }
+.rd-cover-kop p { font-weight: 700; }
+.rd-cover-kop .rd-kop-main { font-size: 1.3em; }
+.rd-cover-title { margin: 22mm 0 4mm; font-size: 2.6em; font-weight: 800; letter-spacing: .04em; }
+.rd-cover-week { font-size: 1.6em; font-weight: 700; }
+.rd-cover-label { margin-top: 10mm; font-size: 1.2em; font-weight: 700; text-decoration: underline; }
+.rd-cover-period { margin-top: 2mm; font-size: 1.2em; font-weight: 700; }
+.rd-cover-box { display: grid; gap: 4mm; margin: 14mm 6mm 0; padding: 6mm; border: 1.5px solid #111; font-size: 1.1em; }
+.rd-cover-strong { font-weight: 700; }
+.rd-cover-logos { display: grid; grid-template-columns: 1fr 1fr; margin: 12mm 6mm 0; border: 1.5px solid #111; }
+.rd-cover-logos figure { display: grid; justify-items: center; align-content: start; gap: 4mm; margin: 0; padding: 3mm 4mm 6mm; }
+.rd-cover-logos figure + figure { border-left: 1.5px solid #111; }
+.rd-cover-logos figcaption { font-weight: 700; }
+.rd-cover-logos img { width: 100%; height: 26mm; object-fit: contain; }
+.rd-cover-logos span { display: grid; place-items: center; height: 26mm; font-weight: 700; }
+.rd-schedule { position: relative; }
+.rd-stable { table-layout: fixed; font-size: .82em; }
+.rd-stable th, .rd-stable td { padding: 0 .6mm; overflow: hidden; line-height: 1.1; }
+.rd-stable .rd-ellipsis { white-space: nowrap; text-overflow: ellipsis; }
+.rd-stable .rd-sdate { font-weight: 400; font-size: .85em; }
+.rd-stable .rd-now { background: #fde68a; }
+.rd-stable td.rd-plan { background: #eef4fb; }
+.rd-scurve { position: absolute; pointer-events: none; overflow: visible; }
+.rd-slegend { margin-top: 2mm; font-size: .9em; }
+.rd-slegend span { display: inline-block; width: 8mm; margin: 0 1.5mm 0 4mm; vertical-align: middle; }
+.rd-slegend-plan { border-top: 1.6px dashed #d97706; }
+.rd-slegend-actual { border-top: 2px solid #1d4ed8; }
+.rd-rtable { table-layout: fixed; }
+.rd-rtable td { padding: .4mm 1.5mm; }
+.tpl-workbook { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-sunken); }
+.tpl-workbook p, .tpl-workbook-note { margin-top: 2px; color: var(--text-soft); font-size: var(--fs-sm); max-width: 80ch; }
+
+/* D-085 office look (Serangan workbook): Calibri, blue title bars, light-blue headers, hairline rows, thick frame. */
+.rd-pack .report-doc { font-family: Calibri, Carlito, 'Liberation Sans', Arial, sans-serif; }
+.rd-frame { padding: 3mm 3.5mm; border: 2.4px solid #000; }
+.rd-ohead h2 { margin: -3mm -3.5mm 3mm; padding: 2.2mm; border-bottom: 2.4px solid #000; background: #4474a0; color: #fff; text-decoration: none; font-size: 1.6em; }
+.rd-ohead .rd-identity td, .rd-ohead .rd-meta td { font-weight: 700; }
+.rd-ohead .rd-meta td:first-child { text-align: right; }
+.rd-otable th { background: #dae3f3; border-color: #000; }
+.rd-otable thead tr:first-child th { border-top-width: 1.6px; }
+.rd-otable td { border-top: .4pt solid #8a8a8a; border-bottom: .4pt solid #8a8a8a; border-left: .6pt solid #000; border-right: .6pt solid #000; }
+.rd-otable .rd-heading td { background: #fff; }
+.rd-otable .rd-subtotal td { background: #e7e6e6; border-top: 1.4px solid #000; border-bottom: 1.4px solid #000; }
+.rd-otable tfoot td { background: #fff2cc; border-top: 2.4px double #000; font-weight: 700; }
+.rd-osummary td { font-weight: 700; }
+.rd-cover .rd-frame { border: 0; padding: 0; }
+.rd-cover-title, .rd-cover-week, .rd-cover-label, .rd-cover-period { margin: 0; padding: 2mm 0; background: #4474a0; color: #fff; }
+.rd-cover-title { margin-top: 14mm; padding-top: 5mm; border: 2.4px solid #000; border-bottom: 0; }
+.rd-cover-week, .rd-cover-label { border-left: 2.4px solid #000; border-right: 2.4px solid #000; }
+.rd-cover-label { padding-top: 5mm; text-decoration: underline; }
+.rd-cover-period { padding-bottom: 5mm; border: 2.4px solid #000; border-top: 0; }
+.rd-cover-box { border-width: 2.4px; }
+.rd-cover-logos { border-width: 2.4px; }
+.rd-cover-logos figure + figure { border-left-width: 2.4px; }
+.rd-cover-logos figcaption { align-self: stretch; margin: -3mm -4mm 0; padding: 2mm; background: #4474a0; color: #fff; font-size: 1.3em; border-bottom: 2.4px solid #000; }
+.rd-stable thead tr:first-child th:not([rowspan]) { background: #fff2cc; }
+.rd-stable thead tr:nth-child(2) th, .rd-stable thead tr:nth-child(3) th { background: #ddebf7; }
+.rd-stable thead th[rowspan] { background: #d9d9d9; }
+.rd-stable .rd-now { background: #ffd966 !important; }
+.rd-stable td.rd-plan { background: #fff; }
+.rd-stable tfoot tr.rd-fplan td { background: #e2efda; }
+.rd-stable tfoot tr.rd-fact td { background: #fff2cc; }
+.rd-stable tfoot tr.rd-fdev td { background: #e7e6e6; }
+.rd-cover-logos figure { padding: 0 0 6mm; }
+.rd-cover-logos figcaption { justify-self: stretch; margin: 0; }
+
+/* Progress tab: one week header (back, prev/next, page tabs) and a sticky save bar for the grid. */
+.week-nav { display: grid; justify-items: start; gap: 0; margin-bottom: 4px; }
+.week-nav-top { display: flex; width: 100%; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.week-nav-step { display: inline-flex; align-items: center; gap: 8px; }
+.save-bar { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 1px solid var(--line-strong); border-radius: 14px; background: rgba(255,255,255,.96); box-shadow: var(--shadow-surface); color: var(--text-soft); font-size: var(--fs-sm); }
+.save-bar.is-dirty { border-color: #f3d9a4; background: #fffaf0; color: #92400e; font-weight: 600; }
+.week-nav .access-tabs { margin-bottom: 0; }
+.week-nav-step .btn[aria-disabled='true'] { opacity: .45; pointer-events: none; }
+.week-jump { width: auto; min-width: 12rem; }

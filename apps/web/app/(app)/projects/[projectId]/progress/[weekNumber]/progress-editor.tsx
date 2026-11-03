@@ -2,7 +2,6 @@
 
 import { Decimal, progressSummary, weeklyVolumeFromPercent } from '@laporan-proyek/calc';
 import type { ProgressInputMode, ProgressRowDto, WeeklyProgressDto } from '@laporan-proyek/shared';
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { Alert, Badge, Button, Section, Select } from '@/components/ui';
 import { GridTools, useLeaveWarning } from '@/components/grid-tools';
@@ -85,7 +84,8 @@ export function ProgressEditor({
 
   const { week } = data;
   const editable = canInput && week.open && Boolean(week.baseline);
-  const dirty = Object.values(drafts).some((v) => v.trim() !== '');
+  const changed = Object.values(drafts).filter((v) => v.trim() !== '').length;
+  const dirty = changed > 0;
   useLeaveWarning(dirty);
   const base = `/projects/${projectId}`;
 
@@ -129,32 +129,24 @@ export function ProgressEditor({
   return (
     <div className="mt-3 space-y-4">
       <Section
-        title={`Progres minggu ${week.weekNumber}`}
+        title={
+          <>
+            Progres minggu {week.weekNumber}{' '}
+            {week.locked ? (
+              <Badge tone="slate">Terkunci</Badge>
+            ) : editable ? (
+              <Badge tone="blue">Bisa diisi</Badge>
+            ) : (
+              <Badge>Hanya lihat</Badge>
+            )}
+          </>
+        }
+        body={Boolean(!week.baseline || week.locked || !week.open || notice || error)}
         description={
           <>
             {formatDate(week.startDate)} – {formatDate(week.endDate)} · Baseline{' '}
             {week.baseline?.label ?? 'belum ada'} (versi yang berlaku di akhir minggu)
           </>
-        }
-        action={
-          <div className="row-actions">
-            {week.filledCount > 0 && (
-              <Link
-                className="btn btn-secondary"
-                href={`${base}/progress/${week.weekNumber}/daily`}
-              >
-                Alokasi harian
-              </Link>
-            )}
-            {week.weekNumber > 1 && (
-              <Link className="btn btn-secondary" href={`${base}/progress/${week.weekNumber - 1}`}>
-                ← M.{week.weekNumber - 1}
-              </Link>
-            )}
-            <Link className="btn btn-secondary" href={`${base}/progress/${week.weekNumber + 1}`}>
-              M.{week.weekNumber + 1} →
-            </Link>
-          </div>
         }
       >
         <div className="space-y-3">
@@ -188,63 +180,46 @@ export function ProgressEditor({
               )}
             </Alert>
           )}
-          {editable && (
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label htmlFor="progress-mode" className="field-label">
-                  Cara isi
-                </label>
-                <Select
-                  id="progress-mode"
-                  value={mode}
-                  disabled={dirty}
-                  title={dirty ? 'Simpan atau kosongkan isian dulu' : undefined}
-                  onChange={(e) => setMode(e.target.value as ProgressInputMode)}
-                >
-                  <option value="VOLUME_WEEK">Volume minggu ini</option>
-                  <option value="PERCENT_CUMULATIVE">% kumulatif (seperti Excel)</option>
-                </Select>
-              </div>
-              <Button type="button" onClick={() => void save()} disabled={busy || !dirty}>
-                {busy ? 'Menyimpan…' : 'Simpan progres'}
-              </Button>
-              {dirty && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => setDrafts({})}
-                >
-                  Batalkan isian
-                </Button>
-              )}
-            </div>
-          )}
         </div>
       </Section>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {parents.size > 0 ? (
-          <div className="row-actions" role="group" aria-label="Kelompok pekerjaan">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setCollapsed(new Set(parents))}
-            >
-              Ciutkan semua
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={collapsed.size === 0}
-              onClick={() => setCollapsed(new Set())}
-            >
-              Buka semua
-            </Button>
-          </div>
-        ) : (
-          <span />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {editable && (
+            <label className="inline-flex items-center gap-2 text-sm font-medium whitespace-nowrap">
+              Isi dengan
+              <Select
+                id="progress-mode"
+                value={mode}
+                disabled={dirty}
+                title={dirty ? 'Simpan atau batalkan isian dulu' : undefined}
+                onChange={(e) => setMode(e.target.value as ProgressInputMode)}
+              >
+                <option value="VOLUME_WEEK">Volume minggu ini</option>
+                <option value="PERCENT_CUMULATIVE">% kumulatif (seperti Excel)</option>
+              </Select>
+            </label>
+          )}
+          {parents.size > 0 ? (
+            <div className="row-actions" role="group" aria-label="Kelompok pekerjaan">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setCollapsed(new Set(parents))}
+              >
+                Ciutkan semua
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={collapsed.size === 0}
+                onClick={() => setCollapsed(new Set())}
+              >
+                Buka semua
+              </Button>
+            </div>
+          ) : null}
+        </div>
         <GridTools />
       </div>
       <div className="rab-grid-wrap">
@@ -372,6 +347,34 @@ export function ProgressEditor({
           </tbody>
         </table>
       </div>
+      {editable && (
+        <div
+          className={`save-bar ${dirty ? 'is-dirty' : ''}`}
+          role="region"
+          aria-label="Simpan progres"
+        >
+          <span>
+            {dirty
+              ? `${changed} item diubah, belum disimpan.`
+              : `Ketik ${mode === 'VOLUME_WEEK' ? 'volume minggu ini' : '% kumulatif'} di kolom isian, lalu simpan.`}
+          </span>
+          <div className="row-actions">
+            {dirty && (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setDrafts({})}
+              >
+                Batalkan isian
+              </Button>
+            )}
+            <Button type="button" onClick={() => void save()} disabled={busy || !dirty}>
+              {busy ? 'Menyimpan…' : 'Simpan progres'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

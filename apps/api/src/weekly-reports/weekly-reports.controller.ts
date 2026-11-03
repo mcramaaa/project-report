@@ -74,3 +74,15 @@ export class WeeklyReportsController {
     return this.reports.reopen(auth.user, projectId, weekNumber, body.reason);
   }
 }
+
+/** D-087: monthly report B.n, read-only (built from its weeks). */
+@Controller('projects/:projectId/monthly-reports')
+export class MonthlyReportsController {
+  constructor(private readonly reports: WeeklyReportsService) {}
+
+  @Get(':periodNumber')
+  @RequireProjectPermission('rab.read')
+  get(@Param('projectId') projectId: string, @Param('periodNumber', week) periodNumber: number) {
+    return this.reports.monthly(projectId, periodNumber);
+  }
+}

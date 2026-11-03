@@ -68,6 +68,8 @@ export interface WeeklyReportContent {
   curve: SCurveDto;
   /** M sheet: item progress of the week. */
   items: ProgressRowDto[];
+  /** Bobot (% of project value) per ITEM row id of the baseline; absent in snapshots made before it existed. */
+  itemWeights?: Record<string, string>;
   daily: {
     days: { date: string; status: 'DRAFT' | 'FINAL' | 'REOPENED' | null }[];
     /** Orang-hari per keahlian. */
@@ -100,4 +102,15 @@ export interface WeeklyReportDto {
   issues: { errors: string[]; warnings: string[] };
   /** Project ACTIVE (actions are possible at all). */
   active: boolean;
+}
+
+/**
+ * D-087 laporan bulanan B.n = minggu 4n−3..4n (D-010); read-only, built from its weeks (no own input or approval).
+ * `content.week` holds the period: weekNumber = n, dates of its first and last week; "thisWeek" fields mean this period.
+ */
+export interface MonthlyReportDto {
+  periodNumber: number;
+  /** The weeks of the period with their weekly report status. */
+  weeks: WeeklyReportSummaryDto[];
+  content: WeeklyReportContent;
 }

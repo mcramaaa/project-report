@@ -1,5 +1,6 @@
 import { addDays, daysInclusive, Decimal, plannedFinishDate } from '@laporan-proyek/calc';
 import {
+  type MonthlyReportDto,
   type ReviewWeeklyReportInput,
   type WeatherCondition,
   type WeeklyReportContent,
@@ -14,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ProgressService, today } from '../progress/progress.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
 import { SchedulesService } from '../schedules/schedules.service';
+import { mergePeriod } from './monthly-report';
 
 const USER = { select: { id: true, name: true } } as const;
 const REPORT_SELECT = {
@@ -64,6 +66,16 @@ export class WeeklyReportsService {
       return { summary, report: reportDto(report), ...frozen, fromSnapshot: true, active };
     }
     return { summary, report: report && reportDto(report), ...(await this.build(projectId, weekNumber)), fromSnapshot: false, active };
+  }
+
+  /** D-087: B.n from its weeks' reports (FINAL weeks from their snapshot, others live). */
+  async monthly(projectId: string, periodNumber: number): Promise<MonthlyReportDto> {
+    const weeks = (await this.list(projectId)).filter((w) => Math.ceil(w.weekNumber / 4) === periodNumber);
+    if (!weeks.length) throw new NotFoundException(`Periode B${periodNumber} tidak ada di proyek ini.`);
+    // One week at a time: each report is several queries, and a period has at most four.
+    const reports: WeeklyReportDto[] = [];
+    for (const w of weeks) reports.push(await this.get(projectId, w.weekNumber));
+    return { periodNumber, weeks: reports.map((r) => r.summary), content: mergePeriod(periodNumber, reports.map((r) => r.content)) };
   }
 
   async submit(actor: AuthUser, projectId: string, weekNumber: number): Promise<WeeklyReportDto> {
@@ -157,6 +169,19 @@ export class WeeklyReportsService {
       this.prisma.weeklyProgress.findMany({ where: { projectId, weekId: week.id }, select: { enteredByUser: USER, updatedByUser: USER } }),
     ]);
 
+    // Item bobot = subtotal / version total, as on the RAB sheet (column S of the office workbook).
+    const itemWeights: Record<string, string> = {};
+    if (progress.week.baseline) {
+      const version = await this.prisma.rabVersion.findUniqueOrThrow({
+        where: { id: progress.week.baseline.rabVersionId },
+        select: { totalValue: true, items: { where: { rowType: 'ITEM' }, select: { id: true, subtotal: true } } },
+      });
+      const total = new Decimal(version.totalValue?.toString() ?? 0);
+      if (total.gt(0))
+        for (const it of version.items)
+          itemWeights[it.id] = new Decimal(it.subtotal?.toString() ?? 0).div(total).times(100).toDecimalPlaces(12, Decimal.ROUND_HALF_UP).toFixed();
+    }
+
     const i = weekNumber - 1;
     const sum = (xs: (string | null | undefined)[]) => xs.reduce((t, x) => t.plus(x ?? 0), new Decimal(0));
     const recap = curve.rows.map((r) => {
@@ -242,6 +267,7 @@ export class WeeklyReportsService {
           weeks: curve.weeks.map((x) => (x.weekNumber <= weekNumber ? x : { ...x, actual: null, actualCumulative: null, deviation: null })),
         },
         items: progress.rows,
+        itemWeights,
         daily: {
           days,
           labor: [...labor.values()].map((l) => ({ name: l.name, unit: l.unit, total: l.total.toFixed() })).sort((a, b) => a.name.localeCompare(b.name, 'id')),

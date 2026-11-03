@@ -1,7 +1,12 @@
 'use client';
 
 import { Decimal } from '@laporan-proyek/calc';
-import { WEATHER_LABELS, type WeeklyReportDto, DECIMALS } from '@laporan-proyek/shared';
+import {
+  WEATHER_LABELS,
+  type WeeklyReportContent,
+  type WeeklyReportDto,
+  DECIMALS,
+} from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useState } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
@@ -28,11 +33,14 @@ export function WeeklyReport({
   initial,
   permissions,
   meId,
+  officeWorkbook = false,
 }: {
   projectId: string;
   initial: WeeklyReportDto;
   permissions: string[];
   meId: string;
+  /** D-086: the project has the office workbook; PDF then comes from that file. */
+  officeWorkbook?: boolean;
 }) {
   const [data, setData] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -81,10 +89,6 @@ export function WeeklyReport({
       'Laporan difinalkan; progres minggu ini dan sebelumnya terkunci.',
     );
 
-  const total = (k: 'weight' | 'previous' | 'thisWeek' | 'cumulative') =>
-    c.recap.reduce((t, r) => t.plus(r[k] ?? 0), new Decimal(0)).toFixed();
-  const deviationNegative = c.totals.deviation?.startsWith('-');
-
   return (
     <div className="mt-3 space-y-4">
       <Section
@@ -101,13 +105,26 @@ export function WeeklyReport({
           </>
         }
         action={
-          <Link
-            className="btn btn-secondary"
-            href={`/print/projects/${projectId}/weekly/${summary.weekNumber}`}
-            target="_blank"
-          >
-            Ekspor PDF
-          </Link>
+          <div className="row-actions">
+            <Link
+              className="btn btn-secondary"
+              href={
+                officeWorkbook
+                  ? `/api/projects/${projectId}/exports/weekly/${summary.weekNumber}/pdf`
+                  : `/print/projects/${projectId}/weekly/${summary.weekNumber}`
+              }
+              target="_blank"
+              prefetch={false}
+            >
+              Ekspor PDF
+            </Link>
+            <a
+              className="btn btn-secondary"
+              href={`/api/projects/${projectId}/exports/weekly/${summary.weekNumber}`}
+            >
+              Ekspor Excel
+            </a>
+          </div>
         }
         description={`${formatDate(c.week.startDate)} – ${formatDate(c.week.endDate)} · Baseline ${c.baseline?.label ?? 'belum ada'}`}
       >
@@ -274,20 +291,51 @@ export function WeeklyReport({
         </div>
       </Section>
 
+      <ReportBody projectId={projectId} content={c} code="M" />
+    </div>
+  );
+}
+
+/** D-081/D-087: report content shared by the weekly (M.n) and monthly (B.n) pages. */
+export function ReportBody({
+  projectId,
+  content: c,
+  code,
+}: {
+  projectId: string;
+  content: WeeklyReportContent;
+  code: 'M' | 'B';
+}) {
+  const now = code === 'M' ? 'minggu ini' : 'bulan ini';
+  const prev = code === 'M' ? 'minggu lalu' : 'bulan lalu';
+  const cap = code === 'M' ? 'Minggu ini' : 'Bulan ini';
+  const total = (k: 'weight' | 'previous' | 'thisWeek' | 'cumulative') =>
+    c.recap.reduce((t, r) => t.plus(r[k] ?? 0), new Decimal(0)).toFixed();
+  const deviationNegative = c.totals.deviation?.startsWith('-');
+  return (
+    <>
       <Section
         title="Ringkasan"
         description="Persentase terhadap bobot proyek, seperti lembar RM kantor."
       >
         <dl className="analysis-stats">
           <div>
-            <dt>Realisasi s.d. M.{summary.weekNumber}</dt>
+            <dt>
+              Realisasi s.d. {code}.{c.week.weekNumber}
+            </dt>
             <dd>{pct(c.totals.actualCumulative)}</dd>
-            <span>minggu ini {pct(c.totals.actualThisWeek)}</span>
+            <span>
+              {now} {pct(c.totals.actualThisWeek)}
+            </span>
           </div>
           <div>
-            <dt>Rencana s.d. M.{summary.weekNumber}</dt>
+            <dt>
+              Rencana s.d. {code}.{c.week.weekNumber}
+            </dt>
             <dd>{pct(c.totals.plannedCumulative)}</dd>
-            <span>minggu ini {pct(c.totals.plannedThisWeek)}</span>
+            <span>
+              {now} {pct(c.totals.plannedThisWeek)}
+            </span>
           </div>
           <div>
             <dt>Deviasi</dt>
@@ -312,99 +360,9 @@ export function WeeklyReport({
         </dl>
       </Section>
 
-      <Section
-        title="Rekap progres per kelompok"
-        description="Prestasi pekerjaan (%) terhadap bobot proyek."
-        body={false}
-      >
-        {c.recap.length === 0 ? (
-          <p className="surface-body text-sm text-slate-500">
-            Rekap per kelompok tampil setelah jadwal versi baseline di-approve.
-          </p>
-        ) : (
-          <div className="data-panel">
-            <table role="table" className="data-table report-recap">
-              <thead role="rowgroup">
-                <tr role="row">
-                  <th role="columnheader" scope="col">
-                    No
-                  </th>
-                  <th role="columnheader" scope="col">
-                    Pekerjaan
-                  </th>
-                  <th role="columnheader" scope="col" className="num">
-                    Bobot (%)
-                  </th>
-                  <th role="columnheader" scope="col" className="num">
-                    s.d. minggu lalu
-                  </th>
-                  <th role="columnheader" scope="col" className="num">
-                    Minggu ini
-                  </th>
-                  <th role="columnheader" scope="col" className="num">
-                    s.d. minggu ini
-                  </th>
-                </tr>
-              </thead>
-              <tbody role="rowgroup">
-                {c.recap.map((r) =>
-                  r.weight === null ? (
-                    <tr role="row" key={r.id} className="period-row">
-                      <th role="cell" scope="colgroup" colSpan={6}>
-                        {r.displayNumber} {r.description}
-                      </th>
-                    </tr>
-                  ) : (
-                    <tr role="row" key={r.id}>
-                      <td role="cell" data-label="No">
-                        {r.displayNumber}
-                      </td>
-                      <td role="cell" data-label="Pekerjaan">
-                        {r.description}
-                      </td>
-                      <td role="cell" data-label="Bobot (%)" className="num">
-                        {formatRounded(r.weight, DECIMALS.weight)}
-                      </td>
-                      <td role="cell" data-label="s.d. minggu lalu" className="num">
-                        {formatRounded(r.previous, DECIMALS.weight)}
-                      </td>
-                      <td role="cell" data-label="Minggu ini" className="num">
-                        {formatRounded(r.thisWeek, DECIMALS.weight)}
-                      </td>
-                      <td role="cell" data-label="s.d. minggu ini" className="num">
-                        {formatRounded(r.cumulative, DECIMALS.weight)}
-                      </td>
-                    </tr>
-                  ),
-                )}
-              </tbody>
-              <tfoot role="rowgroup">
-                <tr role="row">
-                  <th role="cell" colSpan={2}>
-                    Jumlah
-                  </th>
-                  <td role="cell" data-label="Bobot (%)" className="num">
-                    {formatRounded(total('weight'), DECIMALS.weight)}
-                  </td>
-                  <td role="cell" data-label="s.d. minggu lalu" className="num">
-                    {formatRounded(total('previous'), DECIMALS.weight)}
-                  </td>
-                  <td role="cell" data-label="Minggu ini" className="num">
-                    {formatRounded(total('thisWeek'), DECIMALS.weight)}
-                  </td>
-                  <td role="cell" data-label="s.d. minggu ini" className="num">
-                    {formatRounded(total('cumulative'), DECIMALS.weight)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        )}
-      </Section>
-
       {c.curve.rows.length > 0 && (
         <Section
-          title={`Kurva S s.d. M.${summary.weekNumber}`}
+          title={`Kurva S s.d. ${code}.${c.week.weekNumber}`}
           action={<SCurveLegend />}
           body={false}
         >
@@ -413,8 +371,104 @@ export function WeeklyReport({
       )}
 
       <Section
+        title="Rekap progres per kelompok"
+        description="Prestasi pekerjaan (%) terhadap bobot proyek (lembar RM)."
+        body={false}
+      >
+        {c.recap.length === 0 ? (
+          <p className="surface-body text-sm text-slate-500">
+            Rekap per kelompok tampil setelah jadwal versi baseline di-approve.
+          </p>
+        ) : (
+          <details className="surface-body">
+            <summary className="cursor-pointer text-sm font-medium">
+              Tampilkan rekap {c.recap.filter((r) => r.weight !== null).length} pekerjaan · total
+              s.d. {now} {formatRounded(total('cumulative'), DECIMALS.weight)}%
+            </summary>
+            <div className="data-panel mt-3">
+              <table role="table" className="data-table report-recap">
+                <thead role="rowgroup">
+                  <tr role="row">
+                    <th role="columnheader" scope="col">
+                      No
+                    </th>
+                    <th role="columnheader" scope="col">
+                      Pekerjaan
+                    </th>
+                    <th role="columnheader" scope="col" className="num">
+                      Bobot (%)
+                    </th>
+                    <th role="columnheader" scope="col" className="num">
+                      s.d. {prev}
+                    </th>
+                    <th role="columnheader" scope="col" className="num">
+                      {cap}
+                    </th>
+                    <th role="columnheader" scope="col" className="num">
+                      s.d. {now}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody role="rowgroup">
+                  {c.recap.map((r) =>
+                    r.weight === null ? (
+                      <tr role="row" key={r.id} className="period-row">
+                        <th role="cell" scope="colgroup" colSpan={6}>
+                          {r.displayNumber} {r.description}
+                        </th>
+                      </tr>
+                    ) : (
+                      <tr role="row" key={r.id}>
+                        <td role="cell" data-label="No">
+                          {r.displayNumber}
+                        </td>
+                        <td role="cell" data-label="Pekerjaan">
+                          {r.description}
+                        </td>
+                        <td role="cell" data-label="Bobot (%)" className="num">
+                          {formatRounded(r.weight, DECIMALS.weight)}
+                        </td>
+                        <td role="cell" data-label={`s.d. ${prev}`} className="num">
+                          {formatRounded(r.previous, DECIMALS.weight)}
+                        </td>
+                        <td role="cell" data-label={cap} className="num">
+                          {formatRounded(r.thisWeek, DECIMALS.weight)}
+                        </td>
+                        <td role="cell" data-label={`s.d. ${now}`} className="num">
+                          {formatRounded(r.cumulative, DECIMALS.weight)}
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+                <tfoot role="rowgroup">
+                  <tr role="row">
+                    <th role="cell" colSpan={2}>
+                      Jumlah
+                    </th>
+                    <td role="cell" data-label="Bobot (%)" className="num">
+                      {formatRounded(total('weight'), DECIMALS.weight)}
+                    </td>
+                    <td role="cell" data-label={`s.d. ${prev}`} className="num">
+                      {formatRounded(total('previous'), DECIMALS.weight)}
+                    </td>
+                    <td role="cell" data-label={cap} className="num">
+                      {formatRounded(total('thisWeek'), DECIMALS.weight)}
+                    </td>
+                    <td role="cell" data-label={`s.d. ${now}`} className="num">
+                      {formatRounded(total('cumulative'), DECIMALS.weight)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </details>
+        )}
+      </Section>
+
+      <Section
         title="Rangkuman laporan harian"
-        description="Jumlah dari laporan harian minggu ini (angka aktual)."
+        description={`Jumlah dari laporan harian ${now} (angka aktual).`}
       >
         <div className="space-y-4">
           <DayStrip
@@ -430,29 +484,35 @@ export function WeeklyReport({
                   .join(', ')}
             . Hari hujan/gerimis: {c.daily.rainDays}.
           </p>
-          <div className="grid gap-4 lg:grid-cols-2">
-            <SummaryTable
-              dp={0}
-              title="Tenaga kerja (orang-hari)"
-              rows={c.daily.labor.map((l) => ({
-                key: l.name,
-                name: l.name,
-                unit: l.unit,
-                total: l.total,
-              }))}
-              empty="Belum ada tenaga kerja di laporan harian."
-            />
-            <SummaryTable
-              title="Bahan dan alat"
-              rows={c.daily.resources.map((r) => ({
-                key: `${r.category}${r.name}${r.unit}`,
-                name: `${r.category === 'MATERIAL' ? 'Bahan' : 'Alat'} · ${r.name}`,
-                unit: r.unit,
-                total: r.total,
-              }))}
-              empty="Belum ada bahan atau alat aktual."
-            />
-          </div>
+          <details>
+            <summary className="cursor-pointer text-sm font-medium">
+              Tampilkan {c.daily.labor.length} tenaga kerja dan {c.daily.resources.length}{' '}
+              bahan/alat
+            </summary>
+            <div className="mt-3 grid gap-4 lg:grid-cols-2">
+              <SummaryTable
+                dp={0}
+                title="Tenaga kerja (orang-hari)"
+                rows={c.daily.labor.map((l) => ({
+                  key: l.name,
+                  name: l.name,
+                  unit: l.unit,
+                  total: l.total,
+                }))}
+                empty="Belum ada tenaga kerja di laporan harian."
+              />
+              <SummaryTable
+                title="Bahan dan alat"
+                rows={c.daily.resources.map((r) => ({
+                  key: `${r.category}${r.name}${r.unit}`,
+                  name: `${r.category === 'MATERIAL' ? 'Bahan' : 'Alat'} · ${r.name}`,
+                  unit: r.unit,
+                  total: r.total,
+                }))}
+                empty="Belum ada bahan atau alat aktual."
+              />
+            </div>
+          </details>
         </div>
       </Section>
 
@@ -481,7 +541,7 @@ export function WeeklyReport({
                     s.d. lalu
                   </th>
                   <th role="columnheader" scope="col" className="num">
-                    Minggu ini
+                    {cap}
                   </th>
                   <th role="columnheader" scope="col" className="num">
                     s.d. ini
@@ -519,7 +579,7 @@ export function WeeklyReport({
                     <td role="cell" data-label="s.d. lalu" className="num">
                       {r.workItemId ? formatRounded(r.previousCumulative, DECIMALS.volume) : ''}
                     </td>
-                    <td role="cell" data-label="Minggu ini" className="num">
+                    <td role="cell" data-label={cap} className="num">
                       {r.thisWeek ? formatRounded(r.thisWeek.volume, DECIMALS.volume) : ''}
                     </td>
                     <td role="cell" data-label="s.d. ini" className="num">
@@ -535,7 +595,7 @@ export function WeeklyReport({
           </div>
         </details>
       </Section>
-    </div>
+    </>
   );
 }
 

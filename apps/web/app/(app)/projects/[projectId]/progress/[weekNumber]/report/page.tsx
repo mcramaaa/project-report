@@ -1,10 +1,9 @@
-import type { ProjectDto, WeeklyReportDto } from '@laporan-proyek/shared';
-import Link from 'next/link';
+import type { ProjectDto, ReportTemplatesDto, WeeklyReportDto } from '@laporan-proyek/shared';
 import { notFound } from 'next/navigation';
-import { Icon } from '@/components/icon';
 import { ProjectHeader } from '@/components/project-tabs';
 import { Alert } from '@/components/ui';
 import { requireMe, serverGet } from '@/lib/server-api';
+import { WeekNav } from '../week-nav';
 import { WeeklyReport } from './weekly-report';
 
 export default async function WeeklyReportPage({
@@ -14,10 +13,11 @@ export default async function WeeklyReportPage({
 }) {
   const { projectId, weekNumber } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [me, { status, data: project }, report] = await Promise.all([
+  const [me, { status, data: project }, report, templates] = await Promise.all([
     requireMe(),
     serverGet<ProjectDto>(base),
     serverGet<WeeklyReportDto>(`${base}/weekly-reports/${encodeURIComponent(weekNumber)}`),
+    serverGet<ReportTemplatesDto>(`${base}/report-templates`),
   ]);
   if (status === 404 || report.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
@@ -25,10 +25,7 @@ export default async function WeeklyReportPage({
   return (
     <>
       <ProjectHeader project={project} active="progress" />
-      <Link className="page-back mt-4" href={`${base}/progress/${encodeURIComponent(weekNumber)}`}>
-        <Icon name="arrow-left" size={14} />
-        Progres M.{weekNumber}
-      </Link>
+      <WeekNav project={project} weekNumber={weekNumber} active="report" />
       {report.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat laporan.</Alert>
       ) : !report.data ? (
@@ -39,6 +36,10 @@ export default async function WeeklyReportPage({
           initial={report.data}
           permissions={project.permissions}
           meId={me.id}
+          officeWorkbook={
+            !!templates.data?.workbookPdf &&
+            templates.data.workbooks.some((w) => w.reportType === 'WEEKLY')
+          }
         />
       )}
     </>

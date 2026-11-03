@@ -65,6 +65,7 @@ model User {
   weeklySnapshots       WeeklyReportSnapshot[]
   reportTemplates       ReportTemplate[]
   reportLogos           ProjectLogo[]
+  reportWorkbooks       ReportWorkbook[]
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -128,6 +129,7 @@ model Project {
   weeklyReports       WeeklyReport[]
   reportTemplates     ReportTemplate[]
   reportLogos         ProjectLogo[]
+  reportWorkbooks     ReportWorkbook[]
 
   @@map("projects")
 }
@@ -1123,4 +1125,22 @@ model ProjectLogo {
 
   @@unique([projectId, kind])
   @@map("project_logos")
+}
+
+/// D-086: the office's own Excel workbook per report type; exports fill its input cells and keep everything else.
+model ReportWorkbook {
+  id           String     @id @default(uuid(7)) @db.Char(36)
+  projectId    String     @map("project_id") @db.Char(36)
+  reportType   ReportType @map("report_type")
+  filename     String     @db.VarChar(64)
+  originalName String     @map("original_name") @db.VarChar(255)
+  fileSize     Int        @map("file_size")
+  updatedBy    String     @map("updated_by") @db.Char(36)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  updatedByUser User    @relation(fields: [updatedBy], references: [id])
+
+  @@unique([projectId, reportType])
+  @@map("report_workbooks")
 }

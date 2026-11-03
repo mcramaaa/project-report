@@ -41,7 +41,7 @@ export default async function ProgressWeeksPage({
         <Section
           className="mt-4"
           title="Progres mingguan"
-          description="Minggu M.n dikelompokkan per periode laporan B.n (4 minggu). Minggu yang sudah dimulai dapat diisi."
+          description="Pilih minggu untuk mengisi progres, alokasi harian, dan laporan mingguan. Minggu dikelompokkan per periode bulanan B.n (4 minggu)."
           body={false}
           action={
             current && (
@@ -60,13 +60,10 @@ export default async function ProgressWeeksPage({
                     Minggu
                   </th>
                   <th role="columnheader" scope="col">
-                    Tanggal
+                    Progres
                   </th>
                   <th role="columnheader" scope="col">
                     Baseline
-                  </th>
-                  <th role="columnheader" scope="col">
-                    Item terisi
                   </th>
                   <th role="columnheader" scope="col">
                     Laporan mingguan
@@ -82,7 +79,7 @@ export default async function ProgressWeeksPage({
                     {/* D-037: period B.n = weeks 4n−3..4n. */}
                     {w.weekNumber % 4 === 1 && (
                       <tr role="row" className="period-row">
-                        <th role="cell" scope="colgroup" colSpan={6}>
+                        <th role="cell" scope="colgroup" colSpan={5}>
                           B{(w.weekNumber + 3) / 4} · {formatDate(w.startDate)} –{' '}
                           {formatDate(all[Math.min(i + 3, all.length - 1)]!.endDate)}
                         </th>
@@ -92,15 +89,15 @@ export default async function ProgressWeeksPage({
                       <td role="cell" data-label="Minggu" className="font-medium">
                         M.{w.weekNumber}{' '}
                         {w.weekNumber === current && <Badge tone="blue">minggu berjalan</Badge>}
+                        <span className="block text-xs font-normal text-slate-500">
+                          {formatDate(w.startDate)} – {formatDate(w.endDate)}
+                        </span>
                       </td>
-                      <td role="cell" data-label="Tanggal">
-                        {formatDate(w.startDate)} – {formatDate(w.endDate)}
+                      <td role="cell" data-label="Progres">
+                        <WeekState week={w} />
                       </td>
                       <td role="cell" data-label="Baseline">
                         {w.baseline?.label ?? <span className="text-slate-500">Belum ada</span>}
-                      </td>
-                      <td role="cell" data-label="Item terisi" className="tabular-nums">
-                        {w.filledCount}
                       </td>
                       <td role="cell" data-label="Laporan mingguan">
                         <WeekReportCell
@@ -120,7 +117,7 @@ export default async function ProgressWeeksPage({
                               : 'Lihat'}
                           </Link>
                         ) : (
-                          <span className="text-slate-500">Belum dimulai</span>
+                          <span className="text-slate-500">–</span>
                         )}
                       </td>
                     </tr>
@@ -131,6 +128,37 @@ export default async function ProgressWeeksPage({
           </div>
         </Section>
       )}
+    </>
+  );
+}
+
+/** One status per week, so the list answers "can I still fill this week?" at a glance. */
+function WeekState({ week: w }: { week: ProgressWeekSummaryDto }) {
+  const items = w.filledCount > 0 && (
+    <span className="ml-1.5 text-xs text-slate-500 tabular-nums">{w.filledCount} item</span>
+  );
+  if (w.locked)
+    return (
+      <>
+        <Badge tone="slate">Terkunci</Badge>
+        {items}
+      </>
+    );
+  if (!w.open)
+    return w.filledCount > 0 ? (
+      <>
+        <Badge>Hanya lihat</Badge>
+        {items}
+      </>
+    ) : (
+      <span className="text-slate-500">Belum dimulai</span>
+    );
+  return (
+    <>
+      <Badge tone={w.filledCount > 0 ? 'green' : 'amber'}>
+        {w.filledCount > 0 ? 'Terisi' : 'Belum diisi'}
+      </Badge>
+      {items}
     </>
   );
 }
@@ -155,7 +183,7 @@ function WeekReportCell({
           {WEEKLY_STATUS_BADGE[summary.status].label}
         </Badge>
       ) : (
-        'Belum diajukan'
+        <Badge>Belum diajukan</Badge>
       )}
     </Link>
   );

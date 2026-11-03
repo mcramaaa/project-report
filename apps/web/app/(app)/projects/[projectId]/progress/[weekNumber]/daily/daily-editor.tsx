@@ -6,7 +6,6 @@ import type {
   DailyAllocationRowDto,
   SaveDailyAllocationInput,
 } from '@laporan-proyek/shared';
-import Link from 'next/link';
 import { useState } from 'react';
 import { Alert, Badge, Button, Section } from '@/components/ui';
 import { GridTools, useLeaveWarning } from '@/components/grid-tools';
@@ -67,7 +66,7 @@ export function DailyEditor({
   return (
     <div className="mt-3 space-y-4">
       <Section
-        title={`Alokasi harian minggu ${week.weekNumber}`}
+        title="Alokasi volume per hari"
         description={
           <>
             {formatDate(week.startDate)} – {formatDate(week.endDate)}. Volume minggu dibagi ke hari
@@ -76,24 +75,6 @@ export function DailyEditor({
           </>
         }
         body={Boolean(notice || error || mismatches || !data.rows.length)}
-        action={
-          <div className="row-actions">
-            {week.weekNumber > 1 && (
-              <Link
-                className="btn btn-secondary"
-                href={`/projects/${projectId}/progress/${week.weekNumber - 1}/daily`}
-              >
-                ← M.{week.weekNumber - 1}
-              </Link>
-            )}
-            <Link
-              className="btn btn-secondary"
-              href={`/projects/${projectId}/progress/${week.weekNumber + 1}/daily`}
-            >
-              M.{week.weekNumber + 1} →
-            </Link>
-          </div>
-        }
       >
         <div className="space-y-3">
           {notice && <Alert kind="success">{notice}</Alert>}

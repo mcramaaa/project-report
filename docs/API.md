@@ -367,6 +367,11 @@ GET    /projects/:projectId/report-templates/logos/:kind         gambar logo AGE
 POST   /projects/:projectId/report-templates/logos/:kind         multipart `files` PNG/JPG/WEBP ≤ 2 MB (project.update)
 DELETE /projects/:projectId/report-templates/logos/:kind         (project.update)
 GET    /projects/:projectId/exports/daily/:date                 laporan harian .xlsx sesuai template DAILY (rab.read; D-084)
+GET    /projects/:projectId/exports/weekly/:weekNumber          laporan mingguan .xlsx: workbook kantor yang diisi bila ada (D-086), selain itu sheet C, RM, M, Curva S dari template (rab.read; D-085)
+GET    /projects/:projectId/exports/weekly/:weekNumber/pdf      PDF dari workbook kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-086)
+GET    /projects/:projectId/exports/monthly/:periodNumber       laporan bulanan B.n .xlsx dari template MONTHLY (rab.read; D-087)
+POST   /projects/:projectId/report-templates/workbooks/:reportType   multipart `files` .xlsx ≤ 25 MB, workbook kantor (project.update; D-086)
+DELETE /projects/:projectId/report-templates/workbooks/:reportType   (project.update)
 ```
 
 Cetak/PDF: halaman web `/print/projects/:projectId/daily/:date` dan `/print/projects/:projectId/weekly/:weekNumber`.
@@ -382,6 +387,7 @@ POST /projects/:projectId/weekly-reports/:weekNumber/submit    (progress.input) 
 POST /projects/:projectId/weekly-reports/:weekNumber/review    { note?, acknowledgeWarnings? } (report.review; bukan penginput minggu itu → 403)
 POST /projects/:projectId/weekly-reports/:weekNumber/finalize  { acknowledgeWarnings? } (report.finalize) REVIEWED → FINAL + snapshot
 POST /projects/:projectId/weekly-reports/:weekNumber/reopen    { reason } (report.reopen; minggu final terakhir dulu)
+GET  /projects/:projectId/monthly-reports/:periodNumber        laporan bulanan B.n (rab.read; baca saja, dirangkum dari minggu 4n−3..4n; D-087)
 ```
 
 Selama minggu X FINAL: PUT progres/alokasi harian/laporan harian minggu ≤ X → 409 (D-081 butir 5).

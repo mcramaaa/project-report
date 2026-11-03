@@ -23,11 +23,12 @@ export default async function PrintWeeklyReport({
   const template = templateOf(templates.data, 'WEEKLY');
   return (
     <main className="print-shell">
-      <style>{`@page { size: ${pageSize(template).css}; margin: 0; }`}</style>
+      <style>{`@page { size: ${pageSize(template).css}; margin: 0; } @page cover { size: ${pageSize(template, 'portrait').css}; margin: 0; }`}</style>
       <PrintBar
         back={`${base}/progress/${weekNumber}/report`}
         title={`Laporan mingguan M.${weekNumber}`}
         templateHref={`${base}/report-templates?type=WEEKLY`}
+        excelHref={`/api${base}/exports/weekly/${weekNumber}`}
       />
       <ReportDocument
         template={template}

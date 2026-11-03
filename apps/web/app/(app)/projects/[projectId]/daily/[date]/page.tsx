@@ -25,9 +25,12 @@ export default async function DailyReportPage({
     <>
       <ProjectHeader project={project} active="progress" />
       {report.data && (
-        <Link className="page-back mt-4" href={`${base}/progress/${report.data.week.weekNumber}`}>
+        <Link
+          className="page-back mt-4"
+          href={`${base}/progress/${report.data.week.weekNumber}/daily`}
+        >
           <Icon name="arrow-left" size={14} />
-          Progres minggu {report.data.week.weekNumber}
+          Laporan harian M.{report.data.week.weekNumber}
         </Link>
       )}
       {report.status === 403 ? (

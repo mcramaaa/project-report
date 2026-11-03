@@ -3,6 +3,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import {
   importReportTemplatesSchema,
   LOGO_MAX_BYTES,
+  REPORT_WORKBOOK_MAX_BYTES,
   reportTemplateConfigSchema,
   type ImportReportTemplatesInput,
   type ReportTemplateConfig,
@@ -58,6 +59,19 @@ export class ReportTemplatesController {
   @RequireProjectPermission('project.update')
   removeLogo(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('kind') kind: string) {
     return this.templates.removeLogo(auth.user, projectId, logoKind(kind));
+  }
+
+  @Post('workbooks/:reportType')
+  @RequireProjectPermission('project.update')
+  @UseInterceptors(FilesInterceptor('files', 1, { limits: { fileSize: REPORT_WORKBOOK_MAX_BYTES } }))
+  uploadWorkbook(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('reportType') type: string, @UploadedFiles() files: UploadedPart[]) {
+    return this.templates.uploadWorkbook(auth.user, projectId, reportType(type), files?.[0]);
+  }
+
+  @Delete('workbooks/:reportType')
+  @RequireProjectPermission('project.update')
+  removeWorkbook(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('reportType') type: string) {
+    return this.templates.removeWorkbook(auth.user, projectId, reportType(type));
   }
 
   @Put(':reportType')

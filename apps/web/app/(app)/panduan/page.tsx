@@ -36,6 +36,7 @@ const FLOW: [string, string, string][] = [
     'Progres, jadwal, laporan harian',
     'Rekap RM, detail M, Kurva S; final membekukan minggu',
   ],
+  ['Laporan bulanan', 'Laporan 4 minggu periode itu', 'Rangkuman B.n, ekspor PDF/Excel'],
 ];
 
 const ROLES: [string, string][] = [
@@ -295,15 +296,27 @@ export default async function GuidePage() {
           <Chapter id="progres" title="Progres mingguan dan alokasi harian">
             <Steps
               items={[
-                <>Tab Progres → pilih minggu. Minggu berjalan ditandai.</>,
+                <>
+                  Tab Progres → pilih minggu. Di atas tiap minggu ada tab {b('Isi progres')},{' '}
+                  {b('Laporan harian')}, {b('Laporan mingguan')}, dan {b('Laporan bulanan')}, serta
+                  tombol pindah minggu.
+                </>,
                 <>
                   Isi {b('Volume minggu ini')} atau {b('% kumulatif')}. Kumulatif tidak boleh
                   melebihi volume baseline minggu itu.
                 </>,
-                <>{b('Simpan progres')}. Minggu yang belum dimulai belum bisa diisi.</>,
                 <>
-                  {b('Alokasi harian')} membagi volume minggu ke 7 hari dengan faktor hari kantor.
-                  Pembagian per item bisa diubah manual asalkan totalnya tetap.
+                  {b('Simpan progres')} di bilah bawah (muncul kuning bila ada isian belum
+                  disimpan). Minggu yang belum dimulai belum bisa diisi.
+                </>,
+                <>
+                  Tab {b('Laporan harian')}: pilih hari untuk membuka laporannya. Di bawahnya,{' '}
+                  {b('Alokasi volume per hari')} membagi volume minggu ke 7 hari dengan faktor hari
+                  kantor; pembagian per item bisa diubah manual asalkan totalnya tetap.
+                </>,
+                <>
+                  Tab {b('Laporan bulanan')} menampilkan B.n (4 minggu) yang dirangkum otomatis dari
+                  minggu-minggunya; tidak perlu diisi atau diajukan, cukup diekspor.
                 </>,
               ]}
             />
@@ -383,10 +396,16 @@ export default async function GuidePage() {
                   Laporan harian bawaan memakai format kolom berdampingan seperti laporan harian
                   kantor (bisa diganti ke layout bertumpuk di template; nama keahlian Staff Kantor
                   diatur di sana). Di laporan harian klik {b('Ekspor Excel')} untuk file Excel
-                  dengan layout yang sama. Di laporan harian atau mingguan, klik {b('Ekspor PDF')}.
-                  Halaman cetak terbuka; tekan {b('Cetak / Simpan PDF')} lalu pilih &quot;Simpan
-                  sebagai PDF&quot;. Laporan final memakai data snapshot; tampilannya mengikuti
-                  template saat dicetak.
+                  dengan layout yang sama. Agar laporan mingguan sama persis dengan Excel kantor,
+                  unggah workbook mingguan kantor di Template laporan → Laporan mingguan → File
+                  Excel kantor; Ekspor Excel lalu mengisi progres ke file itu (dan PDF dicetak dari
+                  file itu bila LibreOffice terpasang di server). Tanpa file itu, laporan mingguan
+                  memakai format kantor bawaan: sampul, rekap, progres, dan time schedule,
+                  masing-masing satu halaman, dan juga punya tombol {b('Ekspor Excel')} dengan sheet
+                  yang sama. Di laporan harian atau mingguan, klik {b('Ekspor PDF')}. Halaman cetak
+                  terbuka; tekan {b('Cetak / Simpan PDF')} lalu pilih &quot;Simpan sebagai
+                  PDF&quot;. Laporan final memakai data snapshot; tampilannya mengikuti template
+                  saat dicetak.
                 </>,
               ]}
             />

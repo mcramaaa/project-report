@@ -8,6 +8,7 @@ import {
   LOGO_MAX_BYTES,
   normalizeReportTemplate,
   REPORT_TYPES,
+  REPORT_WORKBOOK_MAX_BYTES,
   type ImportReportTemplatesInput,
   type LogoKind,
   type ReportTemplateConfig,
@@ -18,10 +19,14 @@ import { writeAudit } from '../audit/audit';
 import { AccessService } from '../auth/access.service';
 import type { AuthUser } from '../auth/auth-context';
 import { storageRoot, type UploadedPart } from '../documents/documents.service';
+import { checkXlsxSize } from '../documents/xlsx-guard';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { pdfConverterAvailable } from './pdf-convert';
+import { Xlsx } from './workbook-xml';
 
 const logoPath = (projectId: string, filename: string) => join(storageRoot(), 'projects', projectId, 'logos', filename);
+const workbookPath = (projectId: string, filename: string) => join(storageRoot(), 'projects', projectId, 'workbooks', filename);
 
 /** Logos recognised by their first bytes, not by the client's name or type. */
 const IMAGE_TYPES = [
@@ -39,9 +44,10 @@ export class ReportTemplatesService {
   ) {}
 
   async list(projectId: string): Promise<ReportTemplatesDto> {
-    const [rows, logos] = await Promise.all([
+    const [rows, logos, workbooks] = await Promise.all([
       this.prisma.reportTemplate.findMany({ where: { projectId }, select: { reportType: true, config: true, updatedAt: true, updatedByUser: { select: { id: true, name: true } } } }),
       this.prisma.projectLogo.findMany({ where: { projectId }, select: { kind: true, mimeType: true, fileSize: true, updatedAt: true } }),
+      this.prisma.reportWorkbook.findMany({ where: { projectId }, select: { reportType: true, originalName: true, fileSize: true, updatedAt: true, updatedByUser: { select: { id: true, name: true } } } }),
     ]);
     return {
       templates: REPORT_TYPES.map((type) => {
@@ -54,6 +60,8 @@ export class ReportTemplatesService {
         };
       }),
       logos: logos.map((l) => ({ kind: l.kind, mimeType: l.mimeType, fileSize: l.fileSize, updatedAt: l.updatedAt.toISOString() })),
+      workbooks: workbooks.map((w) => ({ reportType: w.reportType, originalName: w.originalName, fileSize: w.fileSize, updatedAt: w.updatedAt.toISOString(), updatedBy: w.updatedByUser })),
+      workbookPdf: await pdfConverterAvailable(),
     };
   }
 
@@ -178,6 +186,61 @@ export class ReportTemplatesService {
     });
     await rm(logoPath(projectId, old), { force: true });
     return this.list(projectId);
+  }
+
+  /** D-086: the office workbook for a report type; checked to be a readable .xlsx before it replaces the old one. */
+  async uploadWorkbook(actor: AuthUser, projectId: string, type: ReportType, file: UploadedPart | undefined): Promise<ReportTemplatesDto> {
+    if (!file) throw new BadRequestException('Pilih file Excel laporan.');
+    if (file.size > REPORT_WORKBOOK_MAX_BYTES) throw new BadRequestException('File Excel maksimal 25 MB.');
+    checkXlsxSize(file.buffer, () => new BadRequestException('Isi file Excel terlalu besar setelah diekstrak.'));
+    try {
+      await Xlsx.open(file.buffer);
+    } catch {
+      throw new BadRequestException('File harus berformat Excel .xlsx.');
+    }
+    const filename = `${randomUUID()}.xlsx`;
+    await mkdir(join(storageRoot(), 'projects', projectId, 'workbooks'), { recursive: true });
+    await writeFile(workbookPath(projectId, filename), file.buffer, { flag: 'wx' });
+    let old: string | null = null;
+    try {
+      old = await this.prisma.$transaction(async (tx) => {
+        await lockActive(tx, projectId);
+        const before = await tx.reportWorkbook.findUnique({ where: { projectId_reportType: { projectId, reportType: type } }, select: { filename: true } });
+        // Multipart names arrive as latin1 bytes (same as document uploads).
+        const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8').slice(0, 255);
+        await tx.reportWorkbook.upsert({
+          where: { projectId_reportType: { projectId, reportType: type } },
+          create: { projectId, reportType: type, filename, originalName, fileSize: file.size, updatedBy: actor.id },
+          update: { filename, originalName, fileSize: file.size, updatedBy: actor.id },
+        });
+        await writeAudit(tx, { actorId: actor.id, action: 'UPLOAD_REPORT_WORKBOOK', entityType: 'REPORT_TEMPLATE', projectId, newValue: { reportType: type, originalName, fileSize: file.size, replaced: !!before } });
+        return before?.filename ?? null;
+      });
+    } catch (err) {
+      await rm(workbookPath(projectId, filename), { force: true });
+      throw err;
+    }
+    if (old) await rm(workbookPath(projectId, old), { force: true });
+    return this.list(projectId);
+  }
+
+  async removeWorkbook(actor: AuthUser, projectId: string, type: ReportType): Promise<ReportTemplatesDto> {
+    const old = await this.prisma.$transaction(async (tx) => {
+      await lockActive(tx, projectId);
+      const wb = await tx.reportWorkbook.findUnique({ where: { projectId_reportType: { projectId, reportType: type } }, select: { id: true, filename: true, originalName: true } });
+      if (!wb) throw new NotFoundException('File Excel laporan belum diunggah.');
+      await tx.reportWorkbook.delete({ where: { id: wb.id } });
+      await writeAudit(tx, { actorId: actor.id, action: 'REMOVE_REPORT_WORKBOOK', entityType: 'REPORT_TEMPLATE', projectId, oldValue: { reportType: type, originalName: wb.originalName } });
+      return wb.filename;
+    });
+    await rm(workbookPath(projectId, old), { force: true });
+    return this.list(projectId);
+  }
+
+  /** The stored workbook's bytes, or null when the report type has none (exports then build their own layout). */
+  async readWorkbook(projectId: string, type: ReportType): Promise<{ data: Buffer; originalName: string } | null> {
+    const wb = await this.prisma.reportWorkbook.findUnique({ where: { projectId_reportType: { projectId, reportType: type } }, select: { filename: true, originalName: true } });
+    return wb ? { data: await readFile(workbookPath(projectId, wb.filename)), originalName: wb.originalName } : null;
   }
 
   async readLogo(projectId: string, kind: LogoKind): Promise<{ mimeType: string; data: Buffer }> {

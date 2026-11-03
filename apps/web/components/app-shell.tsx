@@ -132,10 +132,12 @@ export function AppShell({ user, children }: { user: ShellUser; children: ReactN
                               ]
                             : []),
                           ...(parts[4] === 'daily'
-                            ? [{ label: 'Alokasi harian' }]
+                            ? [{ label: 'Laporan harian' }]
                             : parts[4] === 'report'
                               ? [{ label: 'Laporan mingguan' }]
-                              : []),
+                              : parts[4] === 'monthly'
+                                ? [{ label: 'Laporan bulanan' }]
+                                : []),
                         ]
                       : parts[2] === 'documents'
                         ? [{ label: 'Sumber Excel' }]

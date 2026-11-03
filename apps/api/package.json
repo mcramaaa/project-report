@@ -26,6 +26,7 @@
     "@prisma/adapter-mariadb": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "exceljs": "4.4.0",
+    "jszip": "3.10.2",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },

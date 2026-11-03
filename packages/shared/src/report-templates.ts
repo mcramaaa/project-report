@@ -27,6 +27,8 @@ const IDENTITY_DEFAULTS: Record<IdentityKey, string> = {
 
 type SectionDef = { key: string; title: string; columns: [key: string, label: string][] };
 const period = (unit: 'MINGGU' | 'BULAN'): SectionDef[] => [
+  // Office pack (D-085): cover C.n, rekap RM.n/RB.n, detail M.n/B.n, time schedule; summary/daily only in the stacked layout.
+  { key: 'cover', title: `LAPORAN ${unit === 'MINGGU' ? 'MINGGUAN' : 'BULANAN'}`, columns: [] },
   { key: 'summary', title: 'RINGKASAN', columns: [] },
   {
     key: 'recap',
@@ -41,21 +43,24 @@ const period = (unit: 'MINGGU' | 'BULAN'): SectionDef[] => [
       ['note', 'KETERANGAN'],
     ],
   },
-  { key: 'curve', title: 'KURVA S', columns: [] },
   {
     key: 'items',
-    title: 'PROGRES PEKERJAAN',
+    title: `PROGRES ${unit === 'MINGGU' ? 'MINGGUAN' : 'BULANAN'}`,
     columns: [
       ['no', 'NO'],
-      ['name', 'URAIAN PEKERJAAN'],
+      ['name', 'JENIS PEKERJAAN'],
       ['unit', 'SAT'],
       ['volume', 'VOLUME'],
-      ['previous', `S/D ${unit} LALU`],
-      ['thisPeriod', `${unit} INI`],
+      ['weight', 'BOBOT (%)'],
+      ['previous', `S.D. ${unit} LALU`],
+      ['thisPeriod', `DALAM ${unit} INI`],
       ['cumulative', `S/D ${unit} INI`],
-      ['percent', '%'],
+      ['percent', 'PROGRES TERHADAP TIAP BAGIAN'],
+      ['share', 'PROGRES TERHADAP SELURUH'],
+      ['note', 'KETERANGAN'],
     ],
   },
+  { key: 'curve', title: 'TIME SCHEDULE', columns: [] },
   { key: 'daily', title: 'RANGKUMAN LAPORAN HARIAN', columns: [] },
 ];
 const qtyColumns = (name: string, qty: string): [string, string][] => [
@@ -142,8 +147,8 @@ export const reportTemplateConfigSchema = z.object({
   sections: z.array(sectionSchema).max(12),
   signatures: z.array(signatureSchema).max(6),
   decimals: z.number().int().min(0).max(6),
-  /** D-084: 'columns' = tables side by side (daily, office format); 'stacked' = one under another. */
-  layout: z.enum(['stacked', 'columns']).default('stacked'),
+  /** D-084: 'columns' = tables side by side (daily); D-085: 'office' = weekly/monthly pages as the office workbook; 'stacked' = one under another. */
+  layout: z.enum(['stacked', 'columns', 'office']).default('stacked'),
   /** D-084: labor lines named here are listed under the staff heading, the rest under the worker heading. */
   laborGroups: z
     .object({ staffTitle: text(60), staffNames: z.array(text(80)).max(40), workerTitle: text(60) })
@@ -174,11 +179,11 @@ const DAILY_IDENTITY = new Set<IdentityKey>(['subActivityName', 'projectName', '
 export function defaultReportTemplate(type: ReportType): ReportTemplateConfig {
   const daily = type === 'DAILY';
   return {
-    page: { size: 'A4', orientation: 'landscape', marginMm: daily ? 8 : 12, fontSizePt: daily ? 8 : 9 },
+    page: { size: 'A4', orientation: 'landscape', marginMm: daily ? 8 : 10, fontSizePt: 8 },
     header: {
       showLogos: true,
       // An empty caption hides that logo; the daily format shows the consultant and the contractor only.
-      logoCaptions: { AGENCY: daily ? '' : 'PEMBERI TUGAS', CONSULTANT: 'KONSULTAN PENGAWAS', CONTRACTOR: daily ? 'KONTRAKTOR PELAKSANA' : 'KONTRAKTOR' },
+      logoCaptions: { AGENCY: daily ? '' : 'PEMBERI TUGAS', CONSULTANT: 'KONSULTAN PENGAWAS', CONTRACTOR: 'KONTRAKTOR PELAKSANA' },
       lines: [],
     },
     title: TITLES[type],
@@ -192,7 +197,7 @@ export function defaultReportTemplate(type: ReportType): ReportTemplateConfig {
     })),
     signatures: SIGNATURE_DEFAULTS[type].map((s) => ({ ...s })),
     decimals: DECIMALS.volume,
-    layout: daily ? 'columns' : 'stacked',
+    layout: daily ? 'columns' : 'office',
     laborGroups: daily
       ? { staffTitle: 'Staff Kantor', staffNames: ['Project Manager', 'Engineering', 'QC / HSE', 'Spv / Admin Teknik', 'Drafter', 'Logistik'], workerTitle: 'Tenaga Kerja' }
       : { staffTitle: '', staffNames: [], workerTitle: '' },
@@ -247,7 +252,20 @@ export interface ProjectLogoDto {
   updatedAt: string;
 }
 
+/** D-086: the office workbook a report type's Excel/PDF export fills. */
+export interface ReportWorkbookDto {
+  reportType: ReportType;
+  originalName: string;
+  fileSize: number;
+  updatedAt: string;
+  updatedBy: { id: string; name: string };
+}
+export const REPORT_WORKBOOK_MAX_BYTES = 25 * 1024 * 1024;
+
 export interface ReportTemplatesDto {
   templates: ReportTemplateDto[];
   logos: ProjectLogoDto[];
+  workbooks: ReportWorkbookDto[];
+  /** The server can print an office workbook to PDF (LibreOffice installed). */
+  workbookPdf: boolean;
 }

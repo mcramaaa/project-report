@@ -1,12 +1,10 @@
-import type { DailyReportDayDto, ProjectDto, WeeklyProgressDto } from '@laporan-proyek/shared';
-import Link from 'next/link';
+import type { ProjectDto, WeeklyProgressDto } from '@laporan-proyek/shared';
 import { notFound } from 'next/navigation';
 import { ProjectHeader } from '@/components/project-tabs';
 import { Alert } from '@/components/ui';
-import { Icon } from '@/components/icon';
 import { serverGet } from '@/lib/server-api';
-import { DayStrip } from './day-strip';
 import { ProgressEditor } from './progress-editor';
+import { WeekNav } from './week-nav';
 
 export default async function WeekProgressPage({
   params,
@@ -15,10 +13,9 @@ export default async function WeekProgressPage({
 }) {
   const { projectId, weekNumber } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, progress, days] = await Promise.all([
+  const [{ status, data: project }, progress] = await Promise.all([
     serverGet<ProjectDto>(base),
     serverGet<WeeklyProgressDto>(`${base}/progress/weeks/${encodeURIComponent(weekNumber)}`),
-    serverGet<DailyReportDayDto[]>(`${base}/daily-reports/weeks/${encodeURIComponent(weekNumber)}`),
   ]);
   if (status === 404 || progress.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
@@ -26,19 +23,7 @@ export default async function WeekProgressPage({
   return (
     <>
       <ProjectHeader project={project} active="progress" />
-      <Link className="page-back mt-4" href={`${base}/progress`}>
-        <Icon name="arrow-left" size={14} />
-        Semua minggu
-      </Link>
-      <div className="mt-3">
-        <Link
-          className="btn btn-secondary"
-          href={`${base}/progress/${encodeURIComponent(weekNumber)}/report`}
-        >
-          Laporan mingguan M.{weekNumber}
-        </Link>
-      </div>
-      {days.data && <DayStrip projectId={project.id} days={days.data} />}
+      <WeekNav project={project} weekNumber={weekNumber} active="progress" />
       {progress.status === 403 ? (
         <Alert>Role Anda di proyek ini tidak memiliki izin melihat progres.</Alert>
       ) : !progress.data ? (

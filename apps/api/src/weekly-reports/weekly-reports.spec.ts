@@ -118,4 +118,23 @@ describe('weekly reports (D-081)', () => {
     const list = await ok(admin.get(base));
     expect(list.slice(0, 3).map((w: { status: string | null }) => w.status)).toEqual(['REOPENED', 'REOPENED', null]);
   });
+
+  it('monthly B.n sums its four weeks (D-087)', async () => {
+    const progress = (n: number, volume: string) =>
+      ok(admin.request('PUT', `/projects/${project.id}/progress/weeks/${n}`, { entries: [{ workItemId: galian, mode: 'VOLUME_WEEK', volume }] }));
+    await progress(3, '5');
+    await progress(5, '10'); // B2, so outside B1
+    const m = await ok(admin.get(`/projects/${project.id}/monthly-reports/1`));
+    expect(m.weeks.map((w: { weekNumber: number }) => w.weekNumber)).toEqual([1, 2, 3, 4]);
+    expect(m.content.week).toEqual({ weekNumber: 1, startDate: '2026-01-05', endDate: '2026-02-01' });
+    const item = m.content.items.find((r: { workItemId: string }) => r.workItemId === galian);
+    expect(item).toMatchObject({ previousCumulative: '0', cumulative: '75', thisWeek: { volume: '75' } });
+    expect(m.content.daily.days).toHaveLength(28);
+    const b2 = await ok(admin.get(`/projects/${project.id}/monthly-reports/2`));
+    expect(b2.content.items.find((r: { workItemId: string }) => r.workItemId === galian)).toMatchObject({ previousCumulative: '75', cumulative: '85', thisWeek: { volume: '10' } });
+    expect((await admin.get(`/projects/${project.id}/monthly-reports/99`)).status).toBe(404);
+    const xlsx = await fetch(`${t.baseUrl}/projects/${project.id}/exports/monthly/1`, { headers: { cookie: admin.cookie! } });
+    expect(xlsx.status).toBe(200);
+    expect(decodeURIComponent(xlsx.headers.get('content-disposition')!)).toContain('B.1.xlsx');
+  });
 });

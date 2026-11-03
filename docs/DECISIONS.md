@@ -1346,6 +1346,35 @@ harian mengikuti `04. LAPORAN HARIAN SMP NEGERI 5 MENGWI 27-10-2026.xlsx`
   tampilkan semua staf walau kosong; lebar relatif tiap tabel (`sections[].width`). PDF dan Excel memakai pengaturan yang sama.
 - Di PDF keempat daftar dicetak sebagai satu tabel sehingga barisnya sejajar.
 
+
+## D-085 Laporan mingguan/bulanan format kantor (Serangan)
+
+Sumber: `04. LAPORAN MINGGUAN SDN 2 SERANGAN (MC 0).xlsx` dan `05. LAPORAN BULANAN …` (user, 2026-11-02: "tetap sama seperti template di serangan").
+
+1. Layout `office` (bawaan WEEKLY/MONTHLY): satu halaman per bagian, urutan dan judul dari template —
+   Sampul C.n (A4 tegak: logo dinas + kop, judul, MINGGU KE n (terbilang), periode, identitas, logo konsultan & kontraktor),
+   Rekap RM.n (kelompok jadwal: bobot, s/d lalu, ini, s/d ini, JUMLAH, realisasi/rencana/deviasi + waktu, tanda tangan),
+   Progres M.n (item: volume & bobot RAB, volume s.d lalu/ini/s.d ini, progres per item dan terhadap seluruh, JUMLAH per kelompok, JUMLAH TOTAL),
+   Time Schedule (rencana % per kelompok per minggu dikelompokkan per BULAN I.., baris rencana/realisasi + kumulatif, garis kurva S di atas kolom minggu).
+2. Bobot item = subtotal item / total versi baseline × 100; progres terhadap seluruh = bobot × kumulatif / volume. Disimpan di isi laporan (`itemWeights`); snapshot lama tanpa itu menampilkan bobot kosong.
+3. Ekspor Excel `GET /projects/:id/exports/weekly/:weekNumber` membuat sheet yang sama (C, RM, M, Curva S). Sheet Curva S memuat grafik garis Excel asli (rencana kumulatif putus-putus oranye, realisasi kumulatif biru) yang ditumpuk di atas kolom minggu seperti workbook kantor, plus baris DEVIASI; grafik ditulis langsung ke paket .xlsx karena ExcelJS tidak bisa membuat grafik.
+4. Bulanan memakai layout dan template yang sama dengan label BULAN; laporan bulanan sendiri (data per bulan, B.n) menyusul di M13.
+5. Layout `stacked` tetap tersedia; bagian Ringkasan dan Rangkuman harian hanya dipakai di sana.
+6. Tampilan (PDF dan Excel) meniru workbook Serangan: huruf Calibri, pita judul biru (teks putih), kepala tabel biru muda, garis rambut antarbaris, baris JUMLAH abu-abu, JUMLAH TOTAL/realisasi kuning muda, rencana hijau muda, bingkai tebal per halaman, angka nol tampil "-", dan tanda tangan juga di halaman Time Schedule. Ini format bawaan; file Excel kantor (D-086) hanya opsi.
+
+
+## D-086 Laporan diisi ke file Excel kantor (sama persis)
+
+User 2026-11-02: "tidak bisakah laporannya sama persis seperti excel yg di storage/temp" → pilihan "Isi file Excel asli".
+
+1. Per proyek dan jenis laporan bisa diunggah workbook kantor (tabel `report_workbooks`, file di `storage/projects/<id>/workbooks/`, ≤ 25 MB, dicek .xlsx). Izin `project.update`; audit UPLOAD/REMOVE_REPORT_WORKBOOK.
+2. Mingguan: aplikasi hanya menulis input progres — persen kumulatif per item per minggu di kolom input sheet `M.k` (kolom yang dipakai rumus `K = R*G/100`) untuk semua minggu ≤ n. Semua angka lain (RM, Curva S, sampul) dihitung rumus workbook sendiri; format, logo, grafik, dan sheet lain tidak diubah. File dibuka pada `C.n` dan Excel menghitung ulang saat dibuka.
+3. Workbook dibuat dari satu versi RAB (mis. MC 0) untuk semua minggunya, sedangkan baseline minggu awal bisa versi lain (Kontrak). Karena progres disimpan per item pekerjaan, baris workbook dipasangkan dengan versi RAB approved yang cocok (terbaru lebih dulu): menurut urutan bila jumlahnya sama, dicek namanya. Bila tidak ada versi yang cocok, ekspor ditolak (409) dengan contoh barisnya — tidak pernah mengisi baris yang salah.
+4. Sheet minggu n harus sudah ada di workbook (kantor menambah sheet tiap minggu); bila belum ada, ekspor menolak dengan pesan sheet terakhir. Penambahan sheet otomatis belum dibuat.
+5. Keamanan cetak di server: sebelum dicetak, tautan ke file lain (externalLinks) dibuang dan workbook yang memuat rumus pengambil data luar (WEBSERVICE, FILTERXML, INDIRECT, DDE, IMPORT*, referensi `[n]`/`file:`) ditolak; LibreOffice dijalankan tanpa jaringan (`unshare -rn`) bila kernel mengizinkan dan tidak pernah memperbarui link.
+6. PDF: workbook yang sudah diisi (hanya sheet C, RM, M, Curva S minggu n yang tampil) dicetak LibreOffice di server dengan hitung ulang rumus; tanpa LibreOffice, Ekspor PDF tetap memakai layout template (D-085).
+7. Tanpa workbook, ekspor memakai layout template (D-084/D-085). Harian (format Mengwi) dan bulanan menyusul dengan cara yang sama.
+
 ## Keputusan Terbuka
 
 
@@ -1445,3 +1474,19 @@ diputuskan sebelum M13/M14: apa saja yang bisa dikustom (urutan/bagian,
 kop, kolom, tanda tangan), per proyek atau global, dan format Excel mengikuti
 workbook kantor atau bebas.
 
+
+## D-087 Tab progres per minggu dan laporan bulanan B.n
+
+Sumber: user, 2026-11-03 ("tabnya isi progres, laporan harian, laporan mingguan, laporan bulanan").
+
+1. Tiap minggu punya satu kepala: **Semua minggu**, tab **Isi progres | Laporan harian | Laporan mingguan |
+   Laporan bulanan**, dan tombol pindah minggu (tetap di tab yang sama). Tab Laporan harian = daftar hari minggu itu
+   + alokasi volume per hari (D-075). Tab Laporan bulanan = periode B.n tempat minggu itu berada (D-010).
+2. Laporan bulanan **baca saja**: tidak ada input atau alur ajukan/periksa/final sendiri (PRD §22: "tidak ada input
+   progres baru"). Isinya dirangkum dari laporan minggu-minggunya (minggu FINAL dari snapshot-nya); disebut
+   "Sementara" sampai semua minggunya FINAL.
+3. Aturan rangkum: "bulan ini" = jumlah minggu periode; kumulatif = minggu terakhir periode. Rekap kelompok dan total
+   memakai Kurva S minggu terakhir (bobot versi baseline akhir periode, D-076); item dipasangkan per work item, jadi
+   pergantian baseline di tengah periode tetap terjumlah. Laporan harian (tenaga, bahan/alat, cuaca) dijumlahkan.
+4. Ekspor: Excel dari template MONTHLY (layout kantor D-085), PDF lewat halaman cetak. Workbook kantor (D-086) untuk
+   bulanan belum ada.

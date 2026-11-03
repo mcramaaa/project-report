@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseIdNumber } from './id-number';
+import { parseIdNumber } from './id-number.js';
 
 describe('parseIdNumber', () => {
   it('reads Indonesian thousands and decimal commas, and plain dot decimals', () => {

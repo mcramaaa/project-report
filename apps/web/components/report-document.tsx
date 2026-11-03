@@ -16,6 +16,8 @@ import {
 } from '@laporan-proyek/shared';
 import type { ReactNode } from 'react';
 import { FitToPage } from './fit-to-page';
+import { OfficePeriod } from './report-office';
+import { num, pageSize } from './report-shared';
 
 /**
  * D-082: one renderer for the template preview and the print/PDF page, so what is previewed is what is printed.
@@ -43,29 +45,10 @@ export type DailyDoc = {
 export type PeriodDoc = { kind: 'WEEKLY' | 'MONTHLY'; label: string; content: WeeklyReportContent };
 export type ReportDoc = DailyDoc | PeriodDoc;
 
-const PAGE_MM: Record<ReportTemplateConfig['page']['size'], [number, number]> = {
-  A4: [210, 297],
-  F4: [215, 330],
-  LEGAL: [216, 356],
-};
-export function pageSize(t: ReportTemplateConfig): { width: number; height: number; css: string } {
-  const [w, h] = PAGE_MM[t.page.size];
-  const landscape = t.page.orientation === 'landscape';
-  return {
-    width: landscape ? h : w,
-    height: landscape ? w : h,
-    css: `${landscape ? h : w}mm ${landscape ? w : h}mm`,
-  };
-}
+export { pageSize };
 
 const longDate = longDateId;
 const dayName = dayNameId;
-
-function num(v: string | null | undefined, dp: number): string {
-  if (v === null || v === undefined || v === '') return '';
-  const [i, f] = new Decimal(v).toDecimalPlaces(dp, Decimal.ROUND_HALF_UP).toFixed(dp).split('.');
-  return `${i!.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}${f ? `,${f}` : ''}`;
-}
 
 const identityValue = identityText;
 
@@ -114,6 +97,7 @@ function Table({
 }
 
 const NUMERIC = new Set([
+  'share',
   'qty',
   'weight',
   'previous',
@@ -313,7 +297,7 @@ function PeriodBody({ t, d }: { t: ReportTemplateConfig; d: PeriodDoc }) {
         </tbody>
       </table>
       {t.sections
-        .filter((s) => s.visible)
+        .filter((s) => s.visible && s.key !== 'cover')
         .map((s) => (
           <section key={s.key} className={`rd-section rd-${s.key}`}>
             <h3>{s.title}</h3>
@@ -406,6 +390,9 @@ function PeriodBody({ t, d }: { t: ReportTemplateConfig; d: PeriodDoc }) {
                         thisPeriod: r.thisWeek ? num(r.thisWeek.volume, dp) : '',
                         cumulative: r.workItemId ? num(r.cumulative, dp) : '',
                         percent: r.percent === null ? '' : num(r.percent, 2),
+                        weight: num(c.itemWeights?.[r.id], w),
+                        share: '',
+                        note: '',
                       },
                 )}
               />
@@ -738,6 +725,8 @@ export function ReportDocument({
 }) {
   if (doc.kind === 'DAILY' && t.layout === 'columns')
     return <DailyColumns t={t} d={doc} logoUrl={logoUrl} />;
+  if (doc.kind !== 'DAILY' && t.layout === 'office')
+    return <OfficePeriod t={t} d={doc} logoUrl={logoUrl} />;
   const identity = doc.kind === 'DAILY' ? doc.identity : doc.content.project;
   const size = pageSize(t);
   const logos = (['AGENCY', 'CONSULTANT', 'CONTRACTOR'] as const).map((k) => ({

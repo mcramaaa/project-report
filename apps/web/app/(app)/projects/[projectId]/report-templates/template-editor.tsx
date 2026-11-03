@@ -11,6 +11,7 @@ import {
   type ReportTemplateConfig,
   type ReportTemplatesDto,
   type ReportType,
+  type ReportWorkbookDto,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
@@ -238,6 +239,39 @@ export function TemplateEditor({
               );
             })}
           </div>
+          <WorkbookCard
+            type={type}
+            workbook={data.workbooks.find((w) => w.reportType === type)}
+            pdf={data.workbookPdf}
+            canEdit={canEdit}
+            busy={busy}
+            onUpload={(file) => {
+              const body = new FormData();
+              body.append('files', file);
+              void run(
+                () =>
+                  api<ReportTemplatesDto>(
+                    'POST',
+                    `/projects/${projectId}/report-templates/workbooks/${type}`,
+                    body,
+                  ),
+                'File Excel kantor disimpan. Ekspor Excel dan PDF memakai file ini.',
+              );
+            }}
+            onRemove={() => {
+              if (
+                window.confirm('Hapus file Excel kantor? Ekspor kembali memakai layout template.')
+              )
+                void run(
+                  () =>
+                    api<ReportTemplatesDto>(
+                      'DELETE',
+                      `/projects/${projectId}/report-templates/workbooks/${type}`,
+                    ),
+                  'File Excel kantor dihapus.',
+                );
+            }}
+          />
           {canEdit && otherProjects.length > 0 && (
             <div className="tpl-import">
               <div className="min-w-0 flex-1">
@@ -365,6 +399,30 @@ export function TemplateEditor({
               </label>
             </div>
           </Group>
+
+          {type !== 'DAILY' && (
+            <Group title="Layout laporan" open>
+              <label>
+                Layout halaman
+                <Select
+                  value={t.layout === 'office' ? 'office' : 'stacked'}
+                  onChange={(e) => set((c) => ((c.layout = e.target.value as typeof c.layout), c))}
+                >
+                  <option value="office">
+                    Format kantor: sampul, rekap, progres, time schedule
+                  </option>
+                  <option value="stacked">Bertumpuk dalam satu dokumen</option>
+                </Select>
+              </label>
+              {t.layout === 'office' && (
+                <p className="text-sm text-[var(--muted)]">
+                  Setiap bagian yang tampil menjadi satu halaman: Sampul (tegak), Rekap, Progres,
+                  dan Time Schedule. Ringkasan dan Rangkuman harian hanya dipakai di layout
+                  bertumpuk.
+                </p>
+              )}
+            </Group>
+          )}
 
           {type === 'DAILY' && (
             <Group title="Format laporan harian" open>
@@ -781,6 +839,81 @@ export function TemplateEditor({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+const formatDateTime = (iso: string) =>
+  new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+
+/** D-086: the office's own workbook; when present, exports fill it instead of building the layout. */
+function WorkbookCard({
+  type,
+  workbook,
+  pdf,
+  canEdit,
+  busy,
+  onUpload,
+  onRemove,
+}: {
+  type: ReportType;
+  workbook: ReportWorkbookDto | undefined;
+  pdf: boolean;
+  canEdit: boolean;
+  busy: boolean;
+  onUpload: (file: File) => void;
+  onRemove: () => void;
+}) {
+  if (type !== 'WEEKLY')
+    return (
+      <p className="tpl-workbook-note">
+        File Excel kantor untuk {REPORT_TYPE_LABELS[type].toLowerCase()} menyusul; saat ini baru
+        laporan mingguan yang bisa diisi langsung ke file Excel kantor.
+      </p>
+    );
+  return (
+    <div className="tpl-workbook">
+      <div className="min-w-0">
+        <b>File Excel kantor</b>
+        {workbook ? (
+          <p>
+            {workbook.originalName} ·{' '}
+            {(workbook.fileSize / 1024 / 1024).toFixed(1).replace('.', ',')} MB · diunggah{' '}
+            {workbook.updatedBy.name}, {formatDateTime(workbook.updatedAt)}
+            {!pdf &&
+              '. Ekspor Excel memakai file ini; PDF dari file ini menunggu LibreOffice terpasang di server, sementara Ekspor PDF memakai layout template.'}
+          </p>
+        ) : (
+          <p>
+            Unggah workbook laporan mingguan kantor (berisi sheet C.n, RM.n, M.n, Curva S M.n).
+            Aplikasi mengisi progres per item ke kolom input sheet M.n; tampilan, rumus, logo, dan
+            kurva tetap milik file itu, sehingga Excel dan PDF sama persis dengan file kantor.
+          </p>
+        )}
+      </div>
+      {canEdit && (
+        <div className="row-actions">
+          <label className="btn btn-secondary">
+            {workbook ? 'Ganti file' : 'Unggah file Excel'}
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="sr-only"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = '';
+                if (f) onUpload(f);
+              }}
+            />
+          </label>
+          {workbook && (
+            <Button type="button" variant="secondary" disabled={busy} onClick={onRemove}>
+              Hapus
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

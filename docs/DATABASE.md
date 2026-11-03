@@ -651,3 +651,7 @@ Append-only: aplikasi tidak pernah update/delete baris audit.
 - final snapshot immutable
 - audit log append-oriented
 - AI draft terpisah dari official RAB
+
+### report_workbooks (D-086)
+
+Workbook Excel kantor per proyek dan jenis laporan: `project_id`, `report_type` (unik bersama), `filename` (nama file di storage), `original_name`, `file_size`, `updated_by`, `updated_at`. File disimpan di `storage/projects/<project_id>/workbooks/`; mengganti file menghapus file lama.
