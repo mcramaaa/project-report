@@ -808,25 +808,20 @@ export function TemplateEditor({
                 Pratinjau dengan data{' '}
                 {sample.kind === 'DAILY'
                   ? `laporan harian ${sample.date}`
-                  : `minggu M.${sample.content.week.weekNumber}`}
+                  : sample.kind === 'MONTHLY'
+                    ? `bulan B.${sample.label}`
+                    : `minggu M.${sample.label}`}
                 .{' '}
-                {sample.kind === 'DAILY' ? (
-                  <Link
-                    className="link-button"
-                    href={`/print/projects/${projectId}/daily/${sample.date}`}
-                  >
-                    Buka halaman cetak
-                  </Link>
-                ) : (
-                  sample.kind === 'WEEKLY' && (
-                    <Link
-                      className="link-button"
-                      href={`/print/projects/${projectId}/weekly/${sample.content.week.weekNumber}`}
-                    >
-                      Buka halaman cetak
-                    </Link>
-                  )
-                )}
+                <Link
+                  className="link-button"
+                  href={`/print/projects/${projectId}/${
+                    sample.kind === 'DAILY'
+                      ? `daily/${sample.date}`
+                      : `${sample.kind === 'WEEKLY' ? 'weekly' : 'monthly'}/${sample.label}`
+                  }`}
+                >
+                  Buka halaman cetak
+                </Link>
               </p>
               <div className="tpl-preview-page">
                 <ReportDocument template={t} doc={sample} logoUrl={logoUrl} />

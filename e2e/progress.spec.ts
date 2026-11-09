@@ -61,8 +61,18 @@ test.skip(
   'Set E2E_EMAIL and E2E_PASSWORD (a system admin on the dev server).',
 );
 
+let projectId: string | undefined;
+
+// Close (never delete) the test project so dev project lists stay clean.
+test.afterEach(async ({ page }) => {
+  if (projectId)
+    await call(page.request, 'POST', `/projects/${projectId}/close`, {
+      reason: 'Proyek uji E2E selesai',
+    });
+});
+
 test('progress: fill, save, jump weeks, and read the monthly report', async ({ page }) => {
-  const id = await setupProject(page);
+  const id = (projectId = await setupProject(page));
   const base = `/projects/${id}/progress`;
 
   // Fill week 1: the save bar counts the change, saving keeps the value after a reload.

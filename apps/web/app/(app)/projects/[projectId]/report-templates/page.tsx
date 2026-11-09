@@ -1,5 +1,6 @@
 import type {
   DailyReportDto,
+  MonthlyReportDto,
   MyProjectDto,
   Paginated,
   ProjectDto,
@@ -16,7 +17,7 @@ import { identityOf } from '@/lib/report-print';
 import { serverGet } from '@/lib/server-api';
 import { TemplateEditor } from './template-editor';
 
-/** D-082: per-project report templates, previewed on the latest finished week and its last day. */
+/** D-082: per-project report templates, previewed on the latest finished week, its last day and its period B.n. */
 export default async function ReportTemplatesPage({
   params,
   searchParams,
@@ -37,12 +38,13 @@ export default async function ReportTemplatesPage({
   if (!templates.data) return <Alert>Template laporan tidak dapat dimuat.</Alert>;
 
   const last = weeks.data?.filter((w) => w.ended).at(-1);
-  const [weekly, daily] = last
+  const [weekly, daily, monthly] = last
     ? await Promise.all([
         serverGet<WeeklyReportDto>(`${base}/weekly-reports/${last.weekNumber}`),
         serverGet<DailyReportDto>(`${base}/daily-reports/${last.endDate}`),
+        serverGet<MonthlyReportDto>(`${base}/monthly-reports/${Math.ceil(last.weekNumber / 4)}`),
       ])
-    : [undefined, undefined];
+    : [undefined, undefined, undefined];
   const samples: Partial<Record<ReportType, ReportDoc>> = {};
   if (daily?.data) samples.DAILY = dailyDoc(identityOf(project), daily.data);
   if (weekly?.data) {
@@ -51,13 +53,13 @@ export default async function ReportTemplatesPage({
       label: String(weekly.data.summary.weekNumber),
       content: weekly.data.content,
     };
-    // Monthly reports come with M13; until then the preview shows the latest week in the monthly layout.
+  }
+  if (monthly?.data)
     samples.MONTHLY = {
       kind: 'MONTHLY',
-      label: String(Math.ceil(weekly.data.summary.weekNumber / 4)),
-      content: weekly.data.content,
+      label: String(monthly.data.periodNumber),
+      content: monthly.data.content,
     };
-  }
 
   return (
     <>
