@@ -50,7 +50,7 @@ export class ReportExportsController {
     ]);
     // D-086: the office's own workbook when one is uploaded, otherwise the layout built from the template.
     const data =
-      (await this.office.weekly(projectId, weekNumber, report.content)) ??
+      (await this.office.weekly(projectId, weekNumber)) ??
       (await periodWorkbook({
         template: templates.templates.find((t) => t.reportType === 'WEEKLY')!.config,
         kind: 'WEEKLY',
@@ -64,7 +64,7 @@ export class ReportExportsController {
     });
   }
 
-  /** D-087: monthly report B.n in the office layout of the MONTHLY template. */
+  /** D-087: monthly report B.n in the office's workbook when uploaded, otherwise the layout of the MONTHLY template. */
   @Get('monthly/:periodNumber')
   @RequireProjectPermission('rab.read')
   async monthlyExcel(@Param('projectId') projectId: string, @Param('periodNumber', ParseIntPipe) periodNumber: number) {
@@ -73,12 +73,14 @@ export class ReportExportsController {
       this.templates.list(projectId),
       this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { code: true } }),
     ]);
-    const data = await periodWorkbook({
-      template: templates.templates.find((t) => t.reportType === 'MONTHLY')!.config,
-      kind: 'MONTHLY',
-      content: report.content,
-      logos: await this.logos(projectId, templates.logos),
-    });
+    const data =
+      (await this.office.monthly(projectId, periodNumber)) ??
+      (await periodWorkbook({
+        template: templates.templates.find((t) => t.reportType === 'MONTHLY')!.config,
+        kind: 'MONTHLY',
+        content: report.content,
+        logos: await this.logos(projectId, templates.logos),
+      }));
     const filename = `Laporan Bulanan ${p.code} B.${periodNumber}.xlsx`;
     return new StreamableFile(data, { type: XLSX, disposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}` });
   }
@@ -87,13 +89,26 @@ export class ReportExportsController {
   @Get('weekly/:weekNumber/pdf')
   @RequireProjectPermission('rab.read')
   async weeklyPdf(@Param('projectId') projectId: string, @Param('weekNumber', ParseIntPipe) weekNumber: number) {
-    const [report, p] = await Promise.all([
+    const [, p] = await Promise.all([
       this.weekly.get(projectId, weekNumber),
       this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { code: true } }),
     ]);
-    const xlsx = await this.office.weekly(projectId, weekNumber, report.content, { onlyWeek: true });
+    const xlsx = await this.office.weekly(projectId, weekNumber, { onlyPeriod: true });
     if (!xlsx) throw new NotFoundException('Proyek ini belum punya file Excel laporan mingguan.');
-    const filename = `Laporan Mingguan ${p.code} M.${weekNumber}.pdf`;
+    return this.pdf(xlsx, `Laporan Mingguan ${p.code} M.${weekNumber}.pdf`);
+  }
+
+  /** D-087: PDF of the office workbook for one period B.n (its sheets only); 404 when no workbook is uploaded. */
+  @Get('monthly/:periodNumber/pdf')
+  @RequireProjectPermission('rab.read')
+  async monthlyPdf(@Param('projectId') projectId: string, @Param('periodNumber', ParseIntPipe) periodNumber: number) {
+    const p = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { code: true } });
+    const xlsx = await this.office.monthly(projectId, periodNumber, { onlyPeriod: true });
+    if (!xlsx) throw new NotFoundException('Proyek ini belum punya file Excel laporan bulanan.');
+    return this.pdf(xlsx, `Laporan Bulanan ${p.code} B.${periodNumber}.pdf`);
+  }
+
+  private async pdf(xlsx: Buffer, filename: string) {
     return new StreamableFile(await xlsxToPdf(xlsx), { type: 'application/pdf', disposition: `inline; filename*=UTF-8''${encodeURIComponent(filename)}` });
   }
 

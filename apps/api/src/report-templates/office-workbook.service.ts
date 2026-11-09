@@ -1,14 +1,16 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { Decimal } from '@laporan-proyek/calc';
-import type { WeeklyReportContent } from '@laporan-proyek/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportTemplatesService } from './report-templates.service';
 import { fillProgressSheets, matchItems, progressItemRows, type WorkbookItem } from './weekly-workbook';
 import { rabVersionLabel } from '@laporan-proyek/shared';
 import { UnsafeWorkbookError, Xlsx } from './workbook-xml';
 
-/** Office sheet names of one week (Serangan pack): cover, rekap, progress, time schedule. */
-export const weeklySheets = (n: number) => [`C.${n}`, `RM.${n}`, `M.${n}`, `Curva S M.${n}`];
+/** Office sheet names of one week or period (Serangan pack): cover, rekap, progress, time schedule. */
+const OFFICE = {
+  WEEKLY: { code: 'M', label: 'laporan mingguan', sheets: (n: number) => [`C.${n}`, `RM.${n}`, `M.${n}`, `Curva S M.${n}`] },
+  MONTHLY: { code: 'B', label: 'laporan bulanan', sheets: (n: number) => [`C.${n}`, `RB.${n}`, `B.${n}`, `CS B.${n}`] },
+} as const;
 
 /**
  * D-086: exports that fill the office's own workbook. Only the progress inputs are written (cumulative % per item
@@ -59,42 +61,52 @@ export class OfficeWorkbookService {
   }
 
   /** The filled weekly workbook, opened on C.n; null when the project has no weekly workbook. */
-  async weekly(projectId: string, weekNumber: number, content: WeeklyReportContent, opts: { onlyWeek?: boolean } = {}): Promise<Buffer | null> {
-    const file = await this.templates.readWorkbook(projectId, 'WEEKLY');
+  weekly(projectId: string, weekNumber: number, opts: { onlyPeriod?: boolean } = {}): Promise<Buffer | null> {
+    return this.fill(projectId, 'WEEKLY', weekNumber, opts);
+  }
+
+  /** D-087: the filled monthly workbook (B.n holds the cumulative % at the end of the period's last week). */
+  monthly(projectId: string, periodNumber: number, opts: { onlyPeriod?: boolean } = {}): Promise<Buffer | null> {
+    return this.fill(projectId, 'MONTHLY', periodNumber, opts);
+  }
+
+  private async fill(projectId: string, type: 'WEEKLY' | 'MONTHLY', n: number, opts: { onlyPeriod?: boolean }): Promise<Buffer | null> {
+    const file = await this.templates.readWorkbook(projectId, type);
     if (!file) return null;
+    const { code, label, sheets: sheetsOf } = OFFICE[type];
     const x = await Xlsx.open(file.data);
     const progressSheets = x.sheets.flatMap((s) => {
-      const m = /^M\.(\d+)$/.exec(s.name);
-      return m ? [{ week: Number(m[1]), name: s.name }] : [];
+      const m = new RegExp(`^${code}\\.(\\d+)$`).exec(s.name);
+      return m ? [{ n: Number(m[1]), name: s.name }] : [];
     });
-    const last = Math.max(0, ...progressSheets.map((s) => s.week));
-    if (!x.sheet(`M.${weekNumber}`))
+    const last = Math.max(0, ...progressSheets.map((s) => s.n));
+    if (!x.sheet(`${code}.${n}`))
       throw new ConflictException(
-        last ? `File Excel laporan mingguan baru memuat sheet sampai M.${last}. Tambahkan sheet minggu ${weekNumber} di Excel lalu unggah ulang.` : 'File Excel laporan mingguan tidak memuat sheet progres M.n.',
+        last ? `File Excel ${label} baru memuat sheet sampai ${code}.${last}. Tambahkan sheet ${code}.${n} di Excel lalu unggah ulang.` : `File Excel ${label} tidak memuat sheet progres ${code}.n.`,
       );
-    const rows = await progressItemRows(x, `M.${weekNumber}`);
+    const rows = await progressItemRows(x, `${code}.${n}`);
     const pairs = await this.pairWithVersion(projectId, rows);
 
+    // A sheet holds the cumulative % up to its last week: week n, or week 4n for period B.n (D-010).
+    const upTo = (k: number) => (type === 'WEEKLY' ? k : 4 * k);
     const progress = await this.prisma.weeklyProgress.findMany({
-      where: { projectId, week: { weekNumber: { lte: weekNumber } } },
+      where: { projectId, week: { weekNumber: { lte: upTo(n) } } },
       select: { workItemId: true, actualVolume: true, week: { select: { weekNumber: true } } },
     });
-    const byItem = new Map<string, Decimal[]>();
-    for (const p of progress) {
-      const weeks = byItem.get(p.workItemId) ?? byItem.set(p.workItemId, Array.from({ length: weekNumber + 1 }, () => new Decimal(0))).get(p.workItemId)!;
-      weeks[p.week.weekNumber] = weeks[p.week.weekNumber]!.plus(p.actualVolume.toString());
-    }
-    const cumulative = (workItemId: string, week: number) => (byItem.get(workItemId) ?? []).slice(0, week + 1).reduce((a, b) => a.plus(b), new Decimal(0));
+    const byItem = new Map<string, { week: number; volume: Decimal }[]>();
+    for (const p of progress) byItem.set(p.workItemId, [...(byItem.get(p.workItemId) ?? []), { week: p.week.weekNumber, volume: new Decimal(p.actualVolume.toString()) }]);
+    const cumulative = (workItemId: string, week: number) =>
+      (byItem.get(workItemId) ?? []).filter((p) => p.week <= week).reduce((a, p) => a.plus(p.volume), new Decimal(0));
 
     await fillProgressSheets(
       x,
-      progressSheets.filter((s) => s.week <= weekNumber),
+      progressSheets.filter((s) => s.n <= n).map((s) => ({ week: upTo(s.n), name: s.name })),
       pairs,
       cumulative,
     );
     x.recalcOnOpen();
-    await x.focus(`C.${weekNumber}`, opts.onlyWeek ? weeklySheets(weekNumber).filter((n) => x.sheet(n)) : undefined);
-    if (opts.onlyWeek)
+    await x.focus(`C.${n}`, opts.onlyPeriod ? sheetsOf(n).filter((name) => x.sheet(name)) : undefined);
+    if (opts.onlyPeriod)
       try {
         await x.stripOutsideData();
       } catch (err) {

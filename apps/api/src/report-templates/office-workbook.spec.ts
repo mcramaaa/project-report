@@ -16,12 +16,12 @@ async function ok(res: Promise<ApiResponse>, status = 200) {
   return r.body;
 }
 
-/** A two-week office workbook: M.n rows compute K = R*G/100 (row 23 as a shared formula), C.n is the cover. */
-async function officeWorkbook(names: [string, number][]): Promise<Buffer> {
+/** A two-week (or two-period, code B) office workbook: M.n rows compute K = R*G/100, C.n is the cover. */
+async function officeWorkbook(names: [string, number][], code = 'M'): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   for (const week of [1, 2]) {
     wb.addWorksheet(`C.${week}`).getCell('C14').value = 'LAPORAN MINGGUAN';
-    const ws = wb.addWorksheet(`M.${week}`);
+    const ws = wb.addWorksheet(`${code}.${week}`);
     ws.getCell('D3').value = 'PROGRES MINGGUAN';
     names.forEach(([name, volume], i) => {
       const r = 22 + i;
@@ -130,6 +130,14 @@ describe('weekly export from the office workbook (D-086)', () => {
     const workbookXml = await x.zip.file('xl/workbook.xml')!.async('string');
     expect(workbookXml).toContain('fullCalcOnLoad="1"');
     expect(workbookXml).toMatch(/activeTab="2"/);
+
+    // D-087: the monthly workbook gets the cumulative % at the end of each period (B.1 = weeks 1-4).
+    expect((await admin.upload(`/projects/${project.id}/report-templates/workbooks/MONTHLY`, [{ name: 'LAPORAN BULANAN.xlsx', data: await officeWorkbook([['Galian', 100], ['Urugan', 10]], 'B') }])).status).toBe(201);
+    const monthly = await fetch(`${t.baseUrl}/projects/${project.id}/exports/monthly/1`, { headers: { cookie: admin.cookie! } });
+    expect(monthly.status).toBe(200);
+    expect(await inputs(Buffer.from(await monthly.arrayBuffer()), 'B.1')).toEqual([['R22', '40'], ['R23', '100']]);
+    const noSheet = await fetch(`${t.baseUrl}/projects/${project.id}/exports/monthly/3`, { headers: { cookie: admin.cookie! } });
+    expect(noSheet.status).toBe(404); // the project has one period only
 
     // A workbook from another RAB is refused, not filled into the wrong rows.
     expect((await upload(await officeWorkbook([['Pondasi', 5], ['Atap', 7], ['Cat', 9]]))).status).toBe(201);

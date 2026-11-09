@@ -1488,5 +1488,6 @@ Sumber: user, 2026-11-03 ("tabnya isi progres, laporan harian, laporan mingguan,
 3. Aturan rangkum: "bulan ini" = jumlah minggu periode; kumulatif = minggu terakhir periode. Rekap kelompok dan total
    memakai Kurva S minggu terakhir (bobot versi baseline akhir periode, D-076); item dipasangkan per work item, jadi
    pergantian baseline di tengah periode tetap terjumlah. Laporan harian (tenaga, bahan/alat, cuaca) dijumlahkan.
-4. Ekspor: Excel dari template MONTHLY (layout kantor D-085), PDF lewat halaman cetak. Workbook kantor (D-086) untuk
-   bulanan belum ada.
+4. Ekspor: bila workbook bulanan kantor diunggah (sheet C.n, RB.n, B.n, CS B.n), Excel dan PDF mengisi file itu
+   seperti D-086: kolom input B.k diisi % kumulatif sampai minggu 4k. Tanpa workbook: Excel dari template MONTHLY
+   (layout kantor D-085) dan PDF lewat halaman cetak.

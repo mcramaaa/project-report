@@ -1,4 +1,4 @@
-import type { MonthlyReportDto, ProjectDto } from '@laporan-proyek/shared';
+import type { MonthlyReportDto, ProjectDto, ReportTemplatesDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ProjectHeader } from '@/components/project-tabs';
@@ -19,14 +19,19 @@ export default async function MonthlyReportPage({
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const period = Math.ceil(Number(weekNumber) / 4);
   if (!Number.isInteger(period) || period < 1) notFound();
-  const [{ status, data: project }, report] = await Promise.all([
+  const [{ status, data: project }, report, templates] = await Promise.all([
     serverGet<ProjectDto>(base),
     serverGet<MonthlyReportDto>(`${base}/monthly-reports/${period}`),
+    serverGet<ReportTemplatesDto>(`${base}/report-templates`),
   ]);
   if (status === 404 || report.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
   const c = report.data?.content;
   const allFinal = report.data?.weeks.every((w) => w.status === 'FINAL');
+  // D-086: print the office workbook when one is uploaded and the server can convert it.
+  const officePdf =
+    !!templates.data?.workbookPdf &&
+    templates.data.workbooks.some((w) => w.reportType === 'MONTHLY');
 
   return (
     <>
@@ -54,7 +59,11 @@ export default async function MonthlyReportPage({
               <div className="row-actions">
                 <Link
                   className="btn btn-secondary"
-                  href={`/print${base}/monthly/${period}`}
+                  href={
+                    officePdf
+                      ? `/api${base}/exports/monthly/${period}/pdf`
+                      : `/print${base}/monthly/${period}`
+                  }
                   target="_blank"
                   prefetch={false}
                 >

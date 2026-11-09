@@ -864,13 +864,15 @@ function WorkbookCard({
   onUpload: (file: File) => void;
   onRemove: () => void;
 }) {
-  if (type !== 'WEEKLY')
+  if (type === 'DAILY')
     return (
       <p className="tpl-workbook-note">
         File Excel kantor untuk {REPORT_TYPE_LABELS[type].toLowerCase()} menyusul; saat ini baru
-        laporan mingguan yang bisa diisi langsung ke file Excel kantor.
+        laporan mingguan dan bulanan yang bisa diisi langsung ke file Excel kantor.
       </p>
     );
+  const sheets =
+    type === 'WEEKLY' ? ['C.n, RM.n, M.n, Curva S M.n', 'M.n'] : ['C.n, RB.n, B.n, CS B.n', 'B.n'];
   return (
     <div className="tpl-workbook">
       <div className="min-w-0">
@@ -885,9 +887,10 @@ function WorkbookCard({
           </p>
         ) : (
           <p>
-            Unggah workbook laporan mingguan kantor (berisi sheet C.n, RM.n, M.n, Curva S M.n).
-            Aplikasi mengisi progres per item ke kolom input sheet M.n; tampilan, rumus, logo, dan
-            kurva tetap milik file itu, sehingga Excel dan PDF sama persis dengan file kantor.
+            Unggah workbook {REPORT_TYPE_LABELS[type].toLowerCase()} kantor (berisi sheet{' '}
+            {sheets[0]}). Aplikasi mengisi progres per item ke kolom input sheet {sheets[1]};
+            tampilan, rumus, logo, dan kurva tetap milik file itu, sehingga Excel dan PDF sama
+            persis dengan file kantor.
           </p>
         )}
       </div>
