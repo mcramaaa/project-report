@@ -59,12 +59,18 @@ describe('office workbook cells (D-086)', () => {
   it('refuses formulas that fetch outside data before printing on the server', async () => {
     const safe = await Xlsx.open(await officeWorkbook([['Galian', 100]]));
     await expect(safe.stripOutsideData()).resolves.toBeUndefined();
-    for (const formula of ['WEBSERVICE("http://169.254.169.254/")', "INDIRECT(\"'file:///etc/passwd'#$A1\")", '[1]Sheet1!A1']) {
+    for (const formula of ['WEBSERVICE("http://169.254.169.254/")', "INDIRECT(\"'file:///etc/passwd'#$A1\")", 'IMPORTDATA("http://x/")']) {
       const wb = new ExcelJS.Workbook();
       wb.addWorksheet('M.1').getCell('A1').value = { formula, result: 0 };
       const x = await Xlsx.open(Buffer.from(await wb.xlsx.writeBuffer()));
       await expect(x.stripOutsideData(), formula).rejects.toBeInstanceOf(UnsafeWorkbookError);
     }
+    // D-088 butir 5: a plain reference to another file keeps its cached value instead of refusing the file.
+    const linked = new ExcelJS.Workbook();
+    linked.addWorksheet('M.1').getCell('A1').value = { formula: '[1]DATA!C8', result: 'CV. DINASTY' };
+    const frozen = await Xlsx.open(Buffer.from(await linked.xlsx.writeBuffer()));
+    await frozen.stripOutsideData();
+    expect(cellsOf([...rowsOf(await frozen.read('M.1')).values()][0]!)).toMatchObject([{ ref: 'A1', formula: null, value: 'CV. DINASTY' }]);
     // Defined names and hex-entity spelling are checked too.
     const named = new ExcelJS.Workbook();
     named.addWorksheet('M.1').getCell('A1').value = 1;
@@ -146,5 +152,53 @@ describe('weekly export from the office workbook (D-086)', () => {
     expect(((await wrong.json()) as { message: string }).message).toContain('tidak cocok dengan versi RAB');
     const missing = await fetch(`${t.baseUrl}/projects/${project.id}/exports/weekly/3`, { headers: { cookie: admin.cookie! } });
     expect(((await missing.json()) as { message: string }).message).toContain('sampai M.2');
+  });
+
+  it('fills the day block of the week sheet from the daily report, copying Har/Cov for a new week (D-088)', async () => {
+    const project = await createProject(t.prisma, 'OFC-002');
+    await t.prisma.$transaction((tx) => syncProjectCalendar(tx, project.id, '2026-01-05', 28));
+    const daily = `/projects/${project.id}/daily-reports`;
+    await ok(
+      admin.request('PUT', `${daily}/2026-01-13`, {
+        baseUpdatedAt: null,
+        note: 'Galian zona A',
+        resources: [
+          { category: 'LABOR', name: 'Mandor', unit: 'Org', actual: '1' },
+          { category: 'LABOR', name: 'Pekerja', unit: 'Org', actual: '8' },
+          { category: 'EQUIPMENT', name: 'Cangkul', unit: 'bh', actual: '3' },
+        ],
+        weather: [{ condition: 'CLEAR', fromTime: '08:00', toTime: '17:00' }],
+      }),
+    );
+    // The office file has week 1 only: Har.1 (7 day blocks of 60 rows) and its cover reading Har.1.
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Cov.1').getCell('C17').value = { formula: 'Har.1!AA6', result: '1 (SATU)' };
+    const har = wb.addWorksheet('Har.1');
+    har.getCell('AA6').value = '1 (SATU)';
+    har.getCell('D14').value = 'Staff Kantor';
+    har.pageSetup.printArea = 'B2:AD421';
+    const upload = await admin.upload(`/projects/${project.id}/report-templates/workbooks/DAILY`, [{ name: 'LAPORAN HARIAN.xlsx', data: Buffer.from(await wb.xlsx.writeBuffer()) }]);
+    expect(upload.status).toBe(201);
+
+    const res = await fetch(`${t.baseUrl}/projects/${project.id}/exports/daily/2026-01-13`, { headers: { cookie: admin.cookie! } });
+    expect(res.status).toBe(200);
+    const x = await Xlsx.open(Buffer.from(await res.arrayBuffer()));
+    expect(x.sheets.map((s) => s.name)).toEqual(['Cov.1', 'Har.1', 'Har.2', 'Cov.2']);
+    const cells = new Map((await Promise.all(['Har.2', 'Cov.2'].map(async (n) => [...rowsOf(await x.read(n)).values()].flatMap((r) => cellsOf(r).map((c) => [`${n}!${c.ref}`, c] as const))))).flat());
+    expect(cells.get('Cov.2!C17')?.formula).toBe('Har.2!AA6'); // the copy reads its own week
+    // 2026-01-13 is day 2 of week 2: block rows +60.
+    expect(cells.get('Har.2!AA66')?.value).toBe('2 (DUA)');
+    expect(cells.get('Har.2!AA67')?.value).toBe('SELASA');
+    expect(cells.get('Har.2!AA68')?.value).toBe('46035');
+    // Staff heading and the six default staff rows, a blank row, then the workers.
+    expect([74, 82, 83, 84].map((r) => cells.get(`Har.2!D${r}`)?.value)).toEqual(['Staff Kantor', 'Tenaga Kerja', 'Mandor', 'Pekerja']);
+    expect(cells.get('Har.2!G84')?.value).toBe('8');
+    expect(cells.get('Har.2!J74')?.value).toBe('Cangkul');
+    expect(cells.get('Har.2!I107')?.value).toBe('08.00-17.00');
+    expect(cells.get('Har.2!Q108')?.value).toBe('Galian zona A');
+    // Day 1 has no saved report: its lists stay empty.
+    expect(cells.get('Har.2!D23')?.value ?? null).toBeNull();
+    const workbookXml = await x.zip.file('xl/workbook.xml')!.async('string');
+    expect(workbookXml).toMatch(/<definedName name="_xlnm.Print_Area" localSheetId="2">(&apos;)?Har\.2(&apos;)?!\$B\$?2:\$AD\$?421<\/definedName>/);
   });
 });

@@ -65,11 +65,14 @@ export function DailyReportEditor({
   initial,
   canInput,
   canReopen,
+  officePdf,
 }: {
   projectId: string;
   initial: DailyReportDto;
   canInput: boolean;
   canReopen: boolean;
+  /** D-088: print the office workbook's page for this day instead of the template layout. */
+  officePdf: boolean;
 }) {
   const [data, setData] = useState(initial);
   const [lines, setLines] = useState(() => withKeys(initial.resources));
@@ -443,8 +446,13 @@ export function DailyReportEditor({
             {data.report && (
               <Link
                 className="btn btn-secondary"
-                href={`/print/projects/${projectId}/daily/${data.date}`}
+                href={
+                  officePdf
+                    ? `/api/projects/${projectId}/exports/daily/${data.date}/pdf`
+                    : `/print/projects/${projectId}/daily/${data.date}`
+                }
                 target="_blank"
+                prefetch={false}
               >
                 Ekspor PDF
               </Link>

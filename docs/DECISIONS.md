@@ -1491,3 +1491,23 @@ Sumber: user, 2026-11-03 ("tabnya isi progres, laporan harian, laporan mingguan,
 4. Ekspor: bila workbook bulanan kantor diunggah (sheet C.n, RB.n, B.n, CS B.n), Excel dan PDF mengisi file itu
    seperti D-086: kolom input B.k diisi % kumulatif sampai minggu 4k. Tanpa workbook: Excel dari template MONTHLY
    (layout kantor D-085) dan PDF lewat halaman cetak.
+
+## D-088 Laporan harian diisi ke file Excel kantor (format Mengwi)
+
+Sumber: user, 2026-11-09 ("boleh menambah sheet hari baru sendiri").
+
+1. Workbook harian kantor (format `04. LAPORAN HARIAN SMP NEGERI 5 MENGWI`) punya satu sheet `Har.n` per **minggu**:
+   tujuh blok hari ke bawah, 60 baris per blok (page break per hari), plus sampul `Cov.n`. Sheet `A.n`/`B.n`/`C.n`
+   kantor membagi volume mingguan ke hari dengan faktor tetap; aplikasi memakai data harian sungguhan, jadi isi blok
+   hari ditulis langsung dari laporan harian dan sheet bantu itu tidak dipakai.
+2. Yang ditulis per hari: Minggu ke / Hari / Tanggal, daftar Tenaga kerja (kelompok staf/pekerja D-084 butir 2), Jenis
+   alat, Penggunaan material, Pekerjaan yang diselesaikan (32 baris per daftar; lebih dari itu, baris terakhir
+   menyebut "… dan N lainnya"), jam cuaca Cerah/Mendung/Hujan, dan Catatan. Hari tanpa laporan tersimpan ditulis
+   kosong. Identitas proyek dan tanda tangan tetap rumus file kantor.
+3. Bila `Har.n` minggu itu belum ada, aplikasi menyalin `Har`/`Cov` minggu terakhir yang ada menjadi minggu n
+   (rujukan antar-sheet ikut diganti) lalu mengisinya. File yang tersimpan di proyek tidak diubah; salinan hanya ada di
+   hasil ekspor.
+4. Ekspor Excel harian = workbook utuh dengan minggu tanggal itu terisi, dibuka di `Har.n`. Ekspor PDF harian = satu
+   halaman hari itu saja (area cetak `Har.n` dipersempit ke blok hari itu).
+5. Keamanan cetak (melengkapi D-086 butir 5): rumus sel yang merujuk file lain (`[n]`) diganti nilai tersimpannya
+   sebelum dicetak, bukan ditolak; rumus pengambil data luar (WEBSERVICE dll.) tetap ditolak.

@@ -108,6 +108,16 @@ export class ReportExportsController {
     return this.pdf(xlsx, `Laporan Bulanan ${p.code} B.${periodNumber}.pdf`);
   }
 
+  /** D-088: PDF of one day's page of the office daily workbook; 404 when no workbook is uploaded. */
+  @Get('daily/:date/pdf')
+  @RequireProjectPermission('rab.read')
+  async dailyPdf(@Param('projectId') projectId: string, @Param('date') date: string) {
+    const p = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { code: true } });
+    const xlsx = await this.office.daily(projectId, date, { onlyDay: true });
+    if (!xlsx) throw new NotFoundException('Proyek ini belum punya file Excel laporan harian.');
+    return this.pdf(xlsx, `Laporan Harian ${p.code} ${date}.pdf`);
+  }
+
   private async pdf(xlsx: Buffer, filename: string) {
     return new StreamableFile(await xlsxToPdf(xlsx), { type: 'application/pdf', disposition: `inline; filename*=UTF-8''${encodeURIComponent(filename)}` });
   }
@@ -120,8 +130,10 @@ export class ReportExportsController {
       this.templates.list(projectId),
       this.prisma.project.findUniqueOrThrow({ where: { id: projectId } }),
     ]);
-    const logos = await this.logos(projectId, templates.logos);
-    const data = await dailyWorkbook({
+    // D-088: the office's daily workbook when one is uploaded, otherwise the layout built from the template.
+    const office = await this.office.daily(projectId, date);
+    const logos = office ? {} : await this.logos(projectId, templates.logos);
+    const data = office ?? (await dailyWorkbook({
       template: templates.templates.find((t) => t.reportType === 'DAILY')!.config,
       identity: {
         activityName: p.activityName,
@@ -138,7 +150,7 @@ export class ReportExportsController {
       },
       report,
       logos,
-    });
+    }));
     const filename = `Laporan Harian ${p.code} ${date}.xlsx`;
     return new StreamableFile(data, {
       type: XLSX,

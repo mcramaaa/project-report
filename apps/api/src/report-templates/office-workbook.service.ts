@@ -1,10 +1,13 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { Decimal } from '@laporan-proyek/calc';
+import { addDays, daysInclusive } from '@laporan-proyek/calc';
+import { dailyWeatherRows, groupLabor, numberWithWords, type DailyReportDto } from '@laporan-proyek/shared';
+import { DailyReportsService } from '../daily-reports/daily-reports.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportTemplatesService } from './report-templates.service';
 import { fillProgressSheets, matchItems, progressItemRows, type WorkbookItem } from './weekly-workbook';
 import { rabVersionLabel } from '@laporan-proyek/shared';
-import { UnsafeWorkbookError, Xlsx } from './workbook-xml';
+import { setCells, UnsafeWorkbookError, Xlsx, type CellValue } from './workbook-xml';
 
 /** Office sheet names of one week or period (Serangan pack): cover, rekap, progress, time schedule. */
 const OFFICE = {
@@ -21,6 +24,7 @@ export class OfficeWorkbookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly templates: ReportTemplatesService,
+    private readonly dailyReports: DailyReportsService,
   ) {}
 
   /**
@@ -114,5 +118,84 @@ export class OfficeWorkbookService {
         throw err;
       }
     return x.save();
+  }
+
+  /**
+   * D-088: the daily workbook (Mengwi format) with the week of `date` filled from the daily reports; Har.n/Cov.n are
+   * copied from the latest week sheet when missing. `onlyDay` keeps that day's page only (for the PDF).
+   */
+  async daily(projectId: string, date: string, opts: { onlyDay?: boolean } = {}): Promise<Buffer | null> {
+    const file = await this.templates.readWorkbook(projectId, 'DAILY');
+    if (!file) return null;
+    const x = await Xlsx.open(file.data);
+    const first = await this.dailyReports.get(projectId, date);
+    const n = first.week.weekNumber;
+    const sheet = `Har.${n}`;
+    if (!x.sheet(sheet)) {
+      const from = Math.max(0, ...x.sheets.map((s) => Number(/^Har\.(\d+)$/.exec(s.name)?.[1] ?? 0)).filter((k) => k < n));
+      if (!from) throw new ConflictException('File Excel laporan harian tidak memuat sheet Har.n (format laporan harian kantor).');
+      // Only the week sheets move to week n; A.k/B.k/C.k stay (their helper columns are not printed).
+      // Names may be quoted as ' or &apos; (defined names are escaped XML text).
+      const retarget = (xml: string) => xml.replace(new RegExp(`(?<![\\w.])(Har|Cov)\\.${from}(?=['!]|&apos;)`, 'g'), `$1.${n}`);
+      await x.copySheet(`Har.${from}`, sheet, retarget);
+      if (x.sheet(`Cov.${from}`)) await x.copySheet(`Cov.${from}`, `Cov.${n}`, retarget);
+    }
+    const t = (await this.templates.list(projectId)).templates.find((tp) => tp.reportType === 'DAILY')!.config;
+    const days = Array.from({ length: daysInclusive(first.week.startDate, first.week.endDate) }, (_, i) => addDays(first.week.startDate, i));
+    const reports = await Promise.all(days.map((d) => (d === date ? first : this.dailyReports.get(projectId, d))));
+    const values = new Map<string, CellValue>();
+    reports.forEach((r, k) => dailyBlock(values, 60 * k, n, r, t));
+    x.write(sheet, setCells(await x.read(sheet), values));
+    x.recalcOnOpen();
+    const k = days.indexOf(date);
+    await x.focus(sheet, opts.onlyDay ? [sheet] : undefined);
+    if (opts.onlyDay) {
+      x.setPrintArea(sheet, `$B$${2 + 60 * k}:$AD$${61 + 60 * k}`);
+      try {
+        await x.stripOutsideData();
+      } catch (err) {
+        if (err instanceof UnsafeWorkbookError) throw new ConflictException(err.message);
+        throw err;
+      }
+    }
+    return x.save();
+  }
+}
+
+const DAY_NAMES = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
+const LIST_ROWS = 32; // rows 14..45 of a day block
+type Line = { no?: number; name: string; qty?: string | null; unit?: string | null };
+
+/** One day block of Har.n (Mengwi layout, rows 3..62 shifted by `off`); a day without a saved report stays empty. */
+function dailyBlock(values: Map<string, CellValue>, off: number, week: number, r: DailyReportDto, t: Parameters<typeof groupLabor>[0]) {
+  const at = (col: string, row: number, v: CellValue) => values.set(`${col}${row + off}`, v);
+  const [y, m, d] = r.date.split('-').map(Number) as [number, number, number];
+  at('AA', 6, numberWithWords(week));
+  at('AA', 7, DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]!);
+  at('AA', 8, (Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86_400_000); // Excel date serial, cell keeps its format
+  const saved = r.report !== null;
+  const lines = (category: 'LABOR' | 'MATERIAL' | 'EQUIPMENT') =>
+    saved ? r.resources.filter((x) => x.category === category && x.actual && Number(x.actual) > 0).map((x) => ({ name: x.name, qty: x.actual, unit: x.unit })) : [];
+  const numbered = (xs: Line[]) => xs.map((l, i) => ({ ...l, no: i + 1 }));
+  const labor = groupLabor(t, lines('LABOR')).flatMap((g, i) => [...(i ? [{ name: '' }] : []), ...(g.title ? [{ name: g.title }] : []), ...numbered(g.rows.map((l) => ({ ...l, unit: l.qty ? (l.unit ?? t.daily.totalUnit) : null })))]);
+  list(at, ['C', 'D', 'G', 'H'], labor);
+  list(at, ['I', 'J', 'K', 'L'], numbered(lines('EQUIPMENT')));
+  list(at, ['M', 'N', 'O', 'P'], numbered(lines('MATERIAL')));
+  list(at, ['Q', 'R', 'AB', 'AC'], saved ? numbered(r.work.map((w) => ({ name: w.description, qty: w.volume, unit: w.unit }))) : []);
+  dailyWeatherRows(t, saved ? r.weather : []).forEach((w, i) => at('I', 47 + i, w.hours));
+  const note = (saved ? (r.note ?? '') : '').split('\n').map((s) => s.trim()).filter(Boolean);
+  at('Q', 48, note[0] ?? '');
+  at('Q', 49, note.slice(1).join(' '));
+}
+
+/** A list of 32 rows (number, name, quantity, unit); longer lists end with "… dan N lainnya". */
+function list(at: (col: string, row: number, v: CellValue) => void, [no, name, qty, unit]: string[], lines: Line[]) {
+  const shown = lines.length > LIST_ROWS ? [...lines.slice(0, LIST_ROWS - 1), { name: `… dan ${lines.length - LIST_ROWS + 1} lainnya` }] : lines;
+  for (let i = 0; i < LIST_ROWS; i++) {
+    const l = shown[i];
+    at(no!, 14 + i, l?.no ?? null);
+    at(name!, 14 + i, l?.name ?? null);
+    at(qty!, 14 + i, l?.qty ? Number(l.qty) : null);
+    at(unit!, 14 + i, l?.unit ?? null);
   }
 }

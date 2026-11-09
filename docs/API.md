@@ -370,6 +370,7 @@ GET    /projects/:projectId/exports/daily/:date                 laporan harian .
 GET    /projects/:projectId/exports/weekly/:weekNumber          laporan mingguan .xlsx: workbook kantor yang diisi bila ada (D-086), selain itu sheet C, RM, M, Curva S dari template (rab.read; D-085)
 GET    /projects/:projectId/exports/weekly/:weekNumber/pdf      PDF dari workbook kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-086)
 GET    /projects/:projectId/exports/monthly/:periodNumber/pdf   PDF dari workbook bulanan kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-087)
+GET    /projects/:projectId/exports/daily/:date/pdf             Halaman hari itu dari workbook harian kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-088)
 GET    /projects/:projectId/exports/monthly/:periodNumber       laporan bulanan B.n .xlsx dari template MONTHLY (rab.read; D-087)
 POST   /projects/:projectId/report-templates/workbooks/:reportType   multipart `files` .xlsx ≤ 25 MB, workbook kantor (project.update; D-086)
 DELETE /projects/:projectId/report-templates/workbooks/:reportType   (project.update)

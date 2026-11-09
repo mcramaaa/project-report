@@ -859,15 +859,16 @@ function WorkbookCard({
   onUpload: (file: File) => void;
   onRemove: () => void;
 }) {
-  if (type === 'DAILY')
-    return (
-      <p className="tpl-workbook-note">
-        File Excel kantor untuk {REPORT_TYPE_LABELS[type].toLowerCase()} menyusul; saat ini baru
-        laporan mingguan dan bulanan yang bisa diisi langsung ke file Excel kantor.
-      </p>
-    );
-  const sheets =
-    type === 'WEEKLY' ? ['C.n, RM.n, M.n, Curva S M.n', 'M.n'] : ['C.n, RB.n, B.n, CS B.n', 'B.n'];
+  // What the app writes into each office workbook (D-086, D-087, D-088).
+  const sheets = {
+    DAILY: [
+      'Cov.n dan Har.n per minggu',
+      'Har.n; sheet minggu baru disalin otomatis',
+      'laporan harian per hari',
+    ],
+    WEEKLY: ['C.n, RM.n, M.n, Curva S M.n', 'M.n', 'progres per item'],
+    MONTHLY: ['C.n, RB.n, B.n, CS B.n', 'B.n', 'progres per item'],
+  }[type];
   return (
     <div className="tpl-workbook">
       <div className="min-w-0">
@@ -883,9 +884,8 @@ function WorkbookCard({
         ) : (
           <p>
             Unggah workbook {REPORT_TYPE_LABELS[type].toLowerCase()} kantor (berisi sheet{' '}
-            {sheets[0]}). Aplikasi mengisi progres per item ke kolom input sheet {sheets[1]};
-            tampilan, rumus, logo, dan kurva tetap milik file itu, sehingga Excel dan PDF sama
-            persis dengan file kantor.
+            {sheets[0]}). Aplikasi mengisi {sheets[2]} ke sheet {sheets[1]}; tampilan, rumus, logo,
+            dan kurva tetap milik file itu, sehingga Excel dan PDF sama persis dengan file kantor.
           </p>
         )}
       </div>

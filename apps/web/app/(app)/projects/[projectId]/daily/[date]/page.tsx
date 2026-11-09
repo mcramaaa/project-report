@@ -1,4 +1,4 @@
-import type { DailyReportDto, ProjectDto } from '@laporan-proyek/shared';
+import type { DailyReportDto, ProjectDto, ReportTemplatesDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Icon } from '@/components/icon';
@@ -14,9 +14,10 @@ export default async function DailyReportPage({
 }) {
   const { projectId, date } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, report] = await Promise.all([
+  const [{ status, data: project }, report, templates] = await Promise.all([
     serverGet<ProjectDto>(base),
     serverGet<DailyReportDto>(`${base}/daily-reports/${encodeURIComponent(date)}`),
+    serverGet<ReportTemplatesDto>(`${base}/report-templates`),
   ]);
   if (status === 404 || report.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
@@ -44,6 +45,10 @@ export default async function DailyReportPage({
           initial={report.data}
           canInput={project.permissions.includes('progress.input')}
           canReopen={project.permissions.includes('report.reopen')}
+          officePdf={
+            !!templates.data?.workbookPdf &&
+            templates.data.workbooks.some((w) => w.reportType === 'DAILY')
+          }
         />
       )}
     </>

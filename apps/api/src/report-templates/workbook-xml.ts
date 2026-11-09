@@ -91,6 +91,72 @@ export class Xlsx {
   }
 
   /**
+   * D-088 butir 3: appends a copy of sheet `from` named `to`. `retarget` rewrites the copy's xml (sheet references in
+   * formulas). The sheet's drawing is copied too (its images are shared); printer settings are dropped.
+   */
+  async copySheet(from: string, to: string, retarget: (xml: string) => string): Promise<void> {
+    const src = this.sheet(from);
+    if (!src) throw new Error(`Sheet ${from} tidak ada.`);
+    const free = (dir: string, base: string) => {
+      const re = new RegExp(`^${dir}/${base}(\\d+)\\.xml$`);
+      const used = Object.keys(this.zip.files).map((f) => Number(re.exec(f)?.[1] ?? 0));
+      return `${dir}/${base}${Math.max(0, ...used) + 1}.xml`;
+    };
+    const relsOf = (path: string) => path.replace(/([^/]+)$/, '_rels/$1.rels');
+    const path = free('xl/worksheets', 'sheet');
+    let xml = retarget(await text(this.zip, src.path)).replace(/\s*tabSelected="\d"/, '');
+    const ct: string[] = [`<Override PartName="/${path}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`];
+    const srcRels = this.zip.file(relsOf(src.path));
+    if (srcRels) {
+      const kept: string[] = [];
+      for (const m of (await srcRels.async('string')).matchAll(/<Relationship\b[^>]*\/>/g)) {
+        const type = attr(m[0], 'Type') ?? '';
+        if (type.endsWith('/printerSettings')) {
+          xml = xml.replace(new RegExp(`\\s*r:id="${attr(m[0], 'Id')}"`), '');
+          continue;
+        }
+        if (!type.endsWith('/drawing')) throw new Error(`Sheet ${from} memuat ${type.split('/').pop()}; belum bisa disalin.`);
+        const drawing = `xl/drawings/${(attr(m[0], 'Target') ?? '').split('/').pop()}`;
+        const copy = free('xl/drawings', 'drawing');
+        this.zip.file(copy, await text(this.zip, drawing));
+        const dRels = this.zip.file(relsOf(drawing));
+        if (dRels) this.zip.file(relsOf(copy), await dRels.async('string'));
+        ct.push(`<Override PartName="/${copy}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
+        kept.push(m[0].replace(/Target="[^"]*"/, `Target="../drawings/${copy.split('/').pop()}"`));
+      }
+      this.zip.file(relsOf(path), `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${kept.join('')}</Relationships>`);
+    }
+    this.zip.file(path, xml);
+    const types = await text(this.zip, '[Content_Types].xml');
+    this.zip.file('[Content_Types].xml', types.replace('</Types>', `${ct.join('')}</Types>`));
+    const wbRels = await text(this.zip, 'xl/_rels/workbook.xml.rels');
+    const ids = [...wbRels.matchAll(/Id="rId(\d+)"/g)].map((m) => Number(m[1]));
+    const rId = `rId${Math.max(0, ...ids) + 1}`;
+    this.zip.file(
+      'xl/_rels/workbook.xml.rels',
+      wbRels.replace('</Relationships>', `<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/${path.split('/').pop()}"/></Relationships>`),
+    );
+    const sheetId = Math.max(0, ...[...this.workbookXml.matchAll(/<sheet\b[^>]*\bsheetId="(\d+)"/g)].map((m) => Number(m[1]))) + 1;
+    const index = this.sheets.length;
+    this.workbookXml = this.workbookXml.replace('</sheets>', `<sheet name="${escapeXml(to)}" sheetId="${sheetId}" r:id="${rId}"/></sheets>`);
+    // Print area and titles of the source sheet, for the copy.
+    const names = [...this.workbookXml.matchAll(/<definedName\b[^>]*\blocalSheetId="(\d+)"[^>]*>[^<]*<\/definedName>/g)].filter((m) => Number(m[1]) === src.index);
+    const copies = names.map((m) => retarget(m[0].replace(/localSheetId="\d+"/, `localSheetId="${index}"`)));
+    if (copies.length) this.workbookXml = this.workbookXml.replace('</definedNames>', `${copies.join('')}</definedNames>`);
+    this.sheets.push({ name: to, path, index, hidden: false });
+  }
+
+  /** Sets the print area of a sheet (e.g. one day's block of a week sheet). */
+  setPrintArea(name: string, range: string): void {
+    const s = this.sheet(name)!;
+    const tag = `<definedName name="_xlnm.Print_Area" localSheetId="${s.index}">'${escapeXml(name.replace(/'/g, "''"))}'!${range}</definedName>`;
+    const current = new RegExp(`<definedName\\b[^>]*name="_xlnm\\.Print_Area"[^>]*localSheetId="${s.index}"[^>]*>[^<]*<\\/definedName>`);
+    if (current.test(this.workbookXml)) this.workbookXml = this.workbookXml.replace(current, tag);
+    else if (this.workbookXml.includes('</definedNames>')) this.workbookXml = this.workbookXml.replace('</definedNames>', `${tag}</definedNames>`);
+    else this.workbookXml = this.workbookXml.replace('</sheets>', `</sheets><definedNames>${tag}</definedNames>`);
+  }
+
+  /**
    * For printing on the server (D-086): drops links to other files and refuses formulas that fetch outside data,
    * so a recalculating LibreOffice cannot read local files or call URLs from an uploaded workbook.
    */
@@ -98,6 +164,7 @@ export class Xlsx {
     // Denylist over every formula-bearing element of every part (cells, defined names, conditional formats, data
     // validation); the converter also runs without network (pdf-convert.ts), so this is one of two layers.
     const risky = /\b(WEBSERVICE|FILTERXML|INDIRECT|DDE|IMPORTXML|IMPORTDATA|IMPORTRANGE|RTD|CALL|REGISTER|EXEC|HYPERLINK)\s*\(|\[\d+\]|[a-z][a-z0-9+.-]*:\/\/|file:/i;
+    const external = /\[\d+\]/;
     // Self-closing elements (shared formula children) carry no text.
     const formula = /<((?:\w+:)?(?:f|formula\d?|definedName))\b[^>]*(?<!\/)>([\s\S]*?)<\/\1>/g;
     // Names pointing into an external link ([n]) die with the links removed below; drop them instead of refusing.
@@ -108,7 +175,19 @@ export class Xlsx {
       if (/^xl\/(connections\.xml|queryTables\/)/.test(name))
         throw new UnsafeWorkbookError('File Excel memuat koneksi data luar (connections/query table); PDF tidak dibuat.');
       if (!name.startsWith('xl/') || !name.endsWith('.xml') || name.startsWith('xl/externalLinks/')) continue;
-      const xml = name === 'xl/workbook.xml' ? this.workbookXml : await text(this.zip, name);
+      let xml = name === 'xl/workbook.xml' ? this.workbookXml : await text(this.zip, name);
+      // D-088 butir 5: a cell formula reading another file keeps its cached value (Excel's "don't update links").
+      if (name.startsWith('xl/worksheets/') && external.test(xml)) {
+        const orphans = new Set<string>();
+        xml = xml.replace(/<f\b([^>]*)(?<!\/)>([^<]*)<\/f>/g, (m, attrs: string, f: string) => {
+          if (!external.test(unescapeXml(f))) return m;
+          const si = /t="shared"/.test(attrs) ? attr(`<f${attrs}>`, 'si') : null;
+          if (si) orphans.add(si);
+          return '';
+        });
+        if (orphans.size) xml = xml.replace(/<f\b[^>]*\bsi="(\d+)"[^>]*\/>/g, (m, si: string) => (orphans.has(si) ? '' : m));
+        this.zip.file(name, xml);
+      }
       for (const m of xml.matchAll(formula)) {
         const f = unescapeXml(m[2]!);
         if (risky.test(f)) throw new UnsafeWorkbookError(`${name} memuat rumus yang mengambil data dari luar file (${f.slice(0, 60)}); PDF tidak dibuat.`);
