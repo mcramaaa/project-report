@@ -14,10 +14,13 @@ const short = (iso: string) =>
 export function WeekJump({
   weeks,
   current,
+  now,
   hrefOf,
 }: {
   weeks: CalendarWeek[];
   current: number;
+  /** The week containing today, marked in the list. */
+  now?: number;
   /** `${base}/{n}{path}` with `{n}` replaced; a function cannot cross from the server component. */
   hrefOf: string;
 }) {
@@ -37,6 +40,7 @@ export function WeekJump({
             .map((w) => (
               <option key={w.weekNumber} value={w.weekNumber}>
                 M.{w.weekNumber} · {short(w.startDate)} – {short(w.endDate)}
+                {w.weekNumber === now ? ' · minggu ini' : ''}
               </option>
             ))}
         </optgroup>

@@ -25,3 +25,5 @@ graphify-out-backup-*/
 *.bak-graphify
 *.graphify-bak
 .playwright-mcp/
+test-results/
+playwright-report/

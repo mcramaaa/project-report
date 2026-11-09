@@ -21,6 +21,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "pretest": "npm run build:packages",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "npm run build:packages && npm run build -w @laporan-proyek/api && npm run db:seed -w @laporan-proyek/api",

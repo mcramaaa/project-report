@@ -197,6 +197,7 @@ Password MySQL di `.env` juga hanya berlaku saat volume pertama kali dibuat.
 npm run lint
 npm run typecheck
 npm test        # butuh MySQL berjalan; memakai database <db>_test yang dikosongkan per test
+E2E_EMAIL=... E2E_PASSWORD=... npm run test:e2e   # Playwright ke `npm run dev`; admin sistem, membuat proyek E2E-* sendiri
 npm run build
 ```
 
