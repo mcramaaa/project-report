@@ -16,6 +16,50 @@ const RECALC = `<?xml version="1.0" encoding="UTF-8"?>
 <item oor:path="/org.openoffice.Office.Calc/Content/Update"><prop oor:name="Link" oor:op="fuse"><value>1</value></prop></item>
 </oor:items>`;
 
+// Run inside the sandbox: opens the workbook through UNO and prints only the visible sheets. A plain `--convert-to pdf`
+// prints hidden sheets too, so a one-week export came out as the whole workbook (735 pages for M.21).
+const SCRIPT = `import os, signal, subprocess, sys, time
+import uno
+from com.sun.star.beans import PropertyValue
+
+def prop(name, value):
+    p = PropertyValue(); p.Name = name; p.Value = value; return p
+
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
+soffice, profile, src, out = sys.argv[1:5]
+pipe = 'laporan%d' % os.getpid()
+office = subprocess.Popen([soffice, '-env:UserInstallation=' + uno.systemPathToFileUrl(profile), '--headless', '--invisible', '--norestore', '--nologo', '--accept=pipe,name=%s;urp;' % pipe])
+try:
+    local = uno.getComponentContext()
+    resolver = local.ServiceManager.createInstanceWithContext('com.sun.star.bridge.UnoUrlResolver', local)
+    for _ in range(600):
+        try:
+            ctx = resolver.resolve('uno:pipe,name=%s;urp;StarOffice.ComponentContext' % pipe); break
+        except Exception:
+            if office.poll() is not None: sys.exit('LibreOffice exited')
+            time.sleep(0.1)
+    else:
+        sys.exit('LibreOffice did not start')
+    desktop = ctx.ServiceManager.createInstanceWithContext('com.sun.star.frame.Desktop', ctx)
+    doc = desktop.loadComponentFromURL(uno.systemPathToFileUrl(src), '_blank', 0, (prop('Hidden', True),))
+    sheets = doc.Sheets
+    for i in range(sheets.Count):
+        s = sheets.getByIndex(i)
+        if not s.IsVisible:
+            s.setPrintAreas(())  # no print range: the sheet is not printed
+            continue
+        style = doc.StyleFamilies.getByName('PageStyles').getByName(s.PageStyle)
+        style.ScaleToPagesX = 1  # fonts render a little wider than in Excel; keep each sheet one page wide
+        style.ScaleToPagesY = 0
+    doc.storeToURL(uno.systemPathToFileUrl(out), (prop('FilterName', 'calc_pdf_Export'),))
+    doc.close(True)
+    try: desktop.terminate()
+    except Exception: pass
+    office.wait(30)
+finally:
+    if office.poll() is None: office.kill()
+`;
+
 // shortcut: one conversion at a time (LibreOffice locks its profile); fine for a few users, add a worker pool if exports queue up.
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -29,7 +73,10 @@ const sandboxAvailable = () =>
 let available: Promise<boolean> | null = null;
 /** Whether LibreOffice can be started; checked once per process (install it, then restart the API). */
 export function pdfConverterAvailable(): Promise<boolean> {
-  available ??= run(process.env.SOFFICE_PATH || 'soffice', ['--version'], { timeout: 30_000 }).then(
+  available ??= Promise.all([
+    run(process.env.SOFFICE_PATH || 'soffice', ['--version'], { timeout: 30_000 }),
+    run('python3', ['-c', 'import uno'], { timeout: 30_000 }),
+  ]).then(
     () => true,
     () => false,
   );
@@ -49,14 +96,15 @@ async function convert(xlsx: Buffer): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), 'laporan-pdf-'));
   try {
     await writeFile(join(dir, 'laporan.xlsx'), xlsx);
-    const soffice = [process.env.SOFFICE_PATH || 'soffice', `-env:UserInstallation=file://${PROFILE}`, '--headless', '--norestore', '--convert-to', 'pdf', '--outdir', dir, join(dir, 'laporan.xlsx')];
+    await writeFile(join(dir, 'to-pdf.py'), SCRIPT);
+    const args = [join(dir, 'to-pdf.py'), process.env.SOFFICE_PATH || 'soffice', PROFILE, join(dir, 'laporan.xlsx'), join(dir, 'laporan.pdf')];
     // Fail closed: the converter only runs without network, and with an environment that carries no secrets.
     if (!(await sandboxAvailable()))
       throw new ServiceUnavailableException('Server tidak mendukung sandbox tanpa jaringan (unshare -rn), jadi PDF format Excel kantor tidak dibuat.');
     try {
-      await run('unshare', ['-rn', ...soffice], { timeout: 180_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
+      await run('unshare', ['-rn', 'python3', '-I', ...args], { timeout: 180_000, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: dir } });
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new ServiceUnavailableException('LibreOffice belum terpasang di server, jadi PDF format Excel kantor belum bisa dibuat.');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') throw new ServiceUnavailableException('LibreOffice (dengan python3-uno) belum terpasang di server, jadi PDF format Excel kantor belum bisa dibuat.');
       throw err;
     }
     return await readFile(join(dir, 'laporan.pdf'));
