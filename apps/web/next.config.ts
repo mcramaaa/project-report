@@ -7,6 +7,8 @@ if (existsSync('../../.env')) process.loadEnvFile('../../.env');
 const apiUrl = process.env.API_URL ?? 'http://localhost:3001';
 
 const nextConfig: NextConfig = {
+  // Dev server only serves its assets to known hosts; allow the APP_URL host (e.g. a LAN IP).
+  allowedDevOrigins: [new URL(process.env.APP_URL ?? 'http://localhost:3000').hostname],
   // Browser talks only to this origin; /api is proxied so the session cookie stays first-party (D-031).
   // Note: evaluated at build time for `next build`.
   async rewrites() {
