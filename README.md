@@ -63,7 +63,7 @@ docs
 
 ## Menjalankan Lokal
 
-Butuh Node 24 dan Docker.
+Butuh Node 24 dan Docker. Untuk server (VPS Ubuntu + domain HTTPS) lihat [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ```bash
 npm install
