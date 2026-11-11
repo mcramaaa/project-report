@@ -190,6 +190,20 @@ export const draftRowSchema = z.object({
    * strings because MySQL JSON does not keep every double digit. Absent in old drafts.
    */
   workbook: z.object({ unitPriceWithTax: z.string().nullable(), subtotal: z.string().nullable() }).optional(),
+  /**
+   * D-092: the source unit price is a formula over the traced base price (HPS: L = ROUNDDOWN(K × 1.11, 0)). The RAB
+   * keeps the source price; an analysis is consistent when the formula applied to its price gives that price.
+   */
+  sourcePriceFormula: z
+    .object({
+      baseCell: z.string(),
+      factor: z.string(),
+      rounding: z.enum(['DOWN', 'UP', 'NEAREST']).nullable(),
+      scale: z.number().int().nullable(),
+      /** Roundings of the analysis price before the factor, inner first (ROUNDUP in F, then "Dibulatkan" row). */
+      preRoundings: z.array(z.object({ mode: z.enum(['DOWN', 'UP', 'NEAREST']), scale: z.number().int() })).optional(),
+    })
+    .optional(),
   price: z.object({
     /** ANALYSIS = formula chain proves an analysis; DIRECT = literal price; UNRESOLVED = chain broken/ambiguous. */
     kind: z.enum(['ANALYSIS', 'DIRECT', 'UNRESOLVED', 'NONE']),
@@ -203,6 +217,41 @@ export const draftRowSchema = z.object({
   workItemCandidates: z.array(workItemCandidateSchema),
 });
 export type DraftRow = z.infer<typeof draftRowSchema>;
+
+/**
+ * Column mapping of a RAB sheet read by its header words (D-090): 1-based column numbers; `headerRow` is the last
+ * header row (data starts below it). Detected automatically; the reviewer may correct it and process again.
+ */
+const column = z.number().int().min(1).max(16_384);
+export const rabColumnMapSchema = z.object({
+  headerRow: z.number().int().min(1).max(1_048_576),
+  code: column,
+  description: column,
+  unit: column.nullable(),
+  quantity: column,
+  price: column,
+  amount: column.nullable(),
+  /**
+   * PPN % applied to every item of the sheet, as a decimal string (no floats, AGENTS.md). Absent = "0": the mapped
+   * price already includes PPN (e.g. an HPS "Harga Satuan" column computed as base × 1.11).
+   */
+  taxPercent: z
+    .string()
+    .regex(/^\d{1,3}(\.\d{1,2})?$/, { message: 'PPN berupa angka 0–100 dengan paling banyak 2 desimal.' })
+    .refine((v) => Number(v) <= 100, { message: 'PPN paling besar 100%.' })
+    .optional(),
+});
+export type RabColumnMap = z.infer<typeof rabColumnMapSchema>;
+export const RAB_COLUMN_ROLES = ['code', 'description', 'unit', 'quantity', 'price', 'amount'] as const;
+export type RabColumnRole = (typeof RAB_COLUMN_ROLES)[number];
+export const RAB_COLUMN_LABELS: Record<RabColumnRole, string> = {
+  code: 'Kode / No. mata pembayaran',
+  description: 'Uraian pekerjaan',
+  unit: 'Satuan',
+  quantity: 'Kuantitas / volume',
+  price: 'Harga satuan',
+  amount: 'Jumlah harga',
+};
 
 export const rabImportDraftSchema = z.object({
   guideVersion: z.string(),
@@ -219,6 +268,14 @@ export const rabImportDraftSchema = z.object({
       sheet: z.string().nullable(),
       block: z.string().nullable(),
       analysisSheets: z.array(z.string()),
+      /** OFFICE = VOLUME + NO. ANALISA header; HEADER = columns found by header words (D-090). Absent in old drafts. */
+      layout: z.enum(['OFFICE', 'HEADER']).optional(),
+      /** HEADER layout: the mapping used, and the header text of each column so the reviewer can check it. */
+      columns: rabColumnMapSchema.optional(),
+      /** `sample` = the column's value on the first item row, so two columns with the same title can be told apart. */
+      headerLabels: z
+        .array(z.object({ col: z.number().int(), label: z.string(), sample: z.string().optional(), sampleNumeric: z.boolean().optional() }))
+        .optional(),
     }),
   ),
   rows: z.array(draftRowSchema),
@@ -252,6 +309,8 @@ export const createRabImportSchema = z.object({
         documentId: z.uuid(),
         role: z.enum(DOCUMENT_ROLES).default('RAB'),
         rabSheet: z.string().trim().min(1).max(120).optional(),
+        /** Reviewer-corrected column mapping for a sheet read by header words (D-090). */
+        columns: rabColumnMapSchema.optional(),
       }),
     )
     .min(1, { message: 'Pilih minimal satu dokumen.' })
@@ -261,6 +320,15 @@ export const createRabImportSchema = z.object({
     }),
 });
 export type CreateRabImportInput = z.infer<typeof createRabImportSchema>;
+
+/** D-090: process a run again with a corrected column mapping per RAB document. */
+export const remapRabImportSchema = z.object({
+  sources: z
+    .array(z.object({ documentId: z.uuid(), columns: rabColumnMapSchema }))
+    .min(1, { message: 'Isi pemetaan kolom minimal satu dokumen.' })
+    .max(10),
+});
+export type RemapRabImportInput = z.infer<typeof remapRabImportSchema>;
 
 const decisionValue = z.discriminatedUnion('kind', [
   z.object({

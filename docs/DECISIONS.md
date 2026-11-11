@@ -1511,3 +1511,108 @@ Sumber: user, 2026-11-09 ("boleh menambah sheet hari baru sendiri").
    halaman hari itu saja (area cetak `Har.n` dipersempit ke blok hari itu).
 5. Keamanan cetak (melengkapi D-086 butir 5): rumus sel yang merujuk file lain (`[n]`) diganti nilai tersimpannya
    sebelum dicetak, bukan ditolak; rumus pengambil data luar (WEBSERVICE dll.) tetap ditolak.
+
+## D-089 Workbook dibaca streaming; batas unggah 100 MB
+
+Sumber: user, 2026-11-11 ("batas upload RAB dan laporan 100 MB"; file kantor "biasanya kurang dari 100 MB").
+
+1. Masalah: memuat workbook utuh dengan exceljs (`Workbook#xlsx.load`) memakai ±100× ukuran file di heap Node
+   (file 32 MB → 2,9 GB), sehingga unggah RAB besar mematikan API (`Aborted`, exit 134). Pemuatan ini terjadi di
+   inventaris sheet saat unggah, pratinjau dokumen, impor RAB, dan impor jadwal.
+2. Keputusan: keempatnya memakai `loadCompactWorkbook` (`apps/api/src/imports/workbook/compact-workbook.ts`), pembaca
+   .xlsx streaming (zip dibaca per entri, XML sheet lewat SAX) yang menyimpan per baris hanya nilai tersimpan dan teks
+   rumus. `WorkbookModel` tidak berubah API-nya; tes boleh tetap memberi workbook exceljs. Hasilnya diverifikasi
+   sel-per-sel terhadap exceljs pada lima workbook kantor SDN 2 Serangan (`compact-workbook.real.spec.ts`).
+3. Perilaku yang dipertahankan dari exceljs: rumus bersama (`<f t="shared">`) diterjemahkan ke tiap sel turunan;
+   angka di sel berformat tanggal menjadi `Date`; rich text dan tautan menjadi teksnya; sel yang tertutup merge kosong;
+   sel kosong hanya dihitung ke `columnCount` bila bergaya. Perbedaan yang disengaja: hasil rumus **teks** di sel
+   berformat tanggal tetap teks (exceljs menghasilkan `Invalid Date`).
+4. Inventaris saat unggah membaca 40 baris pertama tiap sheet saja (`headRows`), karena `rabSheetCandidates` hanya
+   melihat sebanyak itu; sheet 450 000 baris selesai < 0,1 detik dengan 7 MB heap.
+5. Batas unggah satu file (RAB/dokumen dan workbook laporan kantor): `UPLOAD_MAX_BYTES` = 100 MB di
+   `packages/shared/src/uploads.ts`, dipakai API dan web; proxy Next.js (`proxyClientMaxBodySize`) dan reverse proxy
+   harus ≥ batas itu. Logo (2 MB), foto KTP dan impor pekerja (5 MB) tidak berubah.
+6. Kebutuhan memori hasil ukur (workbook 12 kolom): impor/pratinjau file 32 MB ≈ 0,6 GB heap (6 s); file 98 MB ≈ 1,8 GB
+   heap (20 s). Server yang menerima file 100 MB butuh heap API ≥ 3 GB (`NODE_OPTIONS=--max-old-space-size=3072`) dan
+   RAM ≥ 4 GB; lihat `docs/DEPLOY.md`.
+
+## D-090 Sheet RAB tanpa header kantor: kolom dari judul header + koreksi reviewer
+
+Sumber: user, 2026-11-11 ("susah kalau tiap RAB punya format beda-beda harus selalu siapkan parser"; HPS RAB Paving
+Tuban sebagai contoh).
+
+1. Sheet RAB yang tidak punya header kantor (VOLUME + NO. ANALISA, D-044) dibaca dari **judul header**: kode
+   (No. Mata Pembayaran/Kode), uraian, satuan, kuantitas/volume, harga satuan, jumlah. Header dicari di 40 baris
+   pertama dalam jendela dua baris; bila satu judul muncul dua kali (mis. dua "Harga Satuan"), kolom paling kanan
+   dipakai. Sheet baru dianggap RAB bila ada minimal satu item berkode dengan harga, supaya sheet analisa yang
+   kebetulan memuat "Uraian" tidak ikut. Format kantor tidak berubah. `rab-parser@6`.
+2. Hierarki: judul `DIVISI n. …` (tanpa kode) → SECTION; kode grup bertitik tanpa nilai (`1.20`) → SUBSECTION;
+   sub-judul pendek (`1`, `3a`) → PARENT_ITEM; baris berkode dengan kuantitas atau harga → ITEM di bawah judul
+   terdekat. Baris katalog tanpa kuantitas dan tanpa harga tidak diimpor; judul tanpa item dibuang.
+3. Harga: lihat D-092 (harga kolom harga HPS sebagai rumus atas harga analisa) dan D-091 (penelusuran). PPN per
+   sheet di pemetaan (`taxPercent`, string desimal) hanya dipakai bila reviewer mengisinya; bawaan 0 karena kolom
+   harga HPS sudah termasuk PPN. Pada HPS Paving Tuban Σ kuantitas × L = Rekap (Rp 4.021.363.121) per divisi.
+4. Draft mencatat layout (OFFICE/HEADER), pemetaan yang dipakai, dan judul + contoh nilai item pertama per kolom.
+   Halaman review menampilkannya; reviewer (`rabImport.review`) dapat mengoreksi kolom, baris header, dan PPN lalu
+   `POST …/rab-imports/:importId/remap`: run baru tertaut seperti retry (D-048) dengan pemetaan itu disimpan di
+   `rab_import_documents.column_map`; run lama yang masih NEEDS_REVIEW keluar dari daftar lewat D-066 (riwayat
+   tetap). Hanya untuk run FAILED/REJECTED/NEEDS_REVIEW yang belum menghasilkan data resmi. Retry membawa pemetaan.
+5. Kinerja: `WorkbookModel` mencari sheet lewat indeks nama (bukan pindai daftar) — workbook 118 sheet membuat
+   `buildDraft` 22 detik sinkron (event loop API macet, polling halaman review gagal 500); kini < 1 detik.
+
+## D-091 Penelusuran analisa format Bina Marga dan Cipta Karya
+
+Sumber: user, 2026-11-11 ("harusnya langsung telusuri rumusnya"; RAB Paving Tuban: analisa kosong walau HPS
+merujuk sheet analisa).
+
+1. Rantai harga yang mendarat langsung di sel total analisa (F) dikenali selain lewat baris kepala kantor (D-051):
+   - **Bina Marga**: judul `KOMPONEN | SATUAN | PERKIRAAN KUANTITAS | HARGA SATUAN | JUMLAH HARGA` (bertumpuk dua baris
+     ke atas atau ke bawah; kolom dicari di kanan KOMPONEN). Nilai jumlah boleh bergeser ≤ 3 kolom dari judulnya (sel
+     gabungan). F = baris `TOTAL HARGA …`/`HARGA SATUAN PEKERJAAN`; kode/nama/satuan dari `ITEM PEMBAYARAN NO.`,
+     `JENIS PEKERJAAN`, `SATUAN PEMBAYARAN` terdekat di atas (nilai yang berupa label formulir atau tertukar dilewati).
+   - **Cipta Karya**: label kantor dengan F dicari dari labelnya ("F | Harga Satuan Pekerjaan (D+E)") bila baris judul
+     tidak merujuk F; judul satu sel "11.7.1.2 Pemasangan …" dipecah menjadi kode dan nama; overhead pecahan
+     (`D × 0,1`) = 10%. Rantai yang berakhir di baris "Dibulatkan" (`ROUNDDOWN(F; 0)`) masuk lewat F.
+   Rumus D/E/F dan komponen harga × koefisien tetap seperti D-051; label hanya mengklasifikasi.
+2. F = `ROUND(D + E; n)` = pembulatan analisa (skala yang sama dihitung sekali; `ROUND(ROUND(x;n);n) = ROUND(x;n)`).
+   `ROUNDUP`/`ROUNDDOWN` di F atau baris "Dibulatkan" bukan pembulatan analisa aplikasi (yang setengah-ke-atas):
+   analisa menyimpan D + E, dan pembulatan itu menjadi bagian rumus harga sumber (D-092).
+3. Harga komponen:
+   - lewat rujukan biasa (`=N24` → `='4-Basic Price'!H8`) = item daftar harga bernama teks baris tujuan ("Pekerja");
+     di dalam blok analisa lain dinamai "Analisa <kode> <nama>: <baris>"; rantai disimpan sebagai bukti;
+   - `VLOOKUP` tanpa argumen ke-4/TRUE hanya diterima bila kunci tepat ada sekali dan nilai tersimpan sel sama dengan
+     baris itu; daftar berkode ("E10a") dinamai dengan deskripsi barisnya ("MINI EXCAVATOR …(E10a)");
+   - `IF(syarat; konstanta; x)` diikuti ke cabang x bila nilai tersimpan ≠ konstanta (cabang lain tidak dapat dipastikan
+     → berhenti seperti biasa);
+   - ekspresi angka saja (`=60000/40`) = harga literal, dihitung desimal;
+   - nilai komponen lain di blok yang sama hanya bila baris **dan** kolom jumlah sama (sel tabel bantu di baris
+     komponen bukan nilai komponen).
+4. Untuk sheet layout HEADER (D-090), rantai rujukan yang berakhir di angka ketik (harga SMKK) = harga langsung;
+   sheet kantor tetap D-052 (kandidat analisa untuk reviewer).
+5. Hasil pada HPS Paving Tuban: 31 dari 59 item tertaut ke 31 analisa (77 harga dasar), 28 harga langsung, 2 item
+   (Mobilisasi = lembar hitung, dan satu harga hasil penjumlahan baris HPS) diputuskan reviewer.
+
+## D-092 Harga HPS sebagai rumus atas harga analisa
+
+Sumber: user, 2026-11-11, memilih opsi A: "harga RAB = kolom L (HPS termasuk PPN), analisa ditautkan sebagai rincian".
+
+1. Bila kolom harga yang dipetakan berbentuk `ROUNDDOWN/ROUNDUP/ROUND(<sel baris yang sama> × f; n)` atau
+   `<sel> × f` (1 < f ≤ 2), harga RAB = nilai L (sudah termasuk PPN, PPN item 0%), penelusuran dimulai dari sel dasar
+   (K) untuk menautkan analisa, dan rumusnya disimpan di draft (`sourcePriceFormula`: sel dasar, faktor, mode, skala,
+   serta pembulatan awal dari D-091 butir 2, urut dari dalam).
+2. Analisa konsisten bila rumus itu diterapkan pada harga analisa (desimal, mode pembulatan Excel) memberi L. Baris
+   itu otomatis `SOURCE_OVERRIDE` tanpa keputusan reviewer: harga RAB = L, harga analisa dicatat, catatan harga
+   menjelaskan rumusnya. Koreksi analisa kemudian tidak menimpa L (perilaku SOURCE_OVERRIDE). Bila tidak cocok →
+   PRICE_MISMATCH untuk reviewer.
+3. Alasan: D-043 mewajibkan harga satuan ≤ 2 desimal, sedangkan K mengambil harga analisa tanpa pembulatan; L
+   (bilangan bulat) adalah harga kontrak dan Σ kuantitas × L = Rekap.
+
+## D-093 RAB Playground: AI menafsirkan struktur workbook, sistem membuktikan (USULAN)
+
+Status: usulan, menunggu persetujuan rinci. Sumber: user, 2026-11-11 ("RAB berubah-ubah"; "AI juga ambil data dari
+alur rumus"; setuju pendekatan "AI menafsirkan rumus, sistem membuktikan").
+
+Rancangan lengkap: `docs/RAB_PLAYGROUND.md`. Ringkas: AI hanya memberi klaim struktur berupa alamat sel (sheet RAB,
+peran kolom, sel F/D/E/komponen/harga dasar); semua angka dibaca sistem dari sel dan dibuktikan mekanis (rujukan
+rumus nyata + hitung ulang desimal = nilai tersimpan, D-054); hasil playground adalah profil pemetaan yang dipakai run
+impor biasa (review dan approval tidak berubah). Mesin penelusur tetap jalan lebih dulu; AI untuk bagian yang gagal.

@@ -11,13 +11,15 @@ import type {
   RabVersionType,
 } from '@laporan-proyek/shared';
 import { GUIDE_VERSION } from './guide/rab-import-guide';
-import { analysisHeaderIn, blockColumns, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock } from './workbook/analysis-block';
+import { applySourceFormula, formulaMatches, formulaNote } from './price-formula';
+import { analysisHeaderIn, binaMargaTitleAt, blockColumns, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock } from './workbook/analysis-block';
 import { columnLetters, formatAddress, type FormulaNode } from './workbook/formula';
+import { headerLabels, type HeaderlessColumns } from './workbook/headerless-sheet';
 import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-sheet';
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
 import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
-export const PARSER_VERSION = 'rab-parser@5'; // @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
+export const PARSER_VERSION = 'rab-parser@6'; // @6: header-word sheets + column mapping (D-090), Bina Marga/Cipta Karya analyses (D-091), HPS price formula (D-092); @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
 
 export interface DraftSource {
   model: WorkbookModel;
@@ -27,6 +29,8 @@ export interface DraftSource {
   /** RAB = main RAB/recap document; SUPPORT = analysis/price document without a RAB sheet (D-045). */
   role?: 'RAB' | 'SUPPORT';
   rabSheet?: string;
+  /** Reviewer-corrected column mapping for a sheet read by header words (D-090). */
+  columns?: HeaderlessColumns;
 }
 
 export interface OfficialAnalysis {
@@ -100,8 +104,10 @@ interface PendingComponent {
   amountOfRow?: number;
 }
 
+/** The price is another component's amount in this block: same row and the amount column (not a side table cell). */
 const sameBlockAmount = (block: AnalysisBlock, t: TraceResult) =>
-  t.terminal.address.sheet === block.sheet && block.components.some((c) => c.row === t.terminal.address.row && c.priceCell.row === t.terminal.address.row);
+  t.terminal.address.sheet === block.sheet &&
+  block.components.some((c) => c.row === t.terminal.address.row && c.amountCol === t.terminal.address.col);
 
 /** `<expr> * n`, `<expr> / n`, or `n * <expr>` with a numeric literal n. */
 function constantFactor(node: FormulaNode | null): { inner: FormulaNode; op: '*' | '/'; value: string } | null {
@@ -174,12 +180,23 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     }
     let sheet;
     try {
-      sheet = readRabSheet(src.model, sheetName, ctx.targetVersionType, ctx.targetRevisionNumber ?? 0);
+      sheet = readRabSheet(src.model, sheetName, ctx.targetVersionType, ctx.targetRevisionNumber ?? 0, src.columns);
     } catch (err) {
       if (err instanceof RabSheetError) throw new DraftInputError(`${src.filename}: ${err.message}`);
       throw err;
     }
-    sourceInfo.push({ documentId: src.documentId, filename: src.filename, sha256: src.sha256, role: 'RAB', sheet: sheet.sheet, block: sheet.columns.block, analysisSheets: [] });
+    sourceInfo.push({
+      documentId: src.documentId,
+      filename: src.filename,
+      sha256: src.sha256,
+      role: 'RAB',
+      sheet: sheet.sheet,
+      block: sheet.columns.block,
+      analysisSheets: [],
+      ...(sheet.headerless
+        ? { layout: 'HEADER' as const, columns: sheet.headerless, headerLabels: headerLabels(src.model, sheet.sheet, sheet.headerless) }
+        : { layout: 'OFFICE' as const }),
+    });
     if (sheet.totals && sources.filter((x) => x.role !== 'SUPPORT').length === 1) workbookTotals = { value: sheet.totals.value, rounded: sheet.totals.rounded, valueRaw: sheet.totals.valueRaw };
 
     const keyOf = (row: number) => `${docIndex}:${row}`;
@@ -211,6 +228,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
         taxPercent: r.taxPercent,
         analysisCode: r.analysisCode,
         sourceUnitPrice: r.sourceUnitPrice,
+        ...(r.sourcePriceFormula ? { sourcePriceFormula: r.sourcePriceFormula } : {}),
         price: { kind: 'NONE', analysisKey: null, roundingScale: null, evidence: [], stoppedAt: null },
         analysisCandidates: [],
         workItemCandidates: [],
@@ -227,15 +245,29 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       const header = analysisHeaderIn(src.model, t);
       if (header) {
         const analysisKey = `${docIndex}:${header.sheet}:${header.headerRow}`;
-        const rounding = t.roundings.length === 0 ? null : t.roundings.length === 1 ? t.roundings[0]! : NaN;
+        const pending = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow);
+        // Roundings that are not the app's half-up analysis rounding (ROUNDUP/ROUNDDOWN in F, a "Dibulatkan" row) are
+        // part of how the source price is formed: kept in the row's source price formula, inner first (D-092).
+        const sourceRoundings = [pending.block?.sourceRounding, header.endRounding].filter((x): x is NonNullable<typeof x> => !!x);
+        const nearestEnd = header.endRounding?.mode === 'NEAREST' && !base.sourcePriceFormula ? [header.endRounding.scale] : [];
+        if (base.sourcePriceFormula && sourceRoundings.length) base.sourcePriceFormula = { ...base.sourcePriceFormula, preRoundings: sourceRoundings };
+        // ROUND(ROUND(x, n), n) = ROUND(x, n): equal scales count once, including the analysis' own ROUND in F (D-091).
+        const scales = [...new Set([...t.roundings, ...nearestEnd, ...(pending.block?.priceRounding != null ? [pending.block.priceRounding] : [])])];
+        const rounding = scales.length === 0 ? null : scales.length === 1 ? scales[0]! : NaN;
         if (Number.isNaN(rounding)) {
-          issues.push({ code: 'ROUNDING_UNSUPPORTED', severity: 'BLOCKING', message: `${r.description}: rantai harga membulatkan lebih dari sekali.`, rowKey: key, resolvedBy: ['DIRECT_PRICE'] });
+          issues.push({ code: 'ROUNDING_UNSUPPORTED', severity: 'BLOCKING', message: `${r.description}: rantai harga membulatkan lebih dari sekali dengan skala berbeda (${scales.join(', ')}).`, rowKey: key, resolvedBy: ['DIRECT_PRICE'] });
         }
         base.price = { ...base.price, kind: 'ANALYSIS', analysisKey, roundingScale: Number.isNaN(rounding) ? null : rounding };
-        const pending = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow);
         pending.usedByRows.add(key);
         pending.roundings.add(Number.isNaN(rounding) ? null : rounding);
-      } else if (t.steps.length === 1 && t.terminalKind === 'VALUE' && r.sourceUnitPrice !== null) {
+      } else if (
+        r.sourceUnitPrice !== null &&
+        t.terminalKind === 'VALUE' &&
+        (t.steps.length === 1 ||
+          // D-091: header-layout sheets carry no analysis code to look up, so a reference chain to a typed price
+          // (HPS → 'SMKK'!H93) is a direct price; office sheets keep D-052 (candidates for the reviewer).
+          (sheet.headerless !== undefined && t.lookups.length === 0 && t.problems.every((p) => !isBlocking(p))))
+      ) {
         base.price.kind = 'DIRECT';
         issues.push({ code: 'DIRECT_PRICE', severity: 'WARNING', message: `${r.description}: harga langsung tanpa analisa (${r.sourceUnitPrice}).`, rowKey: key });
       } else if (r.sourceUnitPrice === null || new Decimal(r.sourceUnitPrice).isZero()) {
@@ -413,7 +445,8 @@ function registerAnalysis(
   for (const comp of pending.block.components) {
     // A list price scaled by a constant (`VLOOKUP(...)/8`) is evaluated exactly; the factor is evidence.
     const priceCell = src.model.cell(comp.priceCell.sheet, comp.priceCell.row, comp.priceCell.col);
-    const scaled = constantFactor(src.model.formulaOf(priceCell));
+    // A price cell of numbers only (=60000/40) is a literal, not a list price scaled by a factor.
+    const scaled = constantValue(src.model.formulaOf(priceCell)) === null ? constantFactor(src.model.formulaOf(priceCell)) : null;
     const t = scaled ? traceExpression(src.model, priceCell, scaled.inner) : traceCell(src.model, comp.priceCell.sheet, comp.priceCell.row, comp.priceCell.col);
     const pc: PendingComponent = { block: comp, trace: t, source: null, unitPrice: null, factor: scaled ? { op: scaled.op, value: scaled.value } : null };
     if (comp.blankCoefficient) {
@@ -424,14 +457,34 @@ function registerAnalysis(
     if (header && !(header.sheet === pending.block.sheet && header.headerRow === headerRow)) {
       const sub = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow);
       sub.usedByAnalyses.add(key);
-      const rounding = t.roundings[0] ?? null;
+      const own = sub.block?.priceRounding ?? null;
+      const rounded = t.roundings.length > 0 || own !== null;
+      const rounding = t.roundings[0] ?? own;
       // Only rounded use fixes the sub-analysis rounding; exact use reads its unrounded price.
-      if (t.roundings.length) sub.roundings.add(rounding);
-      pc.source = { kind: 'ANALYSIS', analysisKey: sub.key, basis: t.roundings.length ? 'ROUNDED' : 'EXACT', roundingScale: rounding };
+      if (rounded) sub.roundings.add(rounding);
+      pc.source = { kind: 'ANALYSIS', analysisKey: sub.key, basis: rounded ? 'ROUNDED' : 'EXACT', roundingScale: rounding };
     } else if (t.steps.length === 1 && !pc.factor && (t.terminalKind === 'VALUE' || t.terminalKind === 'EMPTY')) {
       // Literal price typed in the analysis (blank = 0, as Excel computes it).
       pc.source = { kind: 'LITERAL' };
       pc.unitPrice = excelDecimal(t.terminal.value) ?? '0';
+    } else if (
+      !pc.factor &&
+      t.terminalKind === 'FORMULA' &&
+      t.lookups.length === 0 &&
+      t.steps.every((step, i) => i === 0 || step.via === 'REF') &&
+      t.problems.every((p) => !isBlocking(p)) &&
+      constantValue(src.model.formulaOf(t.terminal)) !== null
+    ) {
+      // D-091: a price typed as arithmetic on numbers only (=60000/40: a bag price per kg) is a literal, evaluated in
+      // decimal; the expression is the evidence.
+      pc.source = { kind: 'LITERAL' };
+      pc.unitPrice = constantValue(src.model.formulaOf(t.terminal))!;
+      issues.push({
+        code: 'PRICE_FORMULA',
+        severity: 'INFO',
+        message: `Harga "${comp.description}" ditulis sebagai ${formatAddress(t.terminal.address)} = ${t.terminal.formula}; dihitung ${pc.unitPrice}.`,
+        analysisKey: key,
+      });
     } else if (t.terminalKind !== 'EMPTY' && t.lookups.length > 0 && t.problems.every((p) => !isBlocking(p))) {
       // Reached through a lookup into a price list; the list may compute its price (e.g. =J274/40).
       if (t.terminalKind === 'FORMULA') {
@@ -447,7 +500,7 @@ function registerAnalysis(
       if (!prices.has(priceKey)) {
         prices.set(priceKey, {
           key: priceKey,
-          name: src.model.text(lookup.matchKey.sheet, lookup.matchKey.row, lookup.matchKey.col),
+          name: listPriceName(src.model, lookup.matchKey, t.terminal.address.col),
           unit: comp.unit,
           price: excelDecimal(t.terminal.value) ?? '0',
           locator: { documentId: src.documentId, sheet: t.terminal.address.sheet, cell: formatAddress({ ...t.terminal.address, sheet: null }) },
@@ -466,6 +519,39 @@ function registerAnalysis(
         message: `Analisa ${pending.block.code ?? key}, "${comp.description}": harga = nilai komponen baris ${t.terminal.address.row} (${formatAddress(priceCell.address)} = ${priceCell.formula}).`,
         analysisKey: key,
       });
+    } else if (
+      t.steps.length > 1 &&
+      t.lookups.length === 0 &&
+      t.steps.every((step, i) => i === 0 || step.via === 'REF') &&
+      t.terminalKind !== 'EMPTY' &&
+      t.problems.every((p) => !isBlocking(p)) &&
+      excelDecimal(t.terminal.value) !== null &&
+      priceName(src.model, t.terminal.address.sheet, t.terminal.address.row, t.terminal.address.col)
+    ) {
+      // D-091: a price reached through plain references (Bina Marga sheets: =N24 → ='4-Basic Price'!H8) is a list
+      // price named by its own row ("Pekerja"); the reference chain is the evidence, the cached value is used as is.
+      const end = t.terminal.address;
+      if (t.terminalKind === 'FORMULA') {
+        issues.push({
+          code: 'PRICE_FORMULA',
+          severity: 'INFO',
+          message: `Harga "${comp.description}" dihitung di ${formatAddress(end)} (= ${t.terminal.formula}); nilai dipakai apa adanya.`,
+          analysisKey: key,
+        });
+      }
+      const priceKey = `${docIndex}:${formatAddress(end)}`;
+      if (!prices.has(priceKey)) {
+        prices.set(priceKey, {
+          key: priceKey,
+          name: priceName(src.model, end.sheet, end.row, end.col)!,
+          unit: comp.unit,
+          price: excelDecimal(t.terminal.value)!,
+          locator: { documentId: src.documentId, sheet: end.sheet, cell: formatAddress({ ...end, sheet: null }) },
+          evidence: evidence(t),
+        });
+      }
+      pc.source = { kind: 'PRICE_ITEM', priceKey };
+      pc.unitPrice = prices.get(priceKey)!.price;
     } else {
       const why =
         t.problems.filter(isBlocking).map((p) => p.message).join(' ') ||
@@ -474,6 +560,68 @@ function registerAnalysis(
     }
   }
   return pending;
+}
+
+const PRICE_CODE = /^\(?[A-Z]{1,3}\.?\d+[a-z]?\)?$/i;
+
+/**
+ * Name of a price looked up in a list: the key cell, or, when the key is a code ("E10a"), the row's description
+ * with the code ("MINI EXCAVATOR; 0,2 m3 (E10a)"). Lists keyed by name (office layout) keep the key as the name.
+ */
+function listPriceName(model: WorkbookModel, key: { sheet: string; row: number; col: number }, priceCol: number): string {
+  const keyText = model.text(key.sheet, key.row, key.col);
+  if (!PRICE_CODE.test(keyText)) return keyText;
+  const described = rowName(model, key.sheet, key.row, priceCol);
+  return described ? `${described} (${keyText})`.slice(0, 255) : keyText;
+}
+
+/**
+ * Name of a price row: the longest text left of the price column, ignoring codes ("L01", "(M47)"), numbering
+ * ("1.", "II.") and bare numbers. null when the row has no such text, so an unnamed cell is never a price item.
+ */
+function rowName(model: WorkbookModel, sheet: string, row: number, priceCol: number): string | null {
+  let best = '';
+  for (let c = 1; c < priceCol; c++) {
+    const t = model.text(sheet, row, c);
+    if (!t || PRICE_CODE.test(t) || /^([\d.,]+|[IVXLC]+\.?)$/i.test(t) || !/[A-Za-z]{3}/.test(t)) continue;
+    if (t.length > best.length) best = t;
+  }
+  return best ? best.slice(0, 255) : null;
+}
+
+/** Value of a formula made of numbers and + − × ÷ % only (no references), in decimal; null otherwise. */
+function constantValue(node: FormulaNode | null): string | null {
+  const ev = (n: FormulaNode): Decimal | null => {
+    if (n.kind === 'number') return new Decimal(n.value);
+    if (n.kind === 'unary') {
+      const v = ev(n.operand);
+      return v === null ? null : n.op === '-' ? v.negated() : v;
+    }
+    if (n.kind === 'percent') {
+      const v = ev(n.operand);
+      return v === null ? null : v.div(100);
+    }
+    if (n.kind === 'binary') {
+      const a = ev(n.left);
+      const b = ev(n.right);
+      if (a === null || b === null) return null;
+      if (n.op === '+') return a.plus(b);
+      if (n.op === '-') return a.minus(b);
+      if (n.op === '*') return a.times(b);
+      if (n.op === '/') return b.isZero() ? null : a.div(b);
+    }
+    return null;
+  };
+  const v = node ? ev(node) : null;
+  return v === null ? null : v.toFixed();
+}
+
+/** Price-row name; inside another analysis block (its D row used as a price) the analysis is named too. */
+function priceName(model: WorkbookModel, sheet: string, row: number, col: number): string | null {
+  const own = rowName(model, sheet, row, col);
+  const block = binaMargaTitleAt(model, sheet, row, col);
+  if (!block) return own;
+  return `Analisa ${[block.code, block.name].filter(Boolean).join(' ')}${own ? `: ${own}` : ''}`.slice(0, 255);
 }
 
 function computeAnalyses(pending: Map<string, PendingAnalysis>, issues: ImportIssue[]): DraftAnalysis[] {
@@ -589,6 +737,20 @@ function checkRowPrices(rows: DraftRow[], analyses: DraftAnalysis[], issues: Imp
     const a = byKey.get(row.price.analysisKey);
     if (!a) {
       issues.push({ code: 'ANALYSIS_INVALID', severity: 'BLOCKING', message: `${row.description}: analisa tidak dapat dibaca.`, rowKey: row.key, resolvedBy: ['DIRECT_PRICE'] });
+      continue;
+    }
+    // D-092: a source price written as a formula over the base price (HPS L = ROUNDDOWN(K × 1.11, 0)) is
+    // consistent when the formula applied to the analysis price gives it; the RAB then keeps the source price.
+    if (row.sourcePriceFormula) {
+      if (!formulaMatches(a.computed.price, row.sourceUnitPrice, row.sourcePriceFormula)) {
+        issues.push({
+          code: 'PRICE_MISMATCH',
+          severity: 'BLOCKING',
+          message: `${row.description}: ${formulaNote(row.sourcePriceFormula)} Dengan harga analisa ${a.computed.price} hasilnya ${applySourceFormula(a.computed.price, row.sourcePriceFormula)} ≠ harga sumber ${row.sourceUnitPrice ?? '–'}.`,
+          rowKey: row.key,
+          resolvedBy: ['PRICE_CHOICE'],
+        });
+      }
       continue;
     }
     if (row.sourceUnitPrice === null || !new Decimal(a.computed.price).equals(row.sourceUnitPrice)) {

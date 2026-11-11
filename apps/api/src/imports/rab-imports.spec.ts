@@ -1340,3 +1340,112 @@ describe('failures, retry, rejection, AI', () => {
     );
   });
 });
+
+describe('sheets read by header words and the reviewer column mapping (D-090)', () => {
+  /** HPS-style estimate: price column L is the PPN price, K the base price; division title without a code. */
+  const hps = () => ({
+    B13: 'No. Mata', D13: 'Uraian', E13: 'Satuan', F13: 'Total', K13: 'Harga', L13: 'Harga', M13: 'Jumlah',
+    F14: 'Kuantitas', K14: 'Satuan', L14: 'Satuan', M14: 'Harga-Harga',
+    D15: 'DIVISI 1. UMUM',
+    B16: '1.2', D16: 'Mobilisasi',
+    B17: '1.2', D17: 'Mobilisasi dan Demobilisasi', E17: 'LS', F17: 1, K17: 5005000, L17: ['ROUNDDOWN(K17*1.11,0)', 5555550] as [string, number], M17: ['F17*L17', 5555550] as [string, number],
+    B18: '1.20.(1)', D18: 'Pengeboran SPT', E18: 'M1', F18: 10, K18: 1250000, L18: ['ROUNDDOWN(K18*1.11,0)', 1387500] as [string, number], M18: ['F18*L18', 13875000] as [string, number],
+  });
+
+  it('detects the columns, imports direct prices under the division, and records the mapping in the draft', async () => {
+    const doc = await upload(admin, 'hps.xlsx', await xlsxOf({ HPS: hps() }));
+    expect(doc.rabSheetCandidates).toEqual(['HPS']);
+    const run = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'HPS' }] });
+    expect(run.import.status).toBe('NEEDS_REVIEW');
+    expect(run.draft.sources[0]).toMatchObject({
+      layout: 'HEADER',
+      columns: { headerRow: 14, code: 2, description: 4, unit: 5, quantity: 6, price: 12, amount: 13 },
+    });
+    // Two columns titled "Harga Satuan" are told apart by the first item's value; a text code is not a number.
+    expect(run.draft.sources[0].headerLabels).toEqual(
+      expect.arrayContaining([
+        { col: 2, label: 'No. Mata', sample: '1.2' },
+        { col: 11, label: 'Harga Satuan', sample: '5005000', sampleNumeric: true },
+        { col: 12, label: 'Harga Satuan', sample: '5555550', sampleNumeric: true },
+      ]),
+    );
+    const items = run.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(items.map((r: { sourceUnitPrice: string; price: { kind: string } }) => [r.sourceUnitPrice, r.price.kind])).toEqual([
+      ['5555550', 'DIRECT'],
+      ['1387500', 'DIRECT'],
+    ]);
+    expect(run.draft.rows[0]).toMatchObject({ rowType: 'SECTION', description: 'DIVISI 1. UMUM' });
+  });
+
+  it('remap: a new linked run uses the corrected column, the superseded run leaves the list, both are audited', async () => {
+    const doc = await upload(admin, 'hps-remap.xlsx', await xlsxOf({ HPS: hps() }));
+    const first = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'HPS' }] });
+    const columns = { ...first.draft.sources[0].columns, price: 11 };
+
+    const filler = await member('FILLER');
+    expect((await filler.post(`${base}/${first.import.id}/remap`, { sources: [{ documentId: doc.id, columns }] })).status).toBe(403);
+    expect((await admin.post(`${base}/${first.import.id}/remap`, { sources: [{ documentId: doc.id, columns: { ...columns, price: 0 } }] })).status).toBe(400);
+
+    const res = await admin.post(`${base}/${first.import.id}/remap`, { sources: [{ documentId: doc.id, columns }] });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    await t.app.get(RabImportsService).waitFor(res.body.id);
+    const second = (await admin.get(`${base}/${res.body.id}`)).body;
+    expect(second.import).toMatchObject({ status: 'NEEDS_REVIEW', previousImportId: first.import.id, attemptNumber: 2 });
+    expect(second.draft.sources[0].columns.price).toBe(11);
+    expect(second.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM').map((r: { sourceUnitPrice: string }) => r.sourceUnitPrice)).toEqual(['5005000', '1250000']);
+    expect(await t.prisma.rabImportDocument.findFirstOrThrow({ where: { importId: res.body.id } })).toMatchObject({ columnMap: columns });
+
+    // The superseded run is soft-deleted (D-066): out of the list, history kept.
+    expect((await admin.get(base)).body.map((r: { id: string }) => r.id)).toEqual([res.body.id]);
+    expect(await t.prisma.rabImport.findUniqueOrThrow({ where: { id: first.import.id } })).toMatchObject({ status: 'NEEDS_REVIEW', deletedAt: expect.any(Date) });
+    expect((await t.prisma.auditLog.findMany({ where: { projectId: project.id, action: { in: ['RETRY_RAB_IMPORT', 'DELETE_RAB_IMPORT'] } }, orderBy: { createdAt: 'asc' } })).map((a) => a.action)).toEqual([
+      'RETRY_RAB_IMPORT',
+      'DELETE_RAB_IMPORT',
+    ]);
+
+    // A retry after rejection keeps the reviewer's mapping.
+    await admin.post(`${base}/${res.body.id}/reject`, { reason: 'cek ulang' });
+    const retry = await admin.post(`${base}/${res.body.id}/retry`);
+    await t.app.get(RabImportsService).waitFor(retry.body.id);
+    expect((await admin.get(`${base}/${retry.body.id}`)).body.draft.sources[0].columns.price).toBe(11);
+  });
+
+  it('remap is refused for documents outside the run and for approved runs', async () => {
+    const doc = await upload(admin, 'hps-a.xlsx', await xlsxOf({ HPS: hps() }));
+    const other = await upload(admin, 'hps-b.xlsx', await xlsxOf({ HPS: hps() }));
+    const run = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'HPS' }] });
+    const columns = run.draft.sources[0].columns;
+    expect((await admin.post(`${base}/${run.import.id}/remap`, { sources: [{ documentId: other.id, columns }] })).status).toBe(400);
+    for (const r of run.draft.rows.filter((x: { rowType: string }) => x.rowType === 'ITEM'))
+      await admin.post(`${base}/${run.import.id}/decisions`, { decisions: [{ rowKey: r.key, kind: 'DIRECT_PRICE', value: { accept: true } }] });
+    const approved = await admin.post(`${base}/${run.import.id}/approve`);
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    expect((await admin.post(`${base}/${run.import.id}/remap`, { sources: [{ documentId: doc.id, columns }] })).status).toBe(409);
+
+    // The RAB built from the import counts every item: price includes PPN, so PPN 0% (regression: total was Rp 0).
+    const versions = (await admin.get(`/projects/${project.id}/rab-versions`)).body as { id: string; totals: { realCost: string }; itemCount: number }[];
+    const version = versions.find((v) => v.id === approved.body.import.rabVersionId)!;
+    expect(version).toMatchObject({ itemCount: 2, totals: { realCost: '19430550.00' } }); // 1 × 5 555 550 + 10 × 1 387 500
+  });
+
+  it('a mapping on the base price with PPN 11% gives the same RAB total through the PPN column', async () => {
+    const doc = await upload(admin, 'hps-ppn.xlsx', await xlsxOf({ HPS: hps() }));
+    const first = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'HPS' }] });
+    expect(
+      (await admin.post(`${base}/${first.import.id}/remap`, { sources: [{ documentId: doc.id, columns: { ...first.draft.sources[0].columns, price: 11, taxPercent: '11.5.5' } }] })).status,
+    ).toBe(400);
+    const res = await admin.post(`${base}/${first.import.id}/remap`, { sources: [{ documentId: doc.id, columns: { ...first.draft.sources[0].columns, price: 11, taxPercent: '11' } }] });
+    await t.app.get(RabImportsService).waitFor(res.body.id);
+    const run = (await admin.get(`${base}/${res.body.id}`)).body;
+    const items = run.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM');
+    expect(items.map((r: { sourceUnitPrice: string; taxPercent: string }) => [r.sourceUnitPrice, r.taxPercent])).toEqual([
+      ['5005000', '11'],
+      ['1250000', '11'],
+    ]);
+    for (const r of items) await admin.post(`${base}/${run.import.id}/decisions`, { decisions: [{ rowKey: r.key, kind: 'DIRECT_PRICE', value: { accept: true } }] });
+    const approved = await admin.post(`${base}/${run.import.id}/approve`);
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
+    const versions = (await admin.get(`/projects/${project.id}/rab-versions`)).body as { id: string; totals: { realCost: string } }[];
+    expect(versions.find((v) => v.id === approved.body.import.rabVersionId)!.totals.realCost).toBe('19430550.00');
+  });
+});

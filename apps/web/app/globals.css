@@ -417,7 +417,9 @@ textarea { min-height: 96px; resize: vertical; }
 /* ---------- Value provenance ---------- */
 .source-value { padding: 1px 0; border: 0; border-bottom: 1px dashed #87a5cd; border-radius: 3px; background: transparent; color: inherit; font: inherit; text-align: inherit; text-decoration: none; cursor: pointer; font-variant-numeric: tabular-nums; }
 .source-value:hover { border-bottom-color: var(--blue); background: #eaf2ff; color: var(--blue); }
-.source-dialog { width: min(600px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 22px; background: #fff; color: var(--text); font-size: var(--fs-base); font-weight: 400; text-align: left; white-space: normal; box-shadow: 0 24px 80px rgba(21,43,83,.25); }
+/* Dialog modal selalu di tengah viewport: posisi dan margin dikunci eksplisit, tidak bergantung pada default browser. */
+.source-dialog, .modal-dialog { position: fixed; inset: 0; margin: auto; height: fit-content; }
+.source-dialog { width: min(600px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 22px; background: #fff; color: var(--text); font-size: var(--fs-base); font-weight: 400; text-align: left; white-space: normal; box-shadow: 0 24px 80px rgba(21,43,83,.25); }
 .source-dialog::backdrop { background: rgba(21,43,83,.42); backdrop-filter: blur(3px); }
 .source-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 22px 24px; border-bottom: 1px solid var(--line); }
 .source-dialog-header h2 { margin-top: 4px; font-size: 18px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; }
@@ -445,6 +447,28 @@ section:target { outline: 2px solid #a9c8f5; outline-offset: 6px; }
 .workbook-grid td a { display: block; min-height: 42px; padding: 10px 12px; overflow-wrap: anywhere; }
 .workbook-grid td a:hover { background: #f0f5ff; }
 .workbook-grid .workbook-selected { outline: 2px solid #3b78e7; outline-offset: -2px; background: #e4efff; }
+
+/* ---------- File upload (drag & drop + progres) ---------- */
+.dropzone-wrap { display: grid; gap: 12px; min-width: 0; }
+.dropzone { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 18px 20px; border: 1.5px dashed #b9cde9; border-radius: var(--radius-card); background: #f8fbff; color: var(--muted); transition: border-color .15s, background .15s; }
+.dropzone:hover:not([data-disabled]), .dropzone[data-dragging] { border-color: var(--blue); background: #eef5ff; }
+.dropzone[data-disabled] { opacity: .6; }
+.dropzone-text { display: grid; flex: 1 1 220px; gap: 2px; min-width: 0; }
+.dropzone-label { color: var(--text); font-weight: 600; }
+.dropzone-hint { color: var(--muted); font-size: var(--fs-sm); }
+.dropzone-errors { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--red); font-size: var(--fs-sm); }
+.upload-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.upload-item { display: grid; gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: #fff; }
+.upload-item[data-status='error'] { border-color: var(--red-line); background: var(--red-wash); }
+.upload-item-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.upload-name { flex: 1; min-width: 0; overflow: hidden; color: var(--text); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.upload-meta { flex-shrink: 0; color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.upload-ok { display: inline-flex; align-items: center; gap: 4px; color: #15803d; }
+.upload-fail { color: var(--red); font-weight: 600; }
+.upload-bar { height: 6px; overflow: hidden; border-radius: 999px; background: #e6eef9; }
+.upload-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--blue); transition: width .2s ease; }
+.upload-item[data-status='done'] .upload-bar > span { background: #16a34a; }
+.upload-item[data-status='error'] .upload-bar > span { background: var(--red); }
 
 /* ---------- Login ---------- */
 .login-wrap { display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; min-height: 100dvh; padding: 24px; }

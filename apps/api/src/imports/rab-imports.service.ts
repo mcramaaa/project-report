@@ -14,9 +14,11 @@ import {
   type RabImportDraft,
   type RabImportSummaryDto,
   type WorkItemSearchDto,
+  rabColumnMapSchema,
+  type RabColumnMap,
+  type RemapRabImportInput,
 } from '@laporan-proyek/shared';
 import { Decimal } from '@laporan-proyek/calc';
-import ExcelJS from 'exceljs';
 import { AiClient } from '../ai/ai.client';
 import { copyAnalysesIntoPackage, ensurePackage } from '../ahsp/package';
 import { writeAudit } from '../audit/audit';
@@ -29,10 +31,18 @@ import { buildDraft, DraftInputError, looseText, PARSER_VERSION, type OfficialAn
 import { blockingIssues, evaluateImport, latestDecisions, type DecisionRecord, type OfficialVersion } from './evaluate';
 import { proposePackage, type BaseItem } from './proposals';
 import { AI_CANDIDATE_RESPONSE_FORMAT, aiCandidateResponseSchema, GUIDE_VERSION, SYSTEM_INSTRUCTION } from './guide/rab-import-guide';
+import { loadCompactWorkbook } from './workbook/compact-workbook';
 import { WorkbookModel } from './workbook/workbook-model';
 
 export const AI_CLIENT = Symbol('AI_CLIENT');
 type Db = Prisma.TransactionClient;
+
+/** Stored reviewer mapping (D-090); anything that no longer matches the schema is ignored, not trusted. */
+function columnMapOf(value: unknown): RabColumnMap | undefined {
+  if (value === null || value === undefined) return undefined;
+  const parsed = rabColumnMapSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
 
 const USER_REF = { select: { id: true, name: true } } as const;
 const IMPORT_INCLUDE = {
@@ -144,7 +154,15 @@ export class RabImportsService implements OnModuleInit {
           guideVersion: GUIDE_VERSION,
           parserVersion: PARSER_VERSION,
           createdBy: actor.id,
-          documents: { create: input.sources.map((s, i) => ({ documentId: s.documentId, role: s.role, rabSheet: s.rabSheet ?? null, sortOrder: i })) },
+          documents: {
+            create: input.sources.map((s, i) => ({
+              documentId: s.documentId,
+              role: s.role,
+              rabSheet: s.rabSheet ?? null,
+              ...(s.columns ? { columnMap: s.columns } : {}),
+              sortOrder: i,
+            })),
+          },
         },
       });
       await writeAudit(tx, {
@@ -168,9 +186,45 @@ export class RabImportsService implements OnModuleInit {
     return this.create(
       actor,
       projectId,
-      { targetVersionType: old.targetVersionType, targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined, sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined })) },
+      { targetVersionType: old.targetVersionType, targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined, sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap) })) },
       old.id,
     );
+  }
+
+  /**
+   * D-090: a new run with the reviewer's corrected column mapping, linked to the old run like a retry. An old run
+   * still waiting for review leaves the active list through the D-066 removal (history kept), so two runs of the
+   * same documents are never under review at once.
+   */
+  async remap(actor: AuthUser, projectId: string, importId: string, input: RemapRabImportInput): Promise<RabImportSummaryDto> {
+    const old = await this.find(this.prisma, projectId, importId);
+    if (!['FAILED', 'REJECTED', 'NEEDS_REVIEW'].includes(old.status)) {
+      throw new ConflictException('Pemetaan kolom hanya dapat diubah pada impor yang gagal, ditolak, atau belum disetujui.');
+    }
+    if (old.rabVersionId || old.priceListId) throw new ConflictException('Impor sudah digunakan untuk data resmi.');
+    const mapped = new Map(input.sources.map((s) => [s.documentId, s.columns]));
+    for (const id of mapped.keys()) {
+      const doc = old.documents.find((d) => d.documentId === id);
+      if (!doc) throw new BadRequestException('Dokumen tidak termasuk dalam impor ini.');
+      if (doc.role !== 'RAB') throw new BadRequestException('Pemetaan kolom hanya untuk dokumen berperan RAB.');
+    }
+    const created = await this.create(
+      actor,
+      projectId,
+      {
+        targetVersionType: old.targetVersionType,
+        targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined,
+        sources: old.documents.map((d) => ({
+          documentId: d.documentId,
+          role: d.role,
+          rabSheet: d.rabSheet ?? undefined,
+          columns: mapped.get(d.documentId) ?? columnMapOf(d.columnMap),
+        })),
+      },
+      old.id,
+    );
+    if (old.status === 'NEEDS_REVIEW') await this.remove(actor, projectId, old.id);
+    return created;
   }
 
   /** Remove only unused, idle runs from the active list while preserving their history (D-066). */
@@ -221,8 +275,7 @@ export class RabImportsService implements OnModuleInit {
     try {
       const sources = [];
       for (const d of row.documents) {
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.readFile(documentPath(row.projectId, d.document.storedFilename));
+        const workbook = await loadCompactWorkbook(documentPath(row.projectId, d.document.storedFilename));
         sources.push({
           model: new WorkbookModel(d.documentId, d.document.originalFilename, workbook),
           documentId: d.documentId,
@@ -230,6 +283,7 @@ export class RabImportsService implements OnModuleInit {
           sha256: d.document.sha256,
           role: d.role,
           rabSheet: d.rabSheet ?? undefined,
+          columns: columnMapOf(d.columnMap),
         });
       }
       const official = await this.officialVersions(row.projectId);
@@ -524,7 +578,7 @@ export class RabImportsService implements OnModuleInit {
           priceSource: r.row.rowType === 'ITEM' ? r.priceSource : 'MANUAL',
           sourceUnitPrice: r.row.rowType === 'ITEM' ? r.row.sourceUnitPrice : null,
           analysisUnitPrice: r.analysisUnitPrice,
-          priceNote: decision?.reason ?? null,
+          priceNote: decision?.reason ?? r.priceNote ?? null,
           priceDecidedBy: decision?.decidedBy ?? null,
           priceDecidedAt: decision?.decidedAt ?? null,
           sourceLocator: (evaluation.rowReconciliation.has(r.row.key)

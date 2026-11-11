@@ -4,9 +4,11 @@ import {
   type ConfirmProposalsInput,
   createRabImportSchema,
   rabImportDecisionsSchema,
+  remapRabImportSchema,
   requiredReasonSchema,
   type CreateRabImportInput,
   type RabImportDecisionsInput,
+  type RemapRabImportInput,
   type RequiredReasonInput,
 } from '@laporan-proyek/shared';
 import { CurrentAuth, type AuthContext } from '../auth/auth-context';
@@ -75,6 +77,18 @@ export class RabImportsController {
   @RequireProjectPermission('rabImport.review')
   retry(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('importId', uuid) importId: string) {
     return this.imports.retry(auth.user, projectId, importId);
+  }
+
+  /** D-090: new run with a corrected column mapping (sheets read by header words). */
+  @Post(':importId/remap')
+  @RequireProjectPermission('rabImport.review')
+  remap(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('importId', uuid) importId: string,
+    @Body(new ZodPipe(remapRabImportSchema)) body: RemapRabImportInput,
+  ) {
+    return this.imports.remap(auth.user, projectId, importId, body);
   }
 
   @Delete(':importId')

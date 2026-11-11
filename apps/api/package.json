@@ -28,7 +28,8 @@
     "exceljs": "4.4.0",
     "jszip": "3.10.2",
     "reflect-metadata": "0.2.2",
-    "rxjs": "7.8.2"
+    "rxjs": "7.8.2",
+    "saxes": "5.0.1"
   },
   "devDependencies": {
     "@laporan-proyek/config": "0.0.0",
