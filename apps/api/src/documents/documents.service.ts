@@ -1,5 +1,6 @@
 import { columnNumber } from '../imports/workbook/formula';
 import { previewWindow } from './workbook-preview';
+import { checkXlsxSize } from './xlsx-guard';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -77,6 +78,7 @@ export class DocumentsService {
         throw new BadRequestException(`${name}: hanya file Excel .xlsx yang didukung (v1).`);
       }
       if (f.size > MAX_UPLOAD_BYTES) throw new BadRequestException(`${name}: maksimal 30 MB.`);
+      checkXlsxSize(f.buffer, () => new BadRequestException(`${name}: isi file terlalu besar atau rusak; simpan ulang dari Excel.`));
       const workbook = new ExcelJS.Workbook();
       try {
         await workbook.xlsx.load(f.buffer as unknown as ArrayBuffer);

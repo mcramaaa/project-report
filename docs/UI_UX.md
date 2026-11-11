@@ -23,6 +23,26 @@ dependency dari OLMAT.
   yang belum tersedia. Navigasi hanya menuju fitur yang sudah diimplementasikan.
 - Halaman profil memisahkan identitas akun dan penggantian password.
 - Visibilitas menu mengikuti akun; authorization tetap diperiksa di backend.
+- Dropdown memakai satu komponen `Select` (`components/select.tsx`), bukan `<select>` bawaan
+  browser: tampilan sama di semua halaman, kotak pencarian otomatis bila pilihan lebih dari 7,
+  keyboard (panah, Enter, Esc, ketik untuk mencari). Isian bebas dengan saran memakai
+  `SuggestInput` (pengganti `<datalist>`). Pop-up dipasang di dalam modal bila pemicunya di modal.
+- Tampilan angka (D-083, `DECIMALS`): uang dan volume 2, koefisien AHSP 4, bobot 3 desimal; jumlah orang bulat.
+  Nilai eksak tetap tersimpan dan terlihat di popup asal nilai. Semua hitungan memakai nilai eksak.
+- Ukuran `text-xs`/`text-sm` Tailwind dipetakan ke skala aplikasi (11,5/12,5 px) supaya teks kecil tidak lebih besar dari teks isi (13 px).
+- Tab Informasi: kartu "Data proyek" (Identitas, Kontrak, SPMK & jadwal; ubah langsung di tempat) di kiri, Tim di kanan
+  (≥1180 px), Minggu & periode di bawah (kartu B.n 2–3 kolom). Kartu tanda tangan tidak ditampilkan di web (OD-014).
+- Panduan pengguna di `/panduan` (menu Bantuan) dengan daftar isi menempel.
+- Template laporan (`/projects/:id/report-templates`, dari kartu di tab Informasi): logo, impor dari proyek lain, pengaturan
+  per jenis laporan di kiri, pratinjau cetak (data minggu terakhir yang selesai) di kanan. Komponen `ReportDocument` dipakai
+  bersama oleh pratinjau dan halaman cetak `/print/...`; PDF = Cetak / Simpan PDF dari browser (D-082).
+- Laporan harian bawaan memakai layout kolom berdampingan (format Mengwi, D-084); tombol Ekspor PDF dan Ekspor Excel di
+  halaman laporan harian, Unduh Excel di halaman cetak.
+- Tab RAB: "Buat MC-n"/"Buat RAB Kontrak" di header kartu Versi RAB (modal); baseline per minggu sebagai pita minggu
+  (ramp biru berurutan, versi lama lebih terang; minggu terbelah dua warna) + tabel riwayat aktivasi; zoom grid di toolbar.
+- Scrollbar seragam (`globals.css`, token `--scroll-*`): pil tipis warna garis biru, track tak
+  terlihat; di grid/tabel lebar ada jalur samar agar terlihat bisa digeser. Firefox memakai
+  `scrollbar-color` yang sama.
 
 ## 1. Sidebar
 
@@ -71,7 +91,7 @@ Pengaturan
 | `/login` | publik | email + password; pesan gagal generik; info bila baru ganti password |
 | `/` | user login | proyek yang dapat dibuka + role, cari & pagination (super admin: semua proyek); tombol "Proyek baru" dengan `projects.create` |
 | `/projects/new` | `projects.create` | wizard pembuatan proyek (Milestone 3, §4) |
-| `/projects/:projectId` | `project.read` | tab Informasi, Minggu & Periode, Tim; dengan `project.update`: ubah identitas, ubah jadwal, tutup/buka kembali |
+| `/projects/:projectId` | `project.read` | tab Informasi: data proyek, tim, dan daftar minggu & periode (dilipat) dalam satu halaman; dengan `project.update`: ubah identitas, ubah jadwal, tutup/buka kembali |
 | `/profile` | user login | data diri, ganti password (password lama wajib), setelah sukses diarahkan ke login |
 | `/projects/:projectId/imports` | `document.read` / `rabImport.review` | dokumen (upload .xlsx, unduh asli, kandidat sheet RAB), buat run impor (peran RAB/pendukung, sheet, versi tujuan), daftar run |
 | `/projects/:projectId/imports/:importId` | `rabImport.review` / `rabImport.approve` | ringkasan & rekonsiliasi, issue, item dengan rantai rumus, kandidat, keputusan (analisa, harga langsung, harga analisa/override beralasan, pekerjaan permanen termasuk cari/pilih pekerjaan lama manual, D-067), review paket (ringkasan sumber/warisan/cocok/baru/masalah, konfirmasi usulan sekaligus, D-065), analisa terpakai & bukti rekonsiliasi, panggilan AI, approve/tolak/ulangi |
@@ -154,7 +174,7 @@ Sistem generate minggu dan periode 4 minggu saat proyek disimpan.
 ### Detail Proyek
 
 - tab Informasi: identitas, kontrak, SPMK, jadwal, status
-- tab Minggu & Periode: tabel minggu (nomor, tanggal, jumlah hari, periode) dikelompokkan per periode B.n; minggu/periode pendek ditandai
+- bagian Minggu & periode (tab Informasi): tabel minggu (nomor, tanggal, jumlah hari, periode) dikelompokkan per periode B.n; minggu/periode pendek ditandai
 - tab Tim: nama dan role anggota aktif (tanpa email); tautan ke Akses proyek bila punya `assignments.read`
 - ubah jadwal menampilkan pratinjau minggu/periode baru dan wajib alasan
 - tutup/buka kembali proyek wajib alasan dan konfirmasi; proyek CLOSED menampilkan badge dan form ubah dinonaktifkan
@@ -274,6 +294,13 @@ CONTRACT
 
 Tampilkan effective period.
 
+Implementasi M6 (D-071), panel "Baseline berlaku" di halaman daftar versi RAB (`/projects/:id/rab`):
+- riwayat assignment: versi, berlaku dari–sampai (akhir dihitung), mode, alasan, oleh;
+- "Cabut" hanya pada assignment terakhir, dengan form alasan inline (bukan dialog);
+- form aktivasi kandidat berikutnya: versi, mulai berlaku "Minggu berikutnya (minggu ke-N, tgl)" atau "Tanggal pasti" (default tanggal dokumen), alasan opsional; Kontrak selalu mulai tanggal mulai proyek;
+- ringkasan per minggu ("Minggu 1–3: Kontrak"), minggu yang terbelah ditandai;
+- panel tampil dengan `rab.read`; form dan tombol hanya dengan `baseline.activate` dan proyek ACTIVE.
+
 ## 12. Weekly Progress Grid
 
 Header:
@@ -307,18 +334,23 @@ UX penting:
 
 ## 13. Daily Allocation
 
-Tabel 7 hari:
-- date
-- day sequence
-- factor
-- volume
+Halaman `Progres → minggu → Alokasi harian` (D-075). Tombolnya muncul bila
+minggu itu sudah ada progres.
+
+Tabel per work item yang punya progres minggu itu:
+- uraian, satuan, volume minggu
+- satu kolom per hari (Hari n, hari & tanggal, faktor)
+- cara: badge "faktor", "manual", atau "manual, tidak pas"
 
 Method:
-- daily factor
-- schedule
-- manual
+- faktor hari (default, dihitung otomatis)
+- manual: "Isi manual" membuka input per hari pada baris itu, dengan jumlah
+  langsung ("jumlah pas" / "selisih x"). Simpan hanya bila pas.
+  "Pakai faktor" mengembalikan ke faktor hari.
+- schedule: belum ada (D-075 butir 8)
 
-Total harus sama dengan weekly volume.
+Total harus sama dengan weekly volume. Item manual yang tidak pas lagi setelah
+progres berubah diberi peringatan di atas tabel.
 
 ## 14. Daily Report
 
@@ -507,3 +539,55 @@ biasa; tombol ubah dan navigasi normal tetap dipertahankan.
   - Tooltip digambar di lapisan tetap sehingga tidak terpotong tabel yang
     di-scroll.
   - Pembaca layar membaca teks yang sama.
+
+## Tab proyek
+
+Empat tab: **Informasi** (data proyek, tim, minggu & periode), **RAB** (versi,
+baseline, dan tombol "Impor RAB dari Excel"; halaman impor tetap menandai tab
+RAB), **Jadwal**, **Progres** (termasuk alokasi harian per minggu). Role yang
+hanya punya izin impor tanpa `rab.read` tetap melihat tab RAB yang langsung
+membuka halaman impor.
+
+Semua halaman proyek memakai header yang sama (`ProjectHeader`: kode, TA,
+status, lokasi, tanggal, tab). Isi tiap tab berupa kartu berjudul (`Section`);
+tombol aksi bagian ada di kanan judul kartu. Breadcrumb menunjukkan Jadwal,
+Progres → Minggu n → Alokasi harian, dan RAB → Impor RAB. Daftar minggu
+progres dikelompokkan per periode B.n dengan tombol ke minggu berjalan.
+
+Tab Jadwal dibuka dengan kartu **Kurva S** (D-076) berbentuk sheet `Curva S`
+kantor: kolom No / Pekerjaan / Bobot (dibekukan), kolom minggu M.n dikelompokkan
+per BULAN I…, isian rencana per kelompok (diarsir), baris bawah Rencana progres,
+Rencana kumulatif, Realisasi progres, Realisasi kumulatif, Deviasi; kurva
+rencana (jingga putus-putus) dan realisasi (biru) digambar di atas kolom minggu
+dengan skala 0–100% di kanan. Tinggi dibatasi (header dan baris bawah tetap
+terlihat), zoom memakai tombol grid, angka minggu yang ditunjuk kursor tampil di
+baris info di atas tabel. Di HP kolom kiri tidak dibekukan.
+
+Di bawah Kurva S ada kartu **Analisis keterlambatan** (D-077): pilihan minggu
+analisis (bawaan: laporan terakhir), lima angka (realisasi & deviasi, sisa
+pekerjaan, kebutuhan per minggu, laju 4 minggu terakhir, prakiraan selesai) dan
+tabel deviasi per kelompok (paling terlambat dulu, 8 teratas, bisa tampilkan
+semua) dengan bilah progres kelompok vs posisi rencana. Kelompok terlambat
+ditandai merah di sheet Kurva S.
+
+Kartu **Simulasi jadwal** (D-078) di tab Jadwal: daftar skenario tim dan form
+buat skenario (salin dari jadwal). Halaman skenario: nama dan jumlah minggu
+(boleh melewati akhir proyek), Kurva S skenario vs rencana resmi (teal,
+titik-garis) vs realisasi, tabel kelompok dengan pilihan minggu mulai/selesai
+(bobot dibagi rata) dan geser ±1 minggu, lalu "Jadikan jadwal resmi" (dengan
+daftar penghalang) dan "Hapus skenario", keduanya dengan konfirmasi.
+
+Setiap baris tabel deviasi punya tombol ▸ untuk membuka **rincian item**
+pekerjaan kelompok itu (volume RAB, minggu itu, s.d. minggu, % selesai dengan
+bilah, bobot, realisasi; item "belum" ditandai) dan tautan ke progres minggu
+analisis. Filter: cari, bagian, urutan, dan chip status dengan jumlahnya.
+
+**Laporan harian (D-079):** halaman progres mingguan menampilkan strip H1–H7
+(status: belum / Draft / Final / Dibuka kembali; tanggal yang belum tiba
+nonaktif). Halaman `/projects/:id/daily/:tanggal`: pekerjaan hari ini (dari
+alokasi harian, tautan ke alokasi untuk koreksi), tenaga kerja (keahlian dengan
+saran dari upah AHSP, jumlah orang, total), penggunaan bahan dan peralatan
+(hitungan AHSP | aktual, tombol "pakai hitungan", baris ketik bebas), cuaca
+(kondisi + jam), catatan. Laporan baru diisi awal dari tenaga kerja dan alat
+laporan sebelumnya. Tombol Simpan, Finalkan (konfirmasi peringatan), Buka
+kembali (alasan, `report.reopen`). Navigasi Kemarin/Besok.

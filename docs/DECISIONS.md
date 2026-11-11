@@ -288,6 +288,8 @@ Milestone 3:
 - Nomor minggu/periode yang sama mempertahankan ID baris; hanya tanggalnya yang diperbarui. Minggu/periode baru ditambahkan di akhir.
 - Baris di akhir yang tidak lagi tercakup dihapus hanya bila tidak memiliki data terkait; foreign key `RESTRICT` menolak penghapusan bila ada data, dan perubahan dibatalkan (`409`).
 
+Diterapkan 2026-11-01: tanggal mulai ditolak (409) bila sudah ada progres mingguan, laporan harian, atau laporan mingguan; masa pelaksanaan tetap boleh diubah.
+
 Batasan untuk milestone berikutnya (belum selesai hanya karena regenerasi aman di M3):
 
 - Tanggal mulai dikunci setelah ada data terkait.
@@ -955,6 +957,424 @@ OD-008.
      berada setelah tanggal mulai dan sampai tanggal selesai rencana. Cabut
      aktivasinya dulu.
 
+## D-072 Time Schedule dan Rencana Kurva S (M8)
+
+Tanggal: 2026-10-30. Diputuskan pengguna berdasarkan sheet `Master Curva S`
+pada laporan mingguan kantor (`04. LAPORAN MINGGUAN … (MC 0).xlsx`).
+
+1. **Level jadwal:** per kelompok pekerjaan RAB, bukan per item.
+   - Kelompok = baris SUBSECTION, atau SECTION yang tidak punya SUBSECTION
+     (sama dengan baris REKAP RAB: A, B.I, B.II, …).
+   - Isian = % bobot proyek per kelompok per minggu proyek, seperti kolom M.1
+     … M.n di Excel. Hanya angka ≠ 0 yang disimpan.
+   - Tidak ada volume rencana per item.
+2. **Bobot kelompok** = nilai kelompok (termasuk PPN) ÷ total RAB × 100, sama
+   dengan `weight` RAB (D-043). Tidak disimpan; dihitung dari RAB versi
+   jadwal.
+3. **Versi:** satu jadwal per versi RAB approved (Kontrak, MC-0, …).
+   - Status DRAFT → APPROVED (terkunci). Revisi = reopen dengan alasan dan
+     audit (status REOPENED), lalu approve lagi.
+   - Isi jadwal sebelum reopen disimpan di audit.
+4. **Sumber isian:** grid manual dan impor dari dokumen Excel proyek yang sudah
+   diunggah.
+   - Impor membaca sheet `Master Curva S` (atau sheet yang dipilih): kolom
+     minggu dari header `M.n`, baris dari nomor kelompok (A, B.I, …), dan nilai
+     dari hasil sel (15 digit, `excelDecimal`).
+   - Impor mengganti seluruh isian draft. Nomor kelompok atau minggu yang tidak
+     dikenal dilaporkan sebagai error.
+5. **Validasi approve** (toleransi 0,0001 poin persen untuk sisa desimal
+   Excel):
+   - jumlah isian tiap kelompok = bobot kelompok;
+   - jumlah bobot semua kelompok = 100 (item di luar kelompok ditolak);
+   - isian tidak negatif dan minggu berada dalam masa proyek.
+6. **Kurva S rencana:** rencana mingguan = jumlah isian per minggu; rencana
+   kumulatif = jumlah berjalan. Saat baseline berganti, Kurva S memakai jadwal
+   versi baseline yang sedang berlaku untuk semua minggu (seperti laporan
+   Excel MC-0). Laporan final tetap memakai snapshot-nya (M13).
+7. **Izin (OD-008, bagian M8):** `schedule.edit` (buat, isi, impor) dan
+   `schedule.approve` (approve, reopen). Default untuk MANAGER dan RAB_EDITOR.
+   Melihat jadwal memakai `rab.read`.
+8. **Hubungan dengan RAB dan kalender:**
+   - Jadwal hanya dibuat, diisi, dan di-approve saat versi RAB-nya APPROVED.
+   - Bila RAB dibuka kembali (D-068) dan bobot berubah, jadwal approved tidak
+     berubah otomatis; selisih tampil sebagai error validasi sampai jadwal
+     dibuka kembali dan disesuaikan.
+   - Isian merujuk `weeks` (RESTRICT): memperpendek durasi proyek ditolak bila
+     minggu yang dihapus punya isian.
+
+## D-073 Input Progres Mingguan (M9)
+
+Tanggal: 2026-10-30. Diputuskan pengguna; melengkapi PRD §13–14 dan
+mengaktifkan D-071 butir 5.
+
+1. **Fakta:** `weekly_progress` menyimpan volume realisasi minggu itu per
+   work item (`actual_volume`, 12 desimal). Kumulatif, persen, dan sisa
+   dihitung. Baris tidak pernah dihapus; perubahan diaudit (nilai lama dan
+   baru).
+2. **Mode input:**
+   - `VOLUME_WEEK`: volume minggu ini, ≥ 0.
+   - `PERCENT_CUMULATIVE`: persen kumulatif (0–100, maks. 6 desimal) terhadap
+     volume baseline minggu itu. Volume minggu ini = persen × volume baseline
+     ÷ 100 − kumulatif sampai minggu lalu, dibulatkan HALF_UP ke 12 desimal.
+     Hasil negatif ditolak. Persen yang diketik disimpan apa adanya.
+3. **Baseline minggu:** versi yang berlaku pada hari terakhir minggu (D-071).
+   Minggu tanpa baseline tidak dapat diisi.
+4. **Trackable:** baris ITEM dengan work item dan volume > 0 di baseline
+   minggu itu. Progres lama untuk item yang tidak ada lagi di baseline tetap
+   tampil, tetapi tidak dapat diisi lagi.
+5. **Validasi simpan:** kumulatif tidak melebihi volume baseline pada minggu
+   yang diisi dan setiap minggu sesudahnya yang ikut naik. Perubahan yang
+   menurunkan kumulatif selalu boleh.
+6. **Minggu terbuka:** minggu yang `start_date`-nya ≤ hari ini (tanggal WIT,
+   UTC+9), selama proyek ACTIVE. Penguncian minggu final menyusul di M13.
+7. **Izin (OD-008, bagian M9):** `progress.input`, default FILLER dan
+   MANAGER. Melihat progres memakai `rab.read`.
+8. **D-071 butir 5 aktif:** aktivasi baseline memeriksa work item yang
+   realisasi kumulatifnya (minggu yang berakhir sebelum `effective_from`)
+   melebihi volume versi baru. Daftarnya dikembalikan sebagai peringatan;
+   aktivasi butuh `acknowledgeWarnings: true` dan daftarnya disimpan di audit.
+
+## D-074 Impor Jadwal Diskalakan ke Bobot Versi RAB
+
+Tanggal: 2026-10-30. Diputuskan pengguna; melengkapi D-072 butir 4. Sheet
+`Master Curva S` pada laporan MC-0 kantor masih memakai bobot Kontrak (31 dari
+49 kelompok berbeda), sedangkan sebaran minggunya tetap berlaku.
+
+1. Saat impor, jumlah isian tiap kelompok dibandingkan dengan bobot kelompok
+   di versi RAB jadwal. Bila selisihnya melebihi toleransi D-072 (0,0001 poin),
+   setiap isian kelompok itu dikalikan bobot ÷ jumlah isian, dibulatkan
+   HALF_UP ke 18 desimal. Sebaran minggu tidak berubah.
+2. Kelompok yang jumlahnya sudah sama (dalam toleransi) tidak diubah.
+3. Kelompok yang di sheet tidak punya isian sama sekali tidak dapat
+   diskalakan; tetap menjadi error validasi.
+4. Daftar kelompok yang disesuaikan (jumlah lama → bobot) dikembalikan ke
+   pengguna dan disimpan di audit `IMPORT_SCHEDULE`.
+5. Isian manual di grid tidak diskalakan; validasi D-072 tetap berlaku.
+
+## D-075 Alokasi Harian (M10)
+
+Tanggal: 2026-10-30. Diputuskan pengguna; menutup OD-004 dan melengkapi PRD §15.
+
+1. **Hari:** hari minggu proyek, Hari 1–7 dari `start_date` minggu (D-011).
+   Minggu terakhir yang lebih pendek hanya punya hari sampai tanggal selesai
+   proyek (D-037), jadi tidak ada hari di luar masa proyek.
+2. **Faktor:** faktor default kantor 0,80 / 1,20 / 1,10 / 1,15 / 1,00 / 0,85 /
+   0,90 untuk Hari 1–7, sama untuk semua proyek. Faktor per proyek belum
+   dapat diubah; hari yang tidak dikerjakan (mis. libur) diisi lewat alokasi
+   manual.
+3. **Hari aktif:** hari minggu itu dengan faktor > 0.
+4. **Rumus DAILY_FACTOR:** volume hari = volume minggu × faktor ÷ jumlah faktor
+   hari aktif, dibulatkan HALF_UP ke 4 desimal. Hari aktif terakhir mendapat
+   sisanya (volume minggu − hari lain), sehingga total harian tepat sama
+   dengan volume minggu (yang bisa sampai 12 desimal). Bila pembulatan ke
+   atas membuat jumlah melewati volume minggu (hanya pada volume sangat kecil),
+   hari berikutnya dipotong agar tidak ada nilai negatif.
+5. **Dihitung, bukan disimpan:** alokasi DAILY_FACTOR dihitung dari
+   `weekly_progress` setiap kali dibaca, jadi selalu mengikuti progres
+   terbaru. Laporan final (M13) yang membekukan angkanya.
+6. **MANUAL:** per work item per minggu, pengguna mengisi volume setiap hari
+   (≥ 0, maks. 12 desimal); jumlahnya wajib tepat sama dengan volume minggu.
+   Disimpan di `daily_allocations`; `weekly_progress.daily_method` menjadi
+   `MANUAL`. "Kembali ke faktor" mengubah method saja; baris manual tidak
+   dihapus. Bila progres minggu itu berubah setelah diisi manual, alokasi
+   ditandai "tidak sama dengan volume minggu" sampai diperbaiki.
+7. **Izin:** mengubah alokasi memakai `progress.input`, hanya pada minggu
+   terbuka (D-073 butir 6). Melihat memakai `rab.read`. Perubahan diaudit
+   (`UPDATE_DAILY_ALLOCATION`).
+8. **Metode SCHEDULE** (PRD §15) belum dibuat: jadwal D-072 hanya per minggu,
+   jadi belum ada dasar pembagian harian. Diputuskan bila dibutuhkan.
+
+## D-076 Kurva S Realisasi (M12, bagian Kurva S)
+
+Tanggal: 2026-10-30. Mengikuti rumus laporan mingguan kantor (sheet M.n kolom
+O dan `Master Curva S` baris 84–86); melengkapi PRD §23 dan D-072 butir 6.
+
+1. **Versi acuan:** baseline yang berlaku pada akhir minggu berjalan (sebelum
+   proyek mulai: minggu 1; sesudah selesai: minggu terakhir). Bobot item dan
+   jadwal rencana diambil dari versi itu untuk semua minggu, sama seperti
+   rencana pada D-072 butir 6.
+2. **Realisasi mingguan** = Σ volume minggu itu ÷ volume item × bobot item,
+   dengan bobot item = subtotal item ÷ total RAB × 100 (D-043). Realisasi
+   kumulatif = jumlah berjalan. Dihitung desimal penuh, dibulatkan saat
+   ditampilkan.
+3. Item yang tidak ada di versi acuan, atau volumenya 0, tidak menambah
+   realisasi (bobotnya 0 di versi itu).
+4. **Deviasi** = realisasi kumulatif − rencana kumulatif. Realisasi dan deviasi
+   hanya untuk minggu yang sudah dimulai.
+5. Rencana memakai jadwal APPROVED versi acuan; tanpa jadwal approved, hanya
+   realisasi yang tampil.
+6. Melihat Kurva S memakai `rab.read`.
+
+## D-077 Deviasi per Kelompok dan Kalkulator Kejar Target
+
+Tanggal: 2026-10-30. Melengkapi D-076; tidak ada data baru yang disimpan.
+
+1. **Realisasi per kelompok** = Σ item di bawah kelompok jadwal (D-072) dari
+   volume ÷ volume item × bobot item, pada versi acuan D-076. Rencana per
+   kelompok = isian jadwal kelompok itu. Keduanya dalam % bobot proyek;
+   deviasi kelompok = realisasi kumulatif − rencana kumulatif.
+2. **Minggu analisis:** bawaannya minggu terakhir yang sudah punya realisasi
+   (minggu berjalan yang belum diisi akan membesar-besarkan keterlambatan);
+   pengguna dapat memilih minggu lain yang sudah dimulai. Kelompok diurutkan
+   dari yang paling terlambat dan yang terlambat ditandai di sheet Kurva S.
+3. **Kejar target** (s.d. minggu analisis):
+   - sisa = 100 − realisasi kumulatif;
+   - minggu tersisa = minggu sesudah minggu analisis s.d. minggu terakhir;
+   - kebutuhan rata-rata per minggu = sisa ÷ minggu tersisa;
+   - pembanding: realisasi mingguan tertinggi dan rata-rata 4 minggu terakhir
+     s.d. minggu analisis;
+   - prakiraan selesai dengan laju rata-rata itu = minggu analisis +
+     ⌈sisa ÷ laju⌉ (tidak ditampilkan bila laju 0).
+   Ini angka bantu, bukan janji atau jadwal resmi.
+4. **Status kelompok** (s.d. minggu analisis, toleransi D-072 0,0001 poin):
+   Selesai (realisasi ≥ bobot) · Belum dijadwalkan (rencana dan realisasi 0) ·
+   Terlambat (deviasi < −toleransi) · Lebih cepat (deviasi > toleransi) ·
+   Sesuai rencana (selain itu). Tabel dapat disaring per status, bagian
+   (SECTION RAB), dan nama, serta diurutkan menurut deviasi, bobot, atau RAB.
+5. **Rincian kelompok:** item pekerjaan di bawah kelompok dengan volume RAB,
+   volume minggu itu dan kumulatif s.d. minggu analisis, % selesai, bobot item,
+   dan realisasi item (% selesai × bobot); jumlah realisasi item = realisasi
+   kelompok. Item yang belum dikerjakan ditandai.
+
+## D-078 Simulasi Jadwal (Skenario)
+
+Tanggal: 2026-10-30. Diputuskan pengguna: skenario terlihat oleh seluruh tim
+dan dapat dijadikan revisi jadwal resmi. Siapa yang membuat belum dijawab;
+dipakai bawaan `schedule.edit` karena skenario dapat menjadi jadwal resmi.
+
+1. **Skenario** = salinan bernama dari isian sebuah jadwal (versi RAB yang
+   sama), disimpan terpisah (`schedule_scenarios`, `schedule_scenario_entries`).
+   Jadwal resmi tidak berubah selama skenario diedit.
+2. **Izin:** melihat memakai `rab.read`; membuat, mengubah, menghapus, dan
+   menjadikan revisi memakai `schedule.edit`. Skenario boleh dihapus (bukan
+   data progres/baseline); pembuatan, perubahan, penghapusan diaudit.
+3. **Mengubah:** isian per kelompok per minggu seperti grid jadwal, plus
+   pengisian cepat "mulai–selesai" yang membagi bobot kelompok rata ke minggu
+   itu (HALF_UP 18 desimal, sisa ke minggu terakhir).
+4. **Tambah waktu:** skenario boleh lebih panjang dari masa proyek (maks. 52
+   minggu tambahan) untuk mensimulasikan perpanjangan. Minggu tambahan hanya
+   ada di skenario.
+5. **Bandingkan:** Kurva S skenario ditampilkan bersama rencana resmi dan
+   realisasi (D-076). Validasi D-072 butir 5 (jumlah per kelompok = bobot)
+   ditampilkan sebagai peringatan; skenario tetap boleh disimpan walau belum
+   valid.
+6. **Jadikan revisi:** isian skenario menggantikan isian jadwal resminya, hanya
+   bila jadwal resmi berstatus DRAFT/REOPENED (APPROVED harus dibuka kembali
+   dengan alasan, D-072), skenario lolos validasi, dan semua minggunya ada di
+   masa proyek (perpanjangan waktu harus diubah di data proyek dulu). Jadwal
+   tetap harus di-approve. Audit `PROMOTE_SCHEDULE_SCENARIO`.
+
+## D-079 Laporan Harian (M11)
+
+Tanggal: 2026-10-30. Diputuskan pengguna (OD-005 bagian laporan harian);
+mengikuti contoh `03 LAPORAN HARIAN … (MC 0)`.
+
+1. **Satu laporan per tanggal proyek**, hanya untuk tanggal yang sudah tiba
+   (WIT, D-073 butir 6) dan proyek ACTIVE.
+2. **Status:** DRAFT → FINAL oleh pemegang `progress.input` (penginput boleh
+   memfinalkan laporannya sendiri; review formal di laporan mingguan, M12).
+   FINAL dapat dibuka kembali (REOPENED) oleh pemegang izin baru
+   `report.reopen` (default MANAGER) dengan alasan wajib; tercatat di audit.
+3. **Pekerjaan hari itu** = alokasi harian D-075 tanggal itu (volume > 0).
+   Koreksi volume dilakukan sebagai alokasi manual: total minggu tetap sama
+   dengan progres mingguan; total yang salah dikoreksi di progres mingguan.
+4. **Bahan dan alat dihitung dari AHSP:** volume hari itu × koefisien komponen
+   MATERIAL/EQUIPMENT analisa item RAB (baseline minggu itu), termasuk
+   sub-analisa (koefisien dikalikan berantai), dijumlahkan per bahan/alat.
+   Pengguna mengisi jumlah aktual dan catatan; hasil hitung sistem tetap
+   tersimpan berdampingan (PRD §17–18). Baris tambahan bebas boleh (mis. alat
+   kerja yang tidak ada di AHSP).
+5. **Tenaga kerja dihitung dari AHSP** (diubah 2026-10-31, permintaan
+   pengguna): volume hari itu × koefisien upah (LABOR, orang-hari) per
+   keahlian, sama seperti bahan/alat; pengguna mengisi jumlah orang aktual.
+   "Pakai hitungan" membulatkan setengah ke atas ke orang utuh. Baris bebas
+   tetap boleh (saran dari daftar upah). Laporan baru diisi awal dari jumlah
+   orang dan alat bebas laporan sebelumnya.
+6. **Cuaca:** satu atau lebih baris kondisi (CLEAR, CLOUDY, DRIZZLE, RAIN,
+   OTHER) dengan jam dari–sampai dan catatan.
+7. **Finalisasi:** ERROR menahan (alokasi manual item yang tidak sama dengan
+   volume minggu); WARNING boleh lanjut dengan konfirmasi (tanpa tenaga kerja,
+   tanpa cuaca). Saat FINAL, volume pekerjaan dan hasil hitung bahan/alat
+   dibekukan di laporan; snapshot immutable penuh menyusul di M13.
+8. **Kustomisasi baris** (2026-10-31): nama dan satuan baris hitungan AHSP
+   boleh diubah (kunci AHSP tetap; nama/satuan terbawa ke laporan berikutnya).
+   Baris hitungan kecil bisa disembunyikan dengan ambang per tabel (bawaan
+   tenaga kerja < 0,5 OH; disimpan per browser). Ini hanya tampilan: baris
+   tetap tersimpan, dan baris yang sudah berisi aktual selalu tampil.
+
+## D-080 Database Pekerja
+
+Tanggal: 2026-10-31. Diputuskan pengguna.
+
+1. **Satu daftar global** lintas proyek (bukan per proyek). Belum terhubung
+   ke laporan harian; tenaga kerja harian tetap jenis × jumlah orang (D-079).
+2. **Data:** nama (wajib), posisi (wajib; saran dari komponen upah AHSP semua
+   proyek + posisi yang pernah diketik, boleh bebas), NIK (wajib, 16 digit,
+   unik), foto KTP (opsional; JPG/PNG/WEBP/PDF maks. 5 MB, dicek dari isi
+   file). Pekerja dinonaktifkan, tidak dihapus.
+3. **Akses:** semua user yang login melihat nama, posisi, status, dan NIK
+   tersamar (4 digit awal + 4 digit akhir). NIK lengkap, foto KTP, tambah,
+   ubah, dan nonaktifkan hanya untuk izin GLOBAL baru `workers.manage`.
+   Karena daftarnya global, izin ini tidak bisa menjadi bawaan role proyek
+   MANAGER: super admin selalu punya; user lain diberi lewat role global.
+4. **File KTP** disimpan privat di `storage/workers/`, hanya bisa diunduh
+   lewat API dengan `workers.manage`. Mengganti atau menghapus foto
+   menghapus file lama (data pribadi tidak disimpan lebih dari perlu); audit
+   mencatat kejadiannya tanpa NIK lengkap.
+5. **Impor Excel** (2026-10-31): template resmi dari aplikasi (kolom Nama,
+   Posisi, NIK; kolom NIK berformat teks). Semua baris atau tidak sama sekali:
+   satu baris salah membatalkan seluruh file dan semua kesalahan dilaporkan
+   per baris. NIK ganda di dalam file = salah. NIK yang sudah terdaftar
+   memperbarui nama dan posisi (status aktif tidak berubah); NIK baru
+   menambah pekerja. Foto KTP tidak lewat Excel. Maks. 2.000 baris.
+6. **Seed development** `db:seed:workers` (terpisah dari `db:seed:dev`, tidak membuat proyek) menambah pekerja contoh dengan NIK
+   berawalan 99 (bukan kode provinsi, jadi jelas fiktif); idempoten.
+
+## D-081 Laporan Mingguan (M12)
+
+Tanggal: 2026-11-01. Diputuskan pengguna (menutup OD-005 bagian laporan
+mingguan); format mengikuti `04. LAPORAN MINGGUAN … (MC 0)` sheet C.n
+(cover), RM.n (rekap), M.n (detail item), Curva S M.n.
+
+1. **Satu laporan per minggu proyek**, diajukan setelah minggu berakhir
+   (tanggal akhir ≤ hari ini, WIT) pada proyek ACTIVE. Isinya dihitung dari
+   data yang sudah ada: rekap per kelompok jadwal (bobot, prestasi s/d minggu
+   lalu, minggu ini, s/d minggu ini), realisasi/rencana/deviasi kumulatif,
+   total/terpakai/sisa waktu, detail progres item, Kurva S sampai minggu itu
+   (baseline minggu itu, D-073 butir 3), dan rangkuman laporan harian minggu
+   itu (tenaga kerja orang-hari per keahlian, total bahan/alat aktual, hari
+   hujan/gerimis).
+2. **Status:** DRAFT (diajukan pemegang `progress.input`) → REVIEWED (izin baru
+   `report.review`, default REVIEWER dan MANAGER) → FINAL (izin baru
+   `report.finalize`, default MANAGER). Pemeriksa tidak boleh memeriksa
+   minggu yang progresnya ikut ia isi/ubah (PRD §2, berlaku juga untuk super
+   admin). FINAL → REOPENED oleh `report.reopen` dengan alasan, lalu diperiksa
+   dan difinalkan lagi. Tidak ada langkah "kembalikan": isi laporan dihitung
+   dari data sumber, jadi koreksi dilakukan di progres/laporan harian lalu
+   diperiksa ulang.
+3. **ERROR menahan** pemeriksaan/finalisasi: minggu tanpa baseline. **WARNING**
+   boleh lanjut dengan konfirmasi: jadwal belum approved (rencana kosong),
+   laporan harian belum ada/belum final.
+4. **Snapshot:** saat FINAL seluruh isi laporan (termasuk identitas proyek dan
+   penanda tangan) disimpan sebagai snapshot immutable; laporan FINAL selalu
+   ditampilkan dari snapshot. Reopen tidak menghapus snapshot lama; final
+   berikutnya menambah snapshot baru.
+5. **Kunci:** selama laporan minggu X FINAL, progres mingguan, alokasi harian,
+   dan laporan harian minggu X **dan minggu-minggu sebelumnya** tidak dapat
+   diubah (kumulatif minggu X bergantung pada minggu sebelumnya). Buka kembali
+   laporan untuk mengubahnya. Aktivasi/pencabutan baseline yang mulai berlaku pada
+   minggu terkunci juga ditolak.
+6. **Penanda tangan** disimpan per proyek (`PUT /projects/:id/signatories`,
+   izin `project.update`): Pejabat Pembuat Komitmen, PPTK, Konsultan Pengawas,
+   Kontraktor Pelaksana — nama, jabatan, NIP/instansi. Ikut dibekukan di
+   snapshot. **Diubah 2026-11-02 (permintaan pengguna):** web tidak
+   menampilkan kartu tanda tangan; pengisiannya pindah ke halaman pengaturan
+   template laporan (D-082).
+
+## D-082 Template Laporan dan Ekspor (M14)
+
+Tanggal: 2026-11-02. Diputuskan pengguna (menutup OD-014); format awal
+mengikuti workbook kantor `03 LAPORAN HARIAN`, `04. LAPORAN MINGGUAN`,
+`05. LAPORAN BULANAN` (MC 0).
+
+1. **Satu template per proyek per jenis laporan** (HARIAN, MINGGUAN,
+   BULANAN). Template bisa **diimpor dari proyek lain** (semua jenis sekaligus,
+   logo opsional) oleh pemegang `project.update` yang juga bisa membaca proyek
+   sumber. Ubah template dan logo: `project.update`; lihat: `rab.read`.
+2. **Pengaturan terstruktur, bukan desainer bebas:** kertas (A4/F4/Legal,
+   tegak/mendatar, margin, ukuran huruf); kop (3 logo dengan keterangan,
+   baris teks kop); judul; isian identitas (tampil, label, urutan); bagian
+   laporan (tampil, judul, urutan) dan kolom tabelnya (tampil, judul); blok
+   tanda tangan (1–6 kolom: keterangan, jabatan, instansi, nama, jabatan
+   rinci/NIP); jumlah desimal volume (bawaan 2; format angka lain D-083).
+3. **Logo** per proyek: Pemberi Tugas/Dinas (kop), Konsultan Pengawas,
+   Kontraktor (penyedia). PNG/JPG/WEBP maks. 2 MB, dicek dari isi file,
+   disimpan privat dan disajikan lewat API.
+4. **Tanda tangan ada di template** tiap jenis laporan (penanda tangan
+   berbeda per jenis). Menggantikan penanda tangan per proyek D-081 butir 6
+   (kolom `projects.signatories` dihapus; belum pernah dirilis).
+5. **Ekspor:** PDF dari halaman cetak di browser (tampilan sama dengan
+   pratinjau); Excel dibuat server dari template yang sama (tahap 2). Data
+   laporan FINAL diambil dari snapshot; layout memakai template saat ekspor.
+6. **Bertahap:** (1) template, logo, impor, pratinjau dan cetak/PDF harian &
+   mingguan; (2) ekspor Excel; (3) laporan bulanan B.n (M13) dan ekspornya.
+
+## D-083 Format Angka
+
+Tanggal: 2026-11-02. Diputuskan pengguna; berlaku di semua layar, cetak/PDF,
+dan ekspor Excel berikutnya. Konstanta `DECIMALS` di `packages/shared`.
+
+| Jenis angka | Desimal tampil |
+|---|---|
+| Uang (Rupiah, harga, jumlah) | 2 |
+| Volume dan jumlah bahan/alat | 2 |
+| AHSP (koefisien analisa) | 4 |
+| Bobot (% bobot proyek: bobot item/kelompok, realisasi, rencana, deviasi, sel jadwal) | 3 |
+
+Jumlah orang (tenaga kerja) tetap bilangan bulat. Pembulatan hanya untuk
+tampilan (HALF_UP); nilai tersimpan dan semua perhitungan tetap eksak
+(aturan decimal-safe), dan nilai eksak tetap terlihat di popup asal nilai
+serta di isian saat mengedit. Template laporan (D-082) hanya mengatur desimal
+volume; bobot selalu 3.
+
+## D-084 Format Laporan Harian Mengwi
+
+Tanggal: 2026-11-02. Diputuskan pengguna: cetak/PDF dan ekspor Excel laporan
+harian mengikuti `04. LAPORAN HARIAN SMP NEGERI 5 MENGWI 27-10-2026.xlsx`
+(sheet Har.n, satu hari per halaman A4 mendatar).
+
+1. **Layout template baru `columns`** (bawaan laporan harian): kepala berisi
+   identitas di kiri, logo Konsultan Pengawas dan Kontraktor Pelaksana dengan
+   keterangan di atas logo, judul "LAPORAN HARIAN" + Minggu ke/Hari/Tanggal di
+   kanan; empat tabel berdampingan sesuai urutan bagian di template (bawaan:
+   Tenaga kerja, Jenis alat, Penggunaan material, Pekerjaan yang diselesaikan);
+   di bawahnya Keadaan cuaca (Cerah / Mendung = berawan+gerimis / Hujan,
+   beserta jam) dan Catatan; tanda tangan (bawaan 2: Konsultan Pengawas,
+   Kontraktor Pelaksana). Layout `stacked` (format sebelumnya) tetap bisa
+   dipilih.
+2. **Kelompok tenaga kerja:** nama keahlian yang terdaftar sebagai "Staff
+   Kantor" di template tampil di kelompok itu, sisanya di "Tenaga Kerja";
+   baris JUMLAH menjumlahkan semua orang.
+3. Logo dengan keterangan kosong tidak ditampilkan.
+4. **Ekspor Excel laporan harian** (`GET …/daily-reports/:date/export`) dibuat
+   server dari template yang sama: satu sheet, kolom/sel gabungan/garis/logo
+   mengikuti layout, pengaturan cetak A4 sesuai template. Angka mengikuti
+   D-083.
+
+- Pengaturan format harian (template DAILY, `daily`): baris tabel minimal, muat satu halaman (cetak diperkecil otomatis seperti
+  "fit to 1 page" Excel), tinggi logo, label MINGGU KE/HARI/TANGGAL, label & satuan JUMLAH tenaga kerja, label cuaca,
+  tampilkan semua staf walau kosong; lebar relatif tiap tabel (`sections[].width`). PDF dan Excel memakai pengaturan yang sama.
+- Di PDF keempat daftar dicetak sebagai satu tabel sehingga barisnya sejajar.
+
+
+## D-085 Laporan mingguan/bulanan format kantor (Serangan)
+
+Sumber: `04. LAPORAN MINGGUAN SDN 2 SERANGAN (MC 0).xlsx` dan `05. LAPORAN BULANAN …` (user, 2026-11-02: "tetap sama seperti template di serangan").
+
+1. Layout `office` (bawaan WEEKLY/MONTHLY): satu halaman per bagian, urutan dan judul dari template —
+   Sampul C.n (A4 tegak: logo dinas + kop, judul, MINGGU KE n (terbilang), periode, identitas, logo konsultan & kontraktor),
+   Rekap RM.n (kelompok jadwal: bobot, s/d lalu, ini, s/d ini, JUMLAH, realisasi/rencana/deviasi + waktu, tanda tangan),
+   Progres M.n (item: volume & bobot RAB, volume s.d lalu/ini/s.d ini, progres per item dan terhadap seluruh, JUMLAH per kelompok, JUMLAH TOTAL),
+   Time Schedule (rencana % per kelompok per minggu dikelompokkan per BULAN I.., baris rencana/realisasi + kumulatif, garis kurva S di atas kolom minggu).
+2. Bobot item = subtotal item / total versi baseline × 100; progres terhadap seluruh = bobot × kumulatif / volume. Disimpan di isi laporan (`itemWeights`); snapshot lama tanpa itu menampilkan bobot kosong.
+3. Ekspor Excel `GET /projects/:id/exports/weekly/:weekNumber` membuat sheet yang sama (C, RM, M, Curva S). Sheet Curva S memuat grafik garis Excel asli (rencana kumulatif putus-putus oranye, realisasi kumulatif biru) yang ditumpuk di atas kolom minggu seperti workbook kantor, plus baris DEVIASI; grafik ditulis langsung ke paket .xlsx karena ExcelJS tidak bisa membuat grafik.
+4. Bulanan memakai layout dan template yang sama dengan label BULAN; laporan bulanan sendiri (data per bulan, B.n) menyusul di M13.
+5. Layout `stacked` tetap tersedia; bagian Ringkasan dan Rangkuman harian hanya dipakai di sana.
+6. Tampilan (PDF dan Excel) meniru workbook Serangan: huruf Calibri, pita judul biru (teks putih), kepala tabel biru muda, garis rambut antarbaris, baris JUMLAH abu-abu, JUMLAH TOTAL/realisasi kuning muda, rencana hijau muda, bingkai tebal per halaman, angka nol tampil "-", dan tanda tangan juga di halaman Time Schedule. Ini format bawaan; file Excel kantor (D-086) hanya opsi.
+
+
+## D-086 Laporan diisi ke file Excel kantor (sama persis)
+
+User 2026-11-02: "tidak bisakah laporannya sama persis seperti excel yg di storage/temp" → pilihan "Isi file Excel asli".
+
+1. Per proyek dan jenis laporan bisa diunggah workbook kantor (tabel `report_workbooks`, file di `storage/projects/<id>/workbooks/`, ≤ 25 MB, dicek .xlsx). Izin `project.update`; audit UPLOAD/REMOVE_REPORT_WORKBOOK.
+2. Mingguan: aplikasi hanya menulis input progres — persen kumulatif per item per minggu di kolom input sheet `M.k` (kolom yang dipakai rumus `K = R*G/100`) untuk semua minggu ≤ n. Semua angka lain (RM, Curva S, sampul) dihitung rumus workbook sendiri; format, logo, grafik, dan sheet lain tidak diubah. File dibuka pada `C.n` dan Excel menghitung ulang saat dibuka.
+3. Workbook dibuat dari satu versi RAB (mis. MC 0) untuk semua minggunya, sedangkan baseline minggu awal bisa versi lain (Kontrak). Karena progres disimpan per item pekerjaan, baris workbook dipasangkan dengan versi RAB approved yang cocok (terbaru lebih dulu): menurut urutan bila jumlahnya sama, dicek namanya. Bila tidak ada versi yang cocok, ekspor ditolak (409) dengan contoh barisnya — tidak pernah mengisi baris yang salah.
+4. Sheet minggu n harus sudah ada di workbook (kantor menambah sheet tiap minggu); bila belum ada, ekspor menolak dengan pesan sheet terakhir. Penambahan sheet otomatis belum dibuat.
+5. Keamanan cetak di server: sebelum dicetak, tautan ke file lain (externalLinks) dibuang dan workbook yang memuat rumus pengambil data luar (WEBSERVICE, FILTERXML, INDIRECT, DDE, IMPORT*, referensi `[n]`/`file:`) ditolak; LibreOffice hanya dijalankan tanpa jaringan (`unshare -rn`; tanpa itu PDF format kantor tidak dibuat) dan tidak pernah memperbarui link.
+6. PDF: workbook yang sudah diisi (hanya sheet C, RM, M, Curva S minggu n yang tampil) dicetak LibreOffice di server (lewat UNO/python3-uno, karena `--convert-to` ikut mencetak sheet tersembunyi) dengan hitung ulang rumus dan tiap sheet dipaskan satu halaman lebar; tanpa LibreOffice, Ekspor PDF tetap memakai layout template (D-085).
+7. Tanpa workbook, ekspor memakai layout template (D-084/D-085). Harian (format Mengwi) dan bulanan menyusul dengan cara yang sama.
+
 ## Keputusan Terbuka
 
 
@@ -980,11 +1400,15 @@ Diputuskan sebelum: Milestone 6 (aktivasi baseline) dan Milestone 9 (validasi pr
 
 ### OD-004 Presisi rounding dan "hari aktif" pada alokasi harian
 
+**Ditutup 2026-10-30 oleh D-075.**
+
 PRD §15: total harian harus sama dengan volume mingguan; selisih ke "hari aktif terakhir". Belum ditetapkan: jumlah desimal (mis. mengikuti `DECIMAL(18,4)`), rounding mode, dan definisi hari aktif (faktor > 0? hari libur? hari di luar masa proyek pada minggu terakhir?).
 
 Diputuskan sebelum: Milestone 10.
 
 ### OD-005 Status dan pemilik laporan mingguan & 4 minggu
+
+**Sebagian:** laporan harian diputuskan di D-079 butir 2 (2026-10-30), laporan mingguan di D-081 (2026-11-01). Laporan 4 minggu masih terbuka (M13).
 
 PRD §24 berlaku untuk semua laporan (DRAFT/REVIEWED/FINAL/REOPENED) dan aturan reviewer-own-entry membutuhkan "siapa yang menginput". `daily_reports` memiliki status/created_by, tetapi laporan mingguan dan periode hanya memiliki `weeks.status`, `report_periods.status`, dan `report_snapshots`. Di mana status, reviewer, dan penginput laporan mingguan/periode disimpan, dan siapa "penginput" laporan mingguan bila progres diisi beberapa user?
 
@@ -1039,3 +1463,51 @@ Sudah diputuskan: lihat D-051.
 
 **Ditutup 2026-10-27 oleh D-069:** setiap MC memakai aturan D-020 (default
 minggu berikutnya; tanggal pasti bila dokumen resmi mewajibkan).
+
+### OD-014 Template laporan dan ekspor PDF/Excel
+
+**Ditutup 2026-11-02 oleh D-082.** Dicatat 2026-11-02 (permintaan pengguna, belum dikerjakan). Halaman pengaturan
+layout template laporan harian, mingguan, dan bulanan yang bisa dikustom
+(termasuk blok tanda tangan), lalu ekspor laporan ke PDF dan Excel dari
+template itu. Ekspor laporan final memakai snapshot (PRD §26). Perlu
+diputuskan sebelum M13/M14: apa saja yang bisa dikustom (urutan/bagian,
+kop, kolom, tanda tangan), per proyek atau global, dan format Excel mengikuti
+workbook kantor atau bebas.
+
+
+## D-087 Tab progres per minggu dan laporan bulanan B.n
+
+Sumber: user, 2026-11-03 ("tabnya isi progres, laporan harian, laporan mingguan, laporan bulanan").
+
+1. Tiap minggu punya satu kepala: **Semua minggu**, tab **Isi progres | Laporan harian | Laporan mingguan |
+   Laporan bulanan**, dan tombol pindah minggu (tetap di tab yang sama). Tab Laporan harian = daftar hari minggu itu
+   + alokasi volume per hari (D-075). Tab Laporan bulanan = periode B.n tempat minggu itu berada (D-010).
+2. Laporan bulanan **baca saja**: tidak ada input atau alur ajukan/periksa/final sendiri (PRD §22: "tidak ada input
+   progres baru"). Isinya dirangkum dari laporan minggu-minggunya (minggu FINAL dari snapshot-nya); disebut
+   "Sementara" sampai semua minggunya FINAL.
+3. Aturan rangkum: "bulan ini" = jumlah minggu periode; kumulatif = minggu terakhir periode. Rekap kelompok dan total
+   memakai Kurva S minggu terakhir (bobot versi baseline akhir periode, D-076); item dipasangkan per work item, jadi
+   pergantian baseline di tengah periode tetap terjumlah. Laporan harian (tenaga, bahan/alat, cuaca) dijumlahkan.
+4. Ekspor: bila workbook bulanan kantor diunggah (sheet C.n, RB.n, B.n, CS B.n), Excel dan PDF mengisi file itu
+   seperti D-086: kolom input B.k diisi % kumulatif sampai minggu 4k. Tanpa workbook: Excel dari template MONTHLY
+   (layout kantor D-085) dan PDF lewat halaman cetak.
+
+## D-088 Laporan harian diisi ke file Excel kantor (format Mengwi)
+
+Sumber: user, 2026-11-09 ("boleh menambah sheet hari baru sendiri").
+
+1. Workbook harian kantor (format `04. LAPORAN HARIAN SMP NEGERI 5 MENGWI`) punya satu sheet `Har.n` per **minggu**:
+   tujuh blok hari ke bawah, 60 baris per blok (page break per hari), plus sampul `Cov.n`. Sheet `A.n`/`B.n`/`C.n`
+   kantor membagi volume mingguan ke hari dengan faktor tetap; aplikasi memakai data harian sungguhan, jadi isi blok
+   hari ditulis langsung dari laporan harian dan sheet bantu itu tidak dipakai.
+2. Yang ditulis per hari: Minggu ke / Hari / Tanggal, daftar Tenaga kerja (kelompok staf/pekerja D-084 butir 2), Jenis
+   alat, Penggunaan material, Pekerjaan yang diselesaikan (32 baris per daftar; lebih dari itu, baris terakhir
+   menyebut "… dan N lainnya"), jam cuaca Cerah/Mendung/Hujan, dan Catatan. Hari tanpa laporan tersimpan ditulis
+   kosong. Identitas proyek dan tanda tangan tetap rumus file kantor.
+3. Bila `Har.n` minggu itu belum ada, aplikasi menyalin `Har`/`Cov` minggu terakhir yang ada menjadi minggu n
+   (rujukan antar-sheet ikut diganti) lalu mengisinya. File yang tersimpan di proyek tidak diubah; salinan hanya ada di
+   hasil ekspor.
+4. Ekspor Excel harian = workbook utuh dengan minggu tanggal itu terisi, dibuka di `Har.n`. Ekspor PDF harian = satu
+   halaman hari itu saja (area cetak `Har.n` dipersempit ke blok hari itu).
+5. Keamanan cetak (melengkapi D-086 butir 5): rumus sel yang merujuk file lain (`[n]`) diganti nilai tersimpannya
+   sebelum dicetak, bukan ditolak; rumus pengambil data luar (WEBSERVICE dll.) tetap ditolak.

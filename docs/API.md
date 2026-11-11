@@ -157,8 +157,18 @@ POST  /projects/:projectId/rab-versions/:versionId/discard      { reason }      
 POST  /projects/:projectId/rab-versions/:versionId/reopen       { reason }                       rab.reopen (D-068)
 POST  /projects/:projectId/rab-versions/:versionId/cancel-correction { reason }                  rab.reopen (D-070)
 GET   /projects/:projectId/baselines                              —                                rab.read (D-071)
-POST  /projects/:projectId/baselines                              { rabVersionId, activationMode, effectiveFrom?, reason? }  baseline.activate
+POST  /projects/:projectId/baselines                              { rabVersionId, activationMode, effectiveFrom?, reason?, acknowledgeWarnings? }  baseline.activate (409 + warnings bila volume < realisasi)
 POST  /projects/:projectId/baselines/:assignmentId/revoke         { reason }                       baseline.activate
+GET   /projects/:projectId/schedules                              -> [{ rabVersion, schedule }]     rab.read (D-072)
+POST  /projects/:projectId/schedules                              { rabVersionId }                 schedule.edit (RAB approved, 1 per versi)
+GET   /projects/:projectId/schedules/:scheduleId                  -> { groups, weeks, entries, curve, issues, … }  rab.read
+PUT   /projects/:projectId/schedules/:scheduleId/entries          { entries: [{ groupId, weekNumber, weight }] }  schedule.edit (ganti semua isian)
+POST  /projects/:projectId/schedules/:scheduleId/import           { documentId, sheet? } -> { …, importAdjustments }  schedule.edit (default sheet `Master Curva S`; diskalakan ke bobot versi, D-074)
+POST  /projects/:projectId/schedules/:scheduleId/approve          —                                schedule.approve (409 + errors bila tidak valid)
+POST  /projects/:projectId/schedules/:scheduleId/reopen           { reason }                       schedule.approve
+GET   /projects/:projectId/progress/weeks                         -> [{ weekNumber, baseline, open, filledCount, … }]  rab.read (D-073)
+GET   /projects/:projectId/progress/weeks/:weekNumber             -> { week, rows }                rab.read
+PUT   /projects/:projectId/progress/weeks/:weekNumber             { entries: [{ workItemId, mode, volume | percentage, note? }] }  progress.input (hanya item yang dikirim berubah)
 GET   /projects/:projectId/rab-versions/:versionId/history      -> { snapshots, events }         rab.read + ahsp.read
 GET   /projects/:projectId/rab-versions/:versionId/snapshots/:snapshotId -> { …, checksumValid, payload } rab.read + ahsp.read
 POST  /projects/:projectId/rab-versions/:versionId/items/:itemId/work-item  { workItemId, reason? }  rab.edit
@@ -251,15 +261,68 @@ Contoh:
 }
 ```
 
+## 10b. Kurva S
+
+```text
+GET /projects/:projectId/schedules/s-curve
+```
+
+`rab.read`. D-076: versi acuan = baseline di akhir minggu berjalan; per minggu
+`planned`, `plannedCumulative` (null tanpa jadwal APPROVED), `actual`,
+`actualCumulative`, `deviation` (null untuk minggu yang belum dimulai), plus
+`currentWeek`. `rows`: baris sheet Curva S (judul SECTION `weight` null) dengan
+`planned` dan `actual` per minggu per kelompok (D-077).
+
+`GET /projects/:projectId/schedules/s-curve/groups/:groupId/weeks/:weekNumber`
+(`rab.read`): item di bawah kelompok dengan `volume`, `weight`, `cumulative`,
+`thisWeek`, `percent`, `actualWeight` s.d. minggu itu (D-077 butir 5).
+
+## 10c. Simulasi Jadwal (Skenario)
+
+```text
+GET    /projects/:projectId/schedule-scenarios
+POST   /projects/:projectId/schedule-scenarios               { scheduleId, name }
+GET    /projects/:projectId/schedule-scenarios/:scenarioId
+PUT    /projects/:projectId/schedule-scenarios/:scenarioId   { name, weekCount, entries }
+DELETE /projects/:projectId/schedule-scenarios/:scenarioId
+POST   /projects/:projectId/schedule-scenarios/:scenarioId/promote
+```
+
+D-078. Baca: `rab.read`; ubah, hapus, promote: `schedule.edit`. `weekCount`
+boleh sampai 52 minggu setelah akhir proyek. Detail berisi `weeks` (termasuk
+minggu tambahan), `groups`, `entries`, `curve`, `issues`, `promoteBlockers`.
+Promote `409` bila jadwal resmi masih APPROVED atau skenario tidak valid
+(termasuk isian di luar masa proyek).
+
 ## 11. Daily Allocation
 
 ```text
-GET  /weeks/:weekId/daily-allocations
-POST /weeks/:weekId/daily-allocations/generate
-PUT  /weeks/:weekId/daily-allocations
+GET /projects/:projectId/progress/weeks/:weekNumber/daily
+PUT /projects/:projectId/progress/weeks/:weekNumber/daily/:workItemId
 ```
 
+- GET (`rab.read`): hari minggu itu dengan faktor, dan per work item yang punya
+  progres minggu itu: volume minggu, `method`, `volumes` per hari, `mismatch`.
+- PUT (`progress.input`, minggu terbuka): `{ "method": "DAILY_FACTOR" }` atau
+  `{ "method": "MANUAL", "volumes": ["50", "50", "0", …] }` (satu per hari,
+  jumlahnya tepat sama dengan volume minggu; `400` bila tidak). `404` bila
+  work item belum punya progres minggu itu. Mengembalikan isi GET.
+- Alokasi DAILY_FACTOR dihitung saat dibaca (D-075); tidak ada endpoint generate.
+
 ## 12. Daily Reports
+
+D-079 (dipakai):
+
+```text
+GET  /projects/:projectId/daily-reports/weeks/:weekNumber   hari-hari minggu itu + status laporan
+GET  /projects/:projectId/daily-reports/:date               isi laporan (pekerjaan, tenaga kerja, bahan/alat AHSP vs aktual, cuaca)
+PUT  /projects/:projectId/daily-reports/:date               { baseUpdatedAt, note, resources[], weather[] } (progress.input; DRAFT/REOPENED;
+                                                            409 bila laporan sudah diubah sejak baseUpdatedAt / null untuk laporan baru)
+POST /projects/:projectId/daily-reports/:date/finalize      { acknowledgeWarnings? } → 409 errors / warnings
+POST /projects/:projectId/daily-reports/:date/reopen        { reason } (report.reopen)
+```
+
+Rencana awal:
 
 ```text
 GET   /projects/:projectId/daily-reports?from=&to=
@@ -279,13 +342,57 @@ PUT /daily-reports/:id/equipment
 PUT /daily-reports/:id/weather
 ```
 
-## 13. Weekly Reports
+## 12a. Workers (D-080)
+
+Daftar global. Semua user login boleh membaca; NIK tersamar tanpa `workers.manage`.
+
+- `GET /workers?search=&active=true|false|all&page=&pageSize=`: cari nama/posisi (NIK hanya dengan `workers.manage`)
+- `GET /workers/:workerId/ktp` dikirim dengan `Cache-Control: private, no-store`.
+- `GET /workers/template`: template impor .xlsx (`workers.manage`)
+- `POST /workers/import` multipart `files` (1 .xlsx): semua baris atau tidak sama sekali → `{ created, updated }`; 400 `{ message, errors: string[] }` per baris (`workers.manage`, D-080 butir 5)
+- `GET /workers/positions`: saran posisi (komponen upah AHSP + posisi tersimpan)
+- `POST /workers` `{ name, position, nik }` (`workers.manage`; NIK 16 digit unik → 409 bila terpakai)
+- `PATCH /workers/:workerId` `{ name?, position?, nik?, isActive? }` (`workers.manage`)
+- `POST /workers/:workerId/ktp` multipart `files` (1 file JPG/PNG/WEBP/PDF ≤ 5 MB; mengganti file lama) (`workers.manage`)
+- `GET /workers/:workerId/ktp`: file KTP inline (`workers.manage`)
+- `DELETE /workers/:workerId/ktp` (`workers.manage`)
+
+## 13a. Report Templates (D-082)
 
 ```text
-GET  /weeks/:weekId/report
-POST /weeks/:weekId/report/finalize
-POST /weeks/:weekId/report/reopen
+GET    /projects/:projectId/report-templates                     3 template (DAILY, WEEKLY, MONTHLY; bawaan bila belum disimpan) + logo (rab.read)
+PUT    /projects/:projectId/report-templates/:reportType         config template (project.update); dinormalkan ke bagian/kolom yang dikenal
+POST   /projects/:projectId/report-templates/import              { sourceProjectId, includeLogos } (project.update + rab.read di sumber; 404 bila tidak)
+GET    /projects/:projectId/report-templates/logos/:kind         gambar logo AGENCY | CONSULTANT | CONTRACTOR (rab.read)
+POST   /projects/:projectId/report-templates/logos/:kind         multipart `files` PNG/JPG/WEBP ≤ 2 MB (project.update)
+DELETE /projects/:projectId/report-templates/logos/:kind         (project.update)
+GET    /projects/:projectId/exports/daily/:date                 laporan harian .xlsx sesuai template DAILY (rab.read; D-084)
+GET    /projects/:projectId/exports/weekly/:weekNumber          laporan mingguan .xlsx: workbook kantor yang diisi bila ada (D-086), selain itu sheet C, RM, M, Curva S dari template (rab.read; D-085)
+GET    /projects/:projectId/exports/weekly/:weekNumber/pdf      PDF dari workbook kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-086)
+GET    /projects/:projectId/exports/monthly/:periodNumber/pdf   PDF dari workbook bulanan kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-087)
+GET    /projects/:projectId/exports/daily/:date/pdf             Halaman hari itu dari workbook harian kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-088)
+GET    /projects/:projectId/exports/monthly/:periodNumber       laporan bulanan B.n .xlsx dari template MONTHLY (rab.read; D-087)
+POST   /projects/:projectId/report-templates/workbooks/:reportType   multipart `files` .xlsx ≤ 25 MB, workbook kantor (project.update; D-086)
+DELETE /projects/:projectId/report-templates/workbooks/:reportType   (project.update)
 ```
+
+Cetak/PDF: halaman web `/print/projects/:projectId/daily/:date` dan `/print/projects/:projectId/weekly/:weekNumber`.
+
+## 13. Weekly Reports
+
+D-081 (dipakai):
+
+```text
+GET  /projects/:projectId/weekly-reports                       status laporan per minggu (rab.read)
+GET  /projects/:projectId/weekly-reports/:weekNumber           isi laporan (live; FINAL dari snapshot terakhir) + issues + enteredBy
+POST /projects/:projectId/weekly-reports/:weekNumber/submit    (progress.input) minggu sudah berakhir → DRAFT
+POST /projects/:projectId/weekly-reports/:weekNumber/review    { note?, acknowledgeWarnings? } (report.review; bukan penginput minggu itu → 403)
+POST /projects/:projectId/weekly-reports/:weekNumber/finalize  { acknowledgeWarnings? } (report.finalize) REVIEWED → FINAL + snapshot
+POST /projects/:projectId/weekly-reports/:weekNumber/reopen    { reason } (report.reopen; minggu final terakhir dulu)
+GET  /projects/:projectId/monthly-reports/:periodNumber        laporan bulanan B.n (rab.read; baca saja, dirangkum dari minggu 4n−3..4n; D-087)
+```
+
+Selama minggu X FINAL: PUT progres/alokasi harian/laporan harian minggu ≤ X → 409 (D-081 butir 5).
 
 ## 14. 4-Week Reports
 

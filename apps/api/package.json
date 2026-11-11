@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:seed": "node dist/db/seed.js",
     "db:seed:dev": "node dist/db/seed-dev.js",
+    "db:seed:workers": "node dist/db/seed-workers.js",
     "db:seed:sample": "node dist/db/seed-sample.js",
     "schema:drop": "node dist/db/drop-schema.js",
     "ai:ping": "node dist/ai/ping.js",
@@ -25,6 +26,7 @@
     "@prisma/adapter-mariadb": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "exceljs": "4.4.0",
+    "jszip": "3.10.2",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },

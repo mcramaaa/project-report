@@ -1,22 +1,28 @@
 import type { ProjectDto, RabImportDetailDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert } from '@/components/ui';
 import { serverGet } from '@/lib/server-api';
 import { ImportReview } from './import-review';
 
-export default async function ImportReviewPage({ params }: { params: Promise<{ projectId: string; importId: string }> }) {
+export default async function ImportReviewPage({
+  params,
+}: {
+  params: Promise<{ projectId: string; importId: string }>;
+}) {
   const { projectId, importId } = await params;
   const base = `/projects/${encodeURIComponent(projectId)}`;
-  const [{ status, data: project }, detail] = await Promise.all([serverGet<ProjectDto>(base), serverGet<RabImportDetailDto>(`${base}/rab-imports/${encodeURIComponent(importId)}`)]);
+  const [{ status, data: project }, detail] = await Promise.all([
+    serverGet<ProjectDto>(base),
+    serverGet<RabImportDetailDto>(`${base}/rab-imports/${encodeURIComponent(importId)}`),
+  ]);
   if (status === 404 || detail.status === 404) notFound();
   if (!project) return <Alert>Proyek tidak dapat dimuat.</Alert>;
 
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>{project.projectName}</PageTitle>
-      <ProjectTabs projectId={project.id} active="imports" permissions={project.permissions} />
+      <ProjectHeader project={project} active="imports" />
       <Link href={`${base}/imports`} className="page-back">
         Impor RAB
       </Link>

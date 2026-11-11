@@ -6,29 +6,15 @@ import type {
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs, type ProjectTab } from '@/components/project-tabs';
-import { Alert, Badge, EmptyState, PageTitle, Section } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert, Badge, EmptyState, Section } from '@/components/ui';
 import { can } from '@/lib/permissions';
-import { formatDate, formatRupiah } from '@/lib/project-fields';
+import { formatDate } from '@/lib/project-fields';
 import { requireMe, serverGet } from '@/lib/server-api';
-import { ProjectActions } from './project-actions';
+import { ProjectData } from './project-actions';
 
-type Tab = Exclude<ProjectTab, 'rab'>;
-const TABS: Tab[] = ['info', 'calendar', 'team'];
-
-export default async function ProjectPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ tab?: string }>;
-}) {
-  const [{ projectId }, { tab: rawTab }, me] = await Promise.all([
-    params,
-    searchParams,
-    requireMe(),
-  ]);
-  const tab: Tab = TABS.includes(rawTab as Tab) ? (rawTab as Tab) : 'info';
+export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
+  const [{ projectId }, me] = await Promise.all([params, requireMe()]);
   const base = `/projects/${encodeURIComponent(projectId)}`;
   const { status, data: p } = await serverGet<ProjectDto>(base);
   if (status === 404) notFound();
@@ -38,83 +24,45 @@ export default async function ProjectPage({
 
   return (
     <>
-      <PageTitle
-        back={{ href: '/', label: 'Proyek saya' }}
-        eyebrow={
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="font-mono">{p.code}</span>
-            <span>TA {p.fiscalYear}</span>
-            {p.status === 'CLOSED' ? (
-              <Badge tone="red">Ditutup</Badge>
-            ) : (
-              <Badge tone="green">Aktif</Badge>
-            )}
-          </span>
-        }
-        subtitle={`${p.location} · ${formatDate(p.startDate)} – ${formatDate(p.plannedFinishDate)}`}
+      <ProjectHeader project={p} active="info" />
+      <div className="info-layout">
+        <InfoTab project={p} />
+        <aside className="stack" aria-label="Tim dan kalender proyek">
+          <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />
+          <Section
+            id="report-templates"
+            title="Template laporan"
+            description="Kop, logo, bagian, kolom, dan tanda tangan untuk cetak/PDF laporan harian, mingguan, dan bulanan."
+            action={
+              <Link className="btn btn-secondary" href={`${base}/report-templates`}>
+                Atur template
+              </Link>
+            }
+            body={false}
+          >
+            {null}
+          </Section>
+        </aside>
+      </div>
+      <Section
+        className="mt-4"
+        id="calendar"
+        title="Minggu & periode laporan"
+        description="Minggu M.n (7 hari) dan periode B.n (4 minggu) dihitung dari tanggal mulai dan masa pelaksanaan."
       >
-        {p.projectName}
-      </PageTitle>
-      <ProjectTabs projectId={p.id} active={tab} permissions={p.permissions} />
-      {tab === 'info' && <InfoTab project={p} />}
-      {tab === 'calendar' && <CalendarTab base={base} />}
-      {tab === 'team' && (
-        <TeamTab base={base} projectId={p.id} canSeeAccess={can(me, 'assignments.read')} />
-      )}
+        <details>
+          <summary className="link-button cursor-pointer">Tampilkan daftar minggu</summary>
+          <div className="mt-3">
+            <CalendarTab base={base} />
+          </div>
+        </details>
+      </Section>
     </>
   );
 }
 
 function InfoTab({ project: p }: { project: ProjectDto }) {
-  const groups: [string, [string, string | number][]][] = [
-    [
-      'Identitas',
-      [
-        ['Kegiatan', p.activityName],
-        ['Sub kegiatan', p.subActivityName],
-        ['Nama pekerjaan', p.projectName],
-        ['Lokasi', p.location],
-        ['Tahun anggaran', p.fiscalYear],
-      ],
-    ],
-    [
-      'Kontrak',
-      [
-        ['Kontraktor', p.contractorName],
-        ['Konsultan', p.consultantName],
-        ['Nomor kontrak', p.contractNumber],
-        ['Tanggal kontrak', formatDate(p.contractDate)],
-        ['Nilai kontrak', formatRupiah(p.contractValue)],
-      ],
-    ],
-    [
-      'SPMK & jadwal',
-      [
-        ['Nomor SPMK', p.spmkNumber],
-        ['Tanggal SPMK', formatDate(p.spmkDate)],
-        ['Tanggal mulai', formatDate(p.startDate)],
-        ['Masa pelaksanaan', `${p.durationDays} hari kalender`],
-        ['Tanggal selesai rencana', formatDate(p.plannedFinishDate)],
-      ],
-    ],
-  ];
-  return (
-    <div className="stack">
-      {p.permissions.includes('project.update') && <ProjectActions project={p} />}
-      {groups.map(([title, rows]) => (
-        <Section key={title} id={`info-${title.replace(/\W+/g, '-').toLowerCase()}`} title={title} body={false}>
-          <dl className="detail-list">
-            {rows.map(([label, value]) => (
-              <div key={label} className="min-w-0">
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </Section>
-      ))}
-    </div>
-  );
+  return <ProjectData project={p} canEdit={p.permissions.includes('project.update')} />;
 }
 
 async function CalendarTab({ base }: { base: string }) {
@@ -124,64 +72,43 @@ async function CalendarTab({ base }: { base: string }) {
   ]);
   if (!weeks.data || !periods.data) return <Alert>Minggu dan periode tidak dapat dimuat.</Alert>;
   if (weeks.data.length === 0) return <EmptyState>Belum ada minggu proyek.</EmptyState>;
+  const short = (d: string) =>
+    new Date(`${d}T00:00:00Z`).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'UTC',
+    });
   return (
-    <div className="stack">
+    <div className="period-grid">
       {periods.data.map((period) => (
-        <Section
+        <article
           key={period.id}
           id={`period-${period.periodNumber}`}
-          body={false}
-          title={`B${period.periodNumber} · ${formatDate(period.startDate)} – ${formatDate(period.endDate)}`}
-          description={`M${period.firstWeekNumber}–M${period.lastWeekNumber}, ${period.days} hari`}
-          action={period.days < 28 && <Badge tone="amber">Periode pendek</Badge>}
+          className="period-card"
+          aria-labelledby={`period-${period.periodNumber}-title`}
         >
-          <div className="data-panel">
-            <table role="table" className="data-table">
-              <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
-                <tr role="row">
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                    Minggu
-                  </th>
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                    Mulai
-                  </th>
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                    Selesai
-                  </th>
-                  <th role="columnheader" scope="col" className="px-3 py-2 font-medium">
-                    Hari
-                  </th>
-                </tr>
-              </thead>
-              <tbody role="rowgroup" className="divide-y divide-slate-100">
-                {weeks
-                  .data!.filter((w) => w.periodNumber === period.periodNumber)
-                  .map((w) => (
-                    <tr role="row" key={w.id}>
-                      <td role="cell" data-label="Minggu" className="px-3 py-2 font-medium">
-                        M{w.weekNumber}
-                      </td>
-                      <td role="cell" data-label="Mulai" className="px-3 py-2">
-                        {formatDate(w.startDate)}
-                      </td>
-                      <td role="cell" data-label="Selesai" className="px-3 py-2">
-                        {formatDate(w.endDate)}
-                      </td>
-                      <td role="cell" data-label="Hari" className="px-3 py-2">
-                        {w.days}
-
-                        {w.days < 7 && (
-                          <span className="ml-2">
-                            <Badge tone="amber">Minggu pendek</Badge>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </Section>
+          <header>
+            <h3 id={`period-${period.periodNumber}-title`}>B{period.periodNumber}</h3>
+            <span>
+              {formatDate(period.startDate)} – {formatDate(period.endDate)} · {period.days} hari
+            </span>
+            {period.days < 28 && <Badge tone="amber">Periode pendek</Badge>}
+          </header>
+          <ol>
+            {weeks
+              .data!.filter((w) => w.periodNumber === period.periodNumber)
+              .map((w) => (
+                <li key={w.id}>
+                  <b>M{w.weekNumber}</b>
+                  <span>
+                    {short(w.startDate)} – {short(w.endDate)}
+                  </span>
+                  <span className="tabular-nums">{w.days} hari</span>
+                  {w.days < 7 && <Badge tone="amber">pendek</Badge>}
+                </li>
+              ))}
+          </ol>
+        </article>
       ))}
     </div>
   );
@@ -199,16 +126,22 @@ async function TeamTab({
   const { data: team } = await serverGet<ProjectTeamMemberDto[]>(`${base}/team`);
   if (!team) return <Alert>Tim proyek tidak dapat dimuat.</Alert>;
   return (
-    <div className="space-y-3">
-      {canSeeAccess && (
-        <Link href={`/admin/projects/${projectId}/members`} className="btn btn-secondary">
-          Kelola akses proyek
-        </Link>
-      )}
+    <Section
+      id="team"
+      title="Tim proyek"
+      body={team.length === 0}
+      action={
+        canSeeAccess && (
+          <Link href={`/admin/projects/${projectId}/members`} className="btn btn-secondary">
+            Kelola akses proyek
+          </Link>
+        )
+      }
+    >
       {team.length === 0 ? (
         <EmptyState>Belum ada anggota aktif.</EmptyState>
       ) : (
-        <div className="panel data-panel">
+        <div className="data-panel">
           <table role="table" className="data-table">
             <thead role="rowgroup" className="bg-slate-50 text-left text-slate-600">
               <tr role="row">
@@ -235,6 +168,6 @@ async function TeamTab({
           </table>
         </div>
       )}
-    </div>
+    </Section>
   );
 }

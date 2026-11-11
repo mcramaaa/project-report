@@ -13,6 +13,7 @@ import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { baselineVolumeWarnings, lockedThrough } from '../progress/progress.service';
 import { fromDbDate, toDbDate } from '../projects/project-calendar';
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -136,7 +137,13 @@ export class BaselinesService {
         throw new ConflictException(
           `Tanggal efektif ${label} harus sesudah tanggal efektif ${rabVersionLabel(last.rabVersion)} (${fromDbDate(last.effectiveFrom)}).`,
         );
-      // D-071 butir 5 (OD-003): the check of new volumes against reported progress starts when M9 stores progress.
+      await assertWeekUnlocked(tx, projectId, effectiveFrom);
+      const warnings = await baselineVolumeWarnings(tx, projectId, version.id, effectiveFrom);
+      if (warnings.length && !input.acknowledgeWarnings)
+        throw new ConflictException({
+          message: `Volume ${label} lebih kecil dari realisasi pada ${warnings.length} item. Konfirmasi untuk tetap mengaktifkan; realisasi tidak diubah.`,
+          warnings,
+        });
 
       const activationMode = version.versionType === 'CONTRACT' ? 'EXACT_DATE' : input.activationMode;
       const created = await tx.baselineAssignment.create({
@@ -149,7 +156,7 @@ export class BaselinesService {
         entityId: created.id,
         projectId,
         oldValue: { rabVersion: last ? rabVersionLabel(last.rabVersion) : null },
-        newValue: { rabVersionId: version.id, rabVersion: label, effectiveFrom, activationMode, weekNumber },
+        newValue: { rabVersionId: version.id, rabVersion: label, effectiveFrom, activationMode, weekNumber, ...(warnings.length ? { acknowledgedWarnings: warnings } : {}) },
         reason: input.reason,
       });
     });
@@ -165,6 +172,7 @@ export class BaselinesService {
       const target = live.find((a) => a.id === assignmentId);
       if (!target) throw new NotFoundException('Aktivasi baseline tidak ditemukan atau sudah dicabut.');
       if (target !== live.at(-1)) throw new ConflictException('Hanya aktivasi baseline terakhir yang dapat dicabut.');
+      await assertWeekUnlocked(tx, projectId, fromDbDate(target.effectiveFrom));
       await tx.baselineAssignment.update({ where: { id: target.id }, data: { revokedAt: new Date(), revokedBy: actor.id, revokeReason: reason } });
       await writeAudit(tx, {
         actorId: actor.id,
@@ -179,6 +187,15 @@ export class BaselinesService {
     });
     return this.get(projectId);
   }
+}
+
+/** D-081 butir 5: a baseline change from `date` on would change weeks a FINAL weekly report froze. */
+async function assertWeekUnlocked(tx: Prisma.TransactionClient, projectId: string, date: string) {
+  const through = await lockedThrough(tx, projectId);
+  if (!through) return;
+  const week = await tx.projectWeek.findFirst({ where: { projectId, endDate: { gte: toDbDate(date) } }, orderBy: { weekNumber: 'asc' }, select: { weekNumber: true } });
+  if (week && week.weekNumber <= through)
+    throw new ConflictException(`Perubahan baseline mulai minggu ${week.weekNumber} mengenai laporan mingguan yang sudah final (s.d. minggu ${through}). Buka kembali laporan itu dulu.`);
 }
 
 async function lockProject(tx: Prisma.TransactionClient, projectId: string) {

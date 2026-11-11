@@ -98,7 +98,7 @@ describe.skipIf(!available)('seed SDN2-SERANGAN-2026-PAKET: isolated packages pe
     expect(await t.prisma.rabVersion.count({ where: { versionType: 'MC' } })).toBe(0);
 
     const report = await seedAhspSample(services, actor, files);
-    expect(report.steps).toEqual(['proyek sudah ada', 'impor MC-0 di-approve', 'RAB MC-0 di-approve (M4)', 'Addendum 1 dibuat dari MC-0 (DRAFT, salinan paket)']);
+    expect(report.steps).toEqual(['proyek sudah ada', 'impor MC-0 di-approve', 'RAB MC-0 di-approve (M4)', 'MC-1 dibuat dari MC-0 (DRAFT, salinan paket)']);
     expect(await t.prisma.rabImport.count({ where: { targetVersionType: 'MC' } })).toBe(1);
     expect(await t.prisma.rabImportDecision.count({ where: { importId: mc0.id } })).toBe(832);
     expect(report.mc0.realCost).toBe('5121250896.53');

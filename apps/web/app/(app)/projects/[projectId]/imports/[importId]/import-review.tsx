@@ -12,12 +12,14 @@ import {
   type RabImportDetailDto,
   type RabImportSummaryDto,
   type WorkItemSearchDto,
+  DECIMALS,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
 import { Alert, Badge, Button, EmptyState, Field } from '@/components/ui';
+import { GridTools } from '@/components/grid-tools';
 import { api, errorMessage } from '@/lib/api';
 import { CATEGORY_LABEL, IMPORT_STATUS } from '@/lib/import-ui';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
@@ -136,7 +138,11 @@ export function ImportReview({
       <section className="panel rab-header" aria-labelledby="run-title">
         <div className="min-w-0">
           <h2 id="run-title" className="flex flex-wrap items-center gap-2 text-lg font-semibold">
-            Impor {rabVersionLabel({ versionType: run.targetVersionType, revisionNumber: run.targetRevisionNumber })}{' '}
+            Impor{' '}
+            {rabVersionLabel({
+              versionType: run.targetVersionType,
+              revisionNumber: run.targetRevisionNumber,
+            })}{' '}
             <Badge tone={IMPORT_STATUS[run.status].tone}>{IMPORT_STATUS[run.status].label}</Badge>
           </h2>
           <p className="text-sm text-slate-600">
@@ -212,7 +218,7 @@ export function ImportReview({
       {reconciliation && (
         <section className="panel form-panel" aria-labelledby="recon-title">
           <h2 id="recon-title" className="text-base font-semibold">
-            Rekonsiliasi total (D-043)
+            Rekonsiliasi total
           </h2>
           <p className="text-sm">
             Aplikasi: Rp{' '}
@@ -287,7 +293,7 @@ export function ImportReview({
           </p>
           {reconciliation.rowsChecked > 0 ? (
             <p className="text-sm">
-              Item dicocokkan dengan nilai cached workbook (toleransi Rp 0,000001, D-054):{' '}
+              Item dicocokkan dengan nilai cached workbook (toleransi Rp 0,000001):{' '}
               {reconciliation.rowsChecked} item,{' '}
               <Badge tone={reconciliation.rowsMismatched ? 'red' : 'green'}>
                 {reconciliation.rowsMismatched
@@ -387,43 +393,48 @@ export function ImportReview({
           {shown.length === 0 ? (
             <EmptyState>Tidak ada item pada filter ini.</EmptyState>
           ) : (
-            <div className="panel rab-grid-wrap">
-              <table className="rab-grid">
-                <thead>
-                  <tr>
-                    <th scope="col" className="rab-sticky-no">
-                      No
-                    </th>
-                    <th scope="col" className="rab-sticky-desc">
-                      Uraian
-                    </th>
-                    <th scope="col" className="num">
-                      Volume
-                    </th>
-                    <th scope="col" className="num">
-                      Harga sumber
-                    </th>
-                    <th scope="col">Analisa &amp; bukti</th>
-                    <th scope="col">Keputusan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {shown.map((r) => (
-                    <RowReview
-                      key={r.key}
-                      projectId={projectId}
-                      importPath={base}
-                      row={r}
-                      issues={issuesByRow.get(r.key) ?? []}
-                      analysis={r.price.analysisKey ? analyses.get(r.price.analysisKey) : undefined}
-                      decided={(kind) => latest.get(`${r.key}|${kind}`)}
-                      editable={canReview && reviewable && !busy}
-                      onDecide={(d, success) => decide([d], success)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <GridTools />
+              <div className="panel rab-grid-wrap">
+                <table className="rab-grid">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="rab-sticky-no">
+                        No
+                      </th>
+                      <th scope="col" className="rab-sticky-desc">
+                        Uraian
+                      </th>
+                      <th scope="col" className="num">
+                        Volume
+                      </th>
+                      <th scope="col" className="num">
+                        Harga sumber
+                      </th>
+                      <th scope="col">Analisa &amp; bukti</th>
+                      <th scope="col">Keputusan</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((r) => (
+                      <RowReview
+                        key={r.key}
+                        projectId={projectId}
+                        importPath={base}
+                        row={r}
+                        issues={issuesByRow.get(r.key) ?? []}
+                        analysis={
+                          r.price.analysisKey ? analyses.get(r.price.analysisKey) : undefined
+                        }
+                        decided={(kind) => latest.get(`${r.key}|${kind}`)}
+                        editable={canReview && reviewable && !busy}
+                        onDecide={(d, success) => decide([d], success)}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </section>
       )}
@@ -464,51 +475,51 @@ export function ImportReview({
         ((canApprove && reviewable) ||
           (canReview && (run.status === 'FAILED' || run.status === 'REJECTED')) ||
           (blocking.length > 0 && reviewable)) && (
-        <section
-          className="panel form-panel flex flex-wrap items-end gap-3"
-          aria-label="Aksi impor"
-        >
-          {canApprove && reviewable && (
-            <>
+          <section
+            className="panel form-panel flex flex-wrap items-end gap-3"
+            aria-label="Aksi impor"
+          >
+            {canApprove && reviewable && (
+              <>
+                <Button
+                  disabled={busy || blocking.length > 0}
+                  onClick={() =>
+                    window.confirm(
+                      'Approve impor? Daftar harga dan analisa resmi dibuat, serta RAB versi DRAFT yang tertaut. RAB tetap perlu di-approve di tab RAB.',
+                    ) &&
+                    run_('POST', '/approve', undefined, 'Impor di-approve; RAB DRAFT dibuat.').then(
+                      () => router.refresh(),
+                    )
+                  }
+                >
+                  Approve impor
+                </Button>
+                <RejectForm
+                  busy={busy}
+                  onReject={(reason) => run_('POST', '/reject', { reason }, 'Impor ditolak.')}
+                />
+              </>
+            )}
+            {canReview && (run.status === 'FAILED' || run.status === 'REJECTED') && (
               <Button
-                disabled={busy || blocking.length > 0}
-                onClick={() =>
-                  window.confirm(
-                    'Approve impor? Daftar harga dan analisa resmi dibuat, serta RAB versi DRAFT yang tertaut. RAB tetap perlu di-approve di tab RAB.',
-                  ) &&
-                  run_('POST', '/approve', undefined, 'Impor di-approve; RAB DRAFT dibuat.').then(
-                    () => router.refresh(),
-                  )
-                }
+                variant="secondary"
+                disabled={busy}
+                onClick={async () => {
+                  const out = await run_('POST', '/retry', undefined, 'Run baru dibuat.');
+                  if (out && !('import' in out))
+                    router.push(`/projects/${projectId}/imports/${out.id}`);
+                }}
               >
-                Approve impor
+                Ulangi (run baru)
               </Button>
-              <RejectForm
-                busy={busy}
-                onReject={(reason) => run_('POST', '/reject', { reason }, 'Impor ditolak.')}
-              />
-            </>
-          )}
-          {canReview && (run.status === 'FAILED' || run.status === 'REJECTED') && (
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={async () => {
-                const out = await run_('POST', '/retry', undefined, 'Run baru dibuat.');
-                if (out && !('import' in out))
-                  router.push(`/projects/${projectId}/imports/${out.id}`);
-              }}
-            >
-              Ulangi (run baru)
-            </Button>
-          )}
-          {blocking.length > 0 && reviewable && (
-            <p className="field-hint w-full">
-              Approve aktif setelah semua {blocking.length} masalah diputuskan.
-            </p>
-          )}
-        </section>
-      )}
+            )}
+            {blocking.length > 0 && reviewable && (
+              <p className="field-hint w-full">
+                Approve aktif setelah semua {blocking.length} masalah diputuskan.
+              </p>
+            )}
+          </section>
+        )}
     </div>
   );
 }
@@ -565,8 +576,12 @@ function PackageReview({
               {proposals.map((p) => (
                 <li key={p.rowKey}>
                   <strong>{p.description}</strong>
-                  {p.workItem && <span className="block text-xs">Pekerjaan: {p.workItem.reason}</span>}
-                  {p.analysis && <span className="block text-xs">Analisa: {p.analysis.reason}</span>}
+                  {p.workItem && (
+                    <span className="block text-xs">Pekerjaan: {p.workItem.reason}</span>
+                  )}
+                  {p.analysis && (
+                    <span className="block text-xs">Analisa: {p.analysis.reason}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -821,7 +836,11 @@ function RowReview({
                       rowKey: row.key,
                       kind: 'WORK_ITEM_MATCH',
                       value: { workItemId: item.workItemId },
-                      reason: `Dipilih manual dari pencarian: ${item.code} "${item.description}".`.slice(0, 1000),
+                      reason:
+                        `Dipilih manual dari pencarian: ${item.code} "${item.description}".`.slice(
+                          0,
+                          1000,
+                        ),
                     },
                     `Dicocokkan ke ${item.code}.`,
                   )
@@ -880,7 +899,7 @@ function AnalysisDraft({ analysis: a, projectId }: { analysis: DraftAnalysis; pr
             href: workbookSource(projectId, c.locator)[0]?.href,
           }))}
         >
-          {formatRounded(a.computed.directCost, 6)}
+          {formatRounded(a.computed.directCost, DECIMALS.money)}
         </SourceValue>{' '}
         + overhead{' '}
         <SourceValue
@@ -901,7 +920,7 @@ function AnalysisDraft({ analysis: a, projectId }: { analysis: DraftAnalysis; pr
             { label: 'Nilai overhead', value: a.computed.overheadAmount },
           ]}
         >
-          {formatRounded(a.computed.priceExact, 6)}
+          {formatRounded(a.computed.priceExact, DECIMALS.money)}
         </SourceValue>
         {a.roundingScale !== null && (
           <>
@@ -950,7 +969,7 @@ function AnalysisDraft({ analysis: a, projectId }: { analysis: DraftAnalysis; pr
                     value={c.coefficient}
                     sources={workbookSource(projectId, c.locator)}
                   >
-                    {formatNumber(c.coefficient, { trim: true })}
+                    {formatRounded(c.coefficient, DECIMALS.ahsp)}
                   </SourceValue>
                 </td>
                 <td className="num">
@@ -1075,13 +1094,21 @@ function WorkItemSearch({
       )}
       {pages > 1 && (
         <div className="row-actions">
-          <Button variant="secondary" disabled={result!.page <= 1} onClick={() => search(q, result!.page - 1)}>
+          <Button
+            variant="secondary"
+            disabled={result!.page <= 1}
+            onClick={() => search(q, result!.page - 1)}
+          >
             Sebelumnya
           </Button>
           <span>
             Halaman {result!.page}/{pages} ({result!.total})
           </span>
-          <Button variant="secondary" disabled={result!.page >= pages} onClick={() => search(q, result!.page + 1)}>
+          <Button
+            variant="secondary"
+            disabled={result!.page >= pages}
+            onClick={() => search(q, result!.page + 1)}
+          >
             Berikutnya
           </Button>
         </div>

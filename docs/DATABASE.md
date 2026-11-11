@@ -374,26 +374,30 @@ Tepat satu dari `price_item_id`/`sub_analysis_version_id`, atau keduanya null un
 
 ## 6. Schedule
 
+D-072: per kelompok pekerjaan RAB, % bobot proyek per minggu.
+
 ### schedule_versions
 
 - id
-- project_id
-- rab_version_id
-- version_number
-- document_id
-- effective_date
-- status
-- created_at
+- project_id → projects (RESTRICT)
+- rab_version_id → rab_versions (RESTRICT), unique — satu jadwal per versi RAB
+- status — DRAFT | APPROVED | REOPENED
+- source_document_id nullable → project_documents (impor terakhir)
+- created_by, approved_by nullable, approved_at nullable
+- created_at, updated_at
 
-### schedule_items
+### schedule_entries
 
 - id
-- schedule_version_id
-- week_id
-- work_item_id
-- planned_volume
-- planned_weight
-- planned_cumulative_weight
+- schedule_version_id → schedule_versions (RESTRICT)
+- group_item_id → rab_version_items (RESTRICT) — SUBSECTION, atau SECTION tanpa SUBSECTION
+- week_id → weeks (RESTRICT)
+- planned_weight DECIMAL(30,18) — % bobot proyek, hanya nilai ≠ 0
+
+Unique:
+- schedule_version_id + group_item_id + week_id
+
+Bobot kelompok, rencana mingguan, dan kumulatif dihitung, tidak disimpan.
 
 ## 7. Weeks & Progress
 
@@ -425,60 +429,76 @@ Untuk dukungan exact-date di tengah minggu.
 - start_date
 - end_date
 
+### schedule_scenarios (D-078)
+
+- id, project_id, schedule_version_id, name, week_count
+- created_by, updated_by, created_at, updated_at
+
+### schedule_scenario_entries
+
+- id, scenario_id (CASCADE), group_item_id, week_number, planned_weight DECIMAL(30,18)
+- week_number, bukan week_id: skenario boleh melewati akhir proyek
+
+Unique: scenario_id + group_item_id + week_number
+
 ### weekly_progress
 
+D-073: volume realisasi per minggu per work item; tidak pernah dihapus.
+
 - id
-- week_id
-- work_item_id
-- input_mode
-- input_percentage
-- actual_volume
-- note
-- entered_by
-- entered_at
-- updated_at
+- project_id → projects (RESTRICT)
+- week_id → weeks (RESTRICT)
+- work_item_id → work_items (RESTRICT)
+- input_mode — VOLUME_WEEK | PERCENT_CUMULATIVE
+- input_percentage DECIMAL(9,6) nullable — persen kumulatif yang diketik
+- actual_volume DECIMAL(30,12) — volume minggu ini (fakta)
+- daily_method — DAILY_FACTOR | MANUAL (D-075)
+- note nullable
+- entered_by, entered_at
+- updated_by, updated_at
 
 Unique:
 - week_id + work_item_id
-
-input_mode:
-- PERCENT_CUMULATIVE
-- VOLUME_WEEK
 
 ## 8. Daily
 
 ### daily_allocations
 
+D-075: hanya menyimpan alokasi MANUAL. Alokasi DAILY_FACTOR dihitung dari
+`weekly_progress` saat dibaca. Metode yang berlaku ada di
+`weekly_progress.daily_method` (DAILY_FACTOR | MANUAL, default DAILY_FACTOR).
+Baris tidak dihapus saat kembali ke DAILY_FACTOR.
+
 - id
 - weekly_progress_id
-- work_item_id
-- work_date
-- volume
-- allocation_method
-- factor
-- is_manual_override
-- baseline_version_id
+- work_date DATE
+- volume DECIMAL(30,12)
+- updated_by
 - created_at
 - updated_at
 
-allocation_method:
-- DAILY_FACTOR
-- SCHEDULE
-- MANUAL
+Unique:
+- weekly_progress_id + work_date
 
-### daily_reports
+### daily_reports (D-079)
 
-- id
-- project_id
-- week_id
-- report_date
-- day_sequence
-- status
-- general_note
-- created_by
-- checked_by
-- finalized_by
-- finalized_at
+- id, project_id, week_id, report_date (unique per proyek)
+- status — DRAFT | FINAL | REOPENED
+- note, created_by, updated_by, finalized_by, finalized_at
+
+### daily_report_resources
+
+- category — LABOR | MATERIAL | EQUIPMENT; sort_order
+- source_key — kunci baris hitungan AHSP (price item id atau "uraian|satuan"); null untuk baris ketik bebas
+- name, unit, calculated_quantity (dibekukan saat FINAL), actual_quantity, note
+
+### daily_report_weather
+
+- condition — CLEAR | CLOUDY | DRIZZLE | RAIN | OTHER; from_time, to_time ("JJ:MM"), note
+
+### daily_report_work
+
+- work_item_id, volume — pekerjaan hari itu, dibekukan saat FINAL
 
 ### daily_weather
 
@@ -577,6 +597,23 @@ format:
 - PDF
 - PPTX
 
+### report_templates, project_logos (D-082)
+
+`report_templates`: satu per (`project_id`, `report_type` DAILY/WEEKLY/MONTHLY), `config` JSON (kertas, kop, judul,
+identitas, bagian+kolom, tanda tangan, desimal). `project_logos`: satu per (`project_id`, `kind` AGENCY/CONSULTANT/
+CONTRACTOR), file di `storage/projects/<id>/logos/`.
+
+### weekly_reports, weekly_report_snapshots (D-081)
+
+`weekly_reports`: satu per minggu (`week_id` UNIQUE), `status` DRAFT/REVIEWED/FINAL/REOPENED, `submitted_*`,
+`reviewed_*` + `review_note`, `finalized_*`. `weekly_report_snapshots`: `payload` JSON isi laporan saat FINAL;
+tidak dihapus atau diubah, reopen lalu final menambah baris baru.
+
+### workers (D-080)
+
+Daftar pekerja global: `name`, `position`, `nik` CHAR(16) UNIQUE, `ktp_filename`/`ktp_mime_type`/`ktp_file_size`
+(nullable; file di `storage/workers/`), `is_active`, `created_by`, `updated_by`. Tidak dihapus, hanya dinonaktifkan.
+
 ## 11. Audit
 
 ### audit_logs
@@ -614,3 +651,7 @@ Append-only: aplikasi tidak pernah update/delete baris audit.
 - final snapshot immutable
 - audit log append-oriented
 - AI draft terpisah dari official RAB
+
+### report_workbooks (D-086)
+
+Workbook Excel kantor per proyek dan jenis laporan: `project_id`, `report_type` (unik bersama), `filename` (nama file di storage), `original_name`, `file_size`, `updated_by`, `updated_at`. File disimpan di `storage/projects/<project_id>/workbooks/`; mengganti file menghapus file lama.

@@ -1,5 +1,7 @@
 # Handoff: Ubuntu laptop ⇄ WSL PC kantor
 
+Panduan pengguna ada di aplikasi (menu Panduan, `apps/web/app/(app)/panduan/page.tsx`). Template laporan + cetak/PDF harian & mingguan sudah ada (D-082 tahap 1). Berikutnya: ekspor Excel (tahap 2), laporan bulanan B.n (tahap 3).
+
 Dokumen ini tidak memuat password, token, atau isi `.env`.
 Baca juga `docs/HANDOFF_CODEX.md` untuk catatan sesi Codex dan
 `docs/AI_ENGINEERING_STANDARDS.md` untuk standar kerja frontend/backend.
@@ -191,8 +193,15 @@ Bagian di bawah ini catatan handoff sebelumnya (laptop → PC kantor, 2026-10-26
 | M4 RAB manual (versi, hierarki, grid, compare, approval)                               | selesai                                                                                |
 | M5 Upload/ekstraksi/review impor RAB (deterministik + AI 9router sebagai kandidat)     | selesai                                                                                |
 | M7 AHSP (analisa, harga bahan/upah/alat, paket per versi RAB)                          | selesai                                                                                |
-| M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode belum     |
-| M8–M16 (jadwal lanjutan, progres, alokasi harian, laporan, finalisasi, export, deploy) | belum dimulai                                                                          |
+| M6 MC + baseline (D-069: Kontrak + MC-0 … MC-100)                                      | sebagian: versi MC bernomor, impor MC, pewarisan paket; baseline per periode: API + UI (D-071) |
+| M8 Schedule + Weeks (D-072)                                                            | jadwal per kelompok RAB: grid, impor Master Curva S, approve/reopen; Kurva S rencana   |
+| M9 Weekly Progress (D-073)                                                             | grid per minggu, mode volume / % kumulatif, validasi baseline, peringatan D-071 butir 5 |
+| M10 Daily Allocation (D-075)                                                           | faktor hari default kantor, 4 desimal + sisa ke hari terakhir, alokasi manual per item |
+| M12 Kurva S (D-076)                                                                    | Kurva S + analisis keterlambatan (D-077) + simulasi skenario jadwal (D-078)            |
+| M11 Daily Reports (D-079)                                                              | pekerjaan dari alokasi, tenaga kerja, bahan/alat AHSP vs aktual, cuaca, Draft→Final  |
+| Database pekerja (D-080) | daftar global nama, posisi, NIK (tersamar tanpa `workers.manage`), foto KTP privat |
+| M12 Laporan mingguan (D-081) | rekap per kelompok, ringkasan, Kurva S, rangkuman harian, detail item; ajukan → periksa → final (snapshot, kunci) | 
+| M13–M16 (laporan 4 minggu, export, deploy)                        | belum dimulai; M13 perlu sisa OD-005                                                   |
 
 Fokus terakhir: audit pemuatan RAB proyek contoh `SDN2-SERANGAN-2026-PAKET` terhadap
 workbook kantor. Kontrak dan MC-0 cocok per item (416/416) dan total (D-063).

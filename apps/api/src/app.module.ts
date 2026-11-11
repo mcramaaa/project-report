@@ -20,6 +20,14 @@ import { AhspService } from './ahsp/ahsp.service';
 import { AiClient, readAiConfig } from './ai/ai.client';
 import { BaselinesController } from './baselines/baselines.controller';
 import { BaselinesService } from './baselines/baselines.service';
+import { SchedulesController } from './schedules/schedules.controller';
+import { ProgressController } from './progress/progress.controller';
+import { ProgressService } from './progress/progress.service';
+import { SchedulesService } from './schedules/schedules.service';
+import { ScenariosController } from './schedules/scenarios.controller';
+import { DailyReportsController } from './daily-reports/daily-reports.controller';
+import { DailyReportsService } from './daily-reports/daily-reports.service';
+import { ScenariosService } from './schedules/scenarios.service';
 import { DocumentsController } from './documents/documents.controller';
 import { DocumentsService } from './documents/documents.service';
 import { RabImportsController } from './imports/rab-imports.controller';
@@ -27,10 +35,18 @@ import { AI_CLIENT, RabImportsService } from './imports/rab-imports.service';
 import { RabController } from './rab/rab.controller';
 import { RabCorrectionsService } from './rab/corrections.service';
 import { RabService } from './rab/rab.service';
+import { ReportExportsController } from './report-templates/report-exports.controller';
+import { ReportTemplatesController } from './report-templates/report-templates.controller';
+import { OfficeWorkbookService } from './report-templates/office-workbook.service';
+import { ReportTemplatesService } from './report-templates/report-templates.service';
+import { MonthlyReportsController, WeeklyReportsController } from './weekly-reports/weekly-reports.controller';
+import { WeeklyReportsService } from './weekly-reports/weekly-reports.service';
+import { WorkersController } from './workers/workers.controller';
+import { WorkersService } from './workers/workers.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DailyReportsController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController, WorkersController, WeeklyReportsController, MonthlyReportsController, ReportTemplatesController, ReportExportsController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },
@@ -43,6 +59,10 @@ import { RabService } from './rab/rab.service';
     RabService,
     RabCorrectionsService,
     BaselinesService,
+    SchedulesService,
+    ScenariosService,
+    DailyReportsService,
+    ProgressService,
     DocumentsService,
     RabImportsService,
     AhspService,
@@ -50,6 +70,10 @@ import { RabService } from './rab/rab.service';
     { provide: AI_CLIENT, useFactory: () => { const config = readAiConfig(); return config ? new AiClient(config) : null; } },
     AdminUsersService,
     AdminProjectsService,
+    WorkersService,
+    WeeklyReportsService,
+    ReportTemplatesService,
+    OfficeWorkbookService,
   ],
 })
 export class AppModule {}

@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { verifyPassword } from '../auth/password';
 import { createTestPrisma, resetDatabase } from '../test/db';
-import { DEV_PROJECT_CODE, seedDevData, seedSystemAdmin } from './seeding';
+import { DEV_PROJECT_CODE, DEV_WORKERS, seedDevData, seedDevWorkers, seedSystemAdmin } from './seeding';
 
 const prisma = createTestPrisma();
 
@@ -50,6 +50,14 @@ describe('seed', () => {
     expect((await seedDevData(prisma)).created).toBe(true);
     expect((await seedDevData(prisma)).created).toBe(false);
     expect(await prisma.project.count({ where: { code: DEV_PROJECT_CODE } })).toBe(1);
+  });
+
+  it('dev workers seed is idempotent and uses fake 99… NIKs', async () => {
+    await expect(seedDevWorkers(prisma)).rejects.toThrow(/db:seed/);
+    await seedSystemAdmin(prisma, { email: 'admin@example.com', password: 'first-password-1' });
+    expect(await seedDevWorkers(prisma)).toBe(DEV_WORKERS.length);
+    expect(await seedDevWorkers(prisma)).toBe(0);
+    expect(await prisma.worker.count({ where: { nik: { startsWith: '99' } } })).toBe(DEV_WORKERS.length);
   });
 
   it('database enforces unique normalized email', async () => {

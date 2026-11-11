@@ -4,8 +4,9 @@ import { rabRowHref } from '@/lib/value-source';
 import type { ProjectDto, RabChangeType, RabCompareDto, RabRowDto } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ProjectTabs } from '@/components/project-tabs';
-import { Alert, Badge, EmptyState, PageTitle } from '@/components/ui';
+import { ProjectHeader } from '@/components/project-tabs';
+import { Alert, Badge, EmptyState } from '@/components/ui';
+import { GridTools } from '@/components/grid-tools';
 import { Decimal } from '@laporan-proyek/calc';
 import { formatRounded } from '@/lib/project-fields';
 import { serverGet } from '@/lib/server-api';
@@ -26,7 +27,9 @@ const FILTERS: { key: string; label: string; match: (c: RabChangeType) => boolea
 /** target − base with Decimal (no floats), rounded for display. */
 function delta(base: string | null, target: string | null, scale: number): string {
   // Sign follows the rounded value, so a hidden difference never shows as "+0,00"/"-0,00".
-  const diff = new Decimal(target ?? 0).minus(base ?? 0).toDecimalPlaces(scale, Decimal.ROUND_HALF_UP);
+  const diff = new Decimal(target ?? 0)
+    .minus(base ?? 0)
+    .toDecimalPlaces(scale, Decimal.ROUND_HALF_UP);
   const shown = formatRounded(diff.abs().toFixed(), scale);
   return diff.isZero() ? shown : `${diff.isNegative() ? '-' : '+'}${shown}`;
 }
@@ -48,7 +51,11 @@ function trend(
 }
 
 /** Delta arrows follow the rounded difference itself, including values across a rounding boundary. */
-function deltaTrend(base: string | null | undefined, target: string | null | undefined, scale: number) {
+function deltaTrend(
+  base: string | null | undefined,
+  target: string | null | undefined,
+  scale: number,
+) {
   if (base == null || target == null) return null;
   return trend('0', new Decimal(target).minus(base).toFixed(), scale);
 }
@@ -114,14 +121,8 @@ export default async function RabComparePage({
     );
   return (
     <>
-      <PageTitle subtitle={<span className="font-mono">{project.code}</span>}>
-        {project.projectName}
-      </PageTitle>
-      <ProjectTabs projectId={project.id} active="rab" permissions={project.permissions} />
-      <Link
-        href={`${projectPath}/rab`}
-        className="page-back"
-      >
+      <ProjectHeader project={project} active="rab" />
+      <Link href={`${projectPath}/rab`} className="page-back">
         Versi RAB
       </Link>
       {cmpStatus === 403 ? (
@@ -151,141 +152,144 @@ export default async function RabComparePage({
           {data.rows.filter((r) => filter.match(r.change)).length === 0 ? (
             <EmptyState>Tidak ada pekerjaan pada filter ini.</EmptyState>
           ) : (
-            <div className="panel rab-grid-wrap">
-              <table className="rab-grid">
-                <thead>
-                  <tr>
-                    <th scope="col" className="rab-sticky-no">
-                      Kode
-                    </th>
-                    <th scope="col" className="rab-sticky-desc">
-                      Uraian
-                    </th>
-                    <th scope="col">Perubahan</th>
-                    <th scope="col" className="num">
-                      Volume {data.base.label}
-                    </th>
-                    <th scope="col" className="num">
-                      Volume {data.target.label}
-                    </th>
-                    <th scope="col" className="num">
-                      Δ volume
-                    </th>
-                    <th scope="col" className="num">
-                      Harga {data.base.label}
-                    </th>
-                    <th scope="col" className="num">
-                      Harga {data.target.label}
-                    </th>
-                    <th scope="col" className="num">
-                      Jumlah {data.base.label}
-                    </th>
-                    <th scope="col" className="num">
-                      Jumlah {data.target.label}
-                    </th>
-                    <th scope="col" className="num">
-                      Δ jumlah
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows
-                    .filter((r) => filter.match(r.change))
-                    .map((r) => (
-                      <tr key={r.workItemId} className={`rab-change-${r.change.toLowerCase()}`}>
-                        <td className="rab-sticky-no font-mono text-xs">{r.workItemCode}</td>
-                        <td className="rab-sticky-desc">
-                          {(r.target ?? r.base)!.description}
-                          {r.base && r.target && r.base.description !== r.target.description && (
-                            <span className="block text-xs text-slate-500">
-                              sebelumnya: {r.base.description}
-                            </span>
-                          )}
-                          {r.changes.includes('group') && (
-                            <span className="block text-xs text-slate-500">
-                              pindah kelompok: {r.baseGroup || '(tingkat teratas)'} →{' '}
-                              {r.targetGroup || '(tingkat teratas)'}
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          <Badge tone={CHANGE[r.change].tone}>{CHANGE[r.change].label}</Badge>
-                        </td>
-                        <td className="num">{linkedValue(r.base, 'volume')}</td>
-                        <td className="num">
-                          <Trend dir={trend(r.base?.volume, r.target?.volume, 2)}>
-                            {linkedValue(r.target, 'volume')}
-                          </Trend>
-                        </td>
-                        <td className="num">
-                          <Trend dir={deltaTrend(r.base?.volume, r.target?.volume, 2)}>
-                            <SourceValue
-                              title="Selisih volume"
-                              formula="Nilai versi tujuan − nilai versi awal"
-                              sources={[
-                                {
-                                  label: data.base.label,
-                                  value: r.base?.volume ?? '0 (tidak ada pada versi ini)',
-                                  href: r.base
-                                    ? rabRowHref(projectId, data.base.id, r.base.id)
-                                    : undefined,
-                                },
-                                {
-                                  label: data.target.label,
-                                  value: r.target?.volume ?? '0 (tidak ada pada versi ini)',
-                                  href: r.target
-                                    ? rabRowHref(projectId, data.target.id, r.target.id)
-                                    : undefined,
-                                },
-                              ]}
-                            >
-                              {delta(r.base?.volume ?? null, r.target?.volume ?? null, 2)}
-                            </SourceValue>
-                          </Trend>
-                        </td>
-                        <td className="num">{linkedValue(r.base, 'unitPrice')}</td>
-                        <td className="num">
-                          <Trend dir={trend(r.base?.unitPrice, r.target?.unitPrice)}>
-                            {linkedValue(r.target, 'unitPrice')}
-                          </Trend>
-                        </td>
-                        <td className="num">{linkedValue(r.base, 'subtotal')}</td>
-                        <td className="num">
-                          <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>
-                            {linkedValue(r.target, 'subtotal')}
-                          </Trend>
-                        </td>
-                        <td className="num">
-                          <Trend dir={deltaTrend(r.base?.subtotal, r.target?.subtotal, 2)}>
-                            <SourceValue
-                              title="Selisih jumlah"
-                              formula="Nilai versi tujuan − nilai versi awal"
-                              sources={[
-                                {
-                                  label: data.base.label,
-                                  value: r.base?.subtotal ?? '0 (tidak ada pada versi ini)',
-                                  href: r.base
-                                    ? rabRowHref(projectId, data.base.id, r.base.id)
-                                    : undefined,
-                                },
-                                {
-                                  label: data.target.label,
-                                  value: r.target?.subtotal ?? '0 (tidak ada pada versi ini)',
-                                  href: r.target
-                                    ? rabRowHref(projectId, data.target.id, r.target.id)
-                                    : undefined,
-                                },
-                              ]}
-                            >
-                              {delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}
-                            </SourceValue>
-                          </Trend>
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <GridTools />
+              <div className="panel rab-grid-wrap">
+                <table className="rab-grid">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="rab-sticky-no">
+                        Kode
+                      </th>
+                      <th scope="col" className="rab-sticky-desc">
+                        Uraian
+                      </th>
+                      <th scope="col">Perubahan</th>
+                      <th scope="col" className="num">
+                        Volume {data.base.label}
+                      </th>
+                      <th scope="col" className="num">
+                        Volume {data.target.label}
+                      </th>
+                      <th scope="col" className="num">
+                        Δ volume
+                      </th>
+                      <th scope="col" className="num">
+                        Harga {data.base.label}
+                      </th>
+                      <th scope="col" className="num">
+                        Harga {data.target.label}
+                      </th>
+                      <th scope="col" className="num">
+                        Jumlah {data.base.label}
+                      </th>
+                      <th scope="col" className="num">
+                        Jumlah {data.target.label}
+                      </th>
+                      <th scope="col" className="num">
+                        Δ jumlah
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.rows
+                      .filter((r) => filter.match(r.change))
+                      .map((r) => (
+                        <tr key={r.workItemId} className={`rab-change-${r.change.toLowerCase()}`}>
+                          <td className="rab-sticky-no font-mono text-xs">{r.workItemCode}</td>
+                          <td className="rab-sticky-desc">
+                            {(r.target ?? r.base)!.description}
+                            {r.base && r.target && r.base.description !== r.target.description && (
+                              <span className="block text-xs text-slate-500">
+                                sebelumnya: {r.base.description}
+                              </span>
+                            )}
+                            {r.changes.includes('group') && (
+                              <span className="block text-xs text-slate-500">
+                                pindah kelompok: {r.baseGroup || '(tingkat teratas)'} →{' '}
+                                {r.targetGroup || '(tingkat teratas)'}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            <Badge tone={CHANGE[r.change].tone}>{CHANGE[r.change].label}</Badge>
+                          </td>
+                          <td className="num">{linkedValue(r.base, 'volume')}</td>
+                          <td className="num">
+                            <Trend dir={trend(r.base?.volume, r.target?.volume, 2)}>
+                              {linkedValue(r.target, 'volume')}
+                            </Trend>
+                          </td>
+                          <td className="num">
+                            <Trend dir={deltaTrend(r.base?.volume, r.target?.volume, 2)}>
+                              <SourceValue
+                                title="Selisih volume"
+                                formula="Nilai versi tujuan − nilai versi awal"
+                                sources={[
+                                  {
+                                    label: data.base.label,
+                                    value: r.base?.volume ?? '0 (tidak ada pada versi ini)',
+                                    href: r.base
+                                      ? rabRowHref(projectId, data.base.id, r.base.id)
+                                      : undefined,
+                                  },
+                                  {
+                                    label: data.target.label,
+                                    value: r.target?.volume ?? '0 (tidak ada pada versi ini)',
+                                    href: r.target
+                                      ? rabRowHref(projectId, data.target.id, r.target.id)
+                                      : undefined,
+                                  },
+                                ]}
+                              >
+                                {delta(r.base?.volume ?? null, r.target?.volume ?? null, 2)}
+                              </SourceValue>
+                            </Trend>
+                          </td>
+                          <td className="num">{linkedValue(r.base, 'unitPrice')}</td>
+                          <td className="num">
+                            <Trend dir={trend(r.base?.unitPrice, r.target?.unitPrice)}>
+                              {linkedValue(r.target, 'unitPrice')}
+                            </Trend>
+                          </td>
+                          <td className="num">{linkedValue(r.base, 'subtotal')}</td>
+                          <td className="num">
+                            <Trend dir={trend(r.base?.subtotal, r.target?.subtotal, 2)}>
+                              {linkedValue(r.target, 'subtotal')}
+                            </Trend>
+                          </td>
+                          <td className="num">
+                            <Trend dir={deltaTrend(r.base?.subtotal, r.target?.subtotal, 2)}>
+                              <SourceValue
+                                title="Selisih jumlah"
+                                formula="Nilai versi tujuan − nilai versi awal"
+                                sources={[
+                                  {
+                                    label: data.base.label,
+                                    value: r.base?.subtotal ?? '0 (tidak ada pada versi ini)',
+                                    href: r.base
+                                      ? rabRowHref(projectId, data.base.id, r.base.id)
+                                      : undefined,
+                                  },
+                                  {
+                                    label: data.target.label,
+                                    value: r.target?.subtotal ?? '0 (tidak ada pada versi ini)',
+                                    href: r.target
+                                      ? rabRowHref(projectId, data.target.id, r.target.id)
+                                      : undefined,
+                                  },
+                                ]}
+                              >
+                                {delta(r.base?.subtotal ?? null, r.target?.subtotal ?? null, 2)}
+                              </SourceValue>
+                            </Trend>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}

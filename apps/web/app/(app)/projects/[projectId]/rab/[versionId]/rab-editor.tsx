@@ -8,6 +8,7 @@ import {
   type RabRowDto,
   type RabRowType,
   type RabVersionDetailDto,
+  DECIMALS,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { SourceValue, type ValueSource } from '@/components/source-value';
@@ -17,6 +18,7 @@ import { Alert, Badge, Button, Field, Select } from '@/components/ui';
 import { ActionMenu } from '@/components/action-menu';
 import { Icon } from '@/components/icon';
 import { InfoHint } from '@/components/info-hint';
+import { GridTools } from '@/components/grid-tools';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import { formatDate, formatNumber, formatRounded } from '@/lib/project-fields';
 import { canChangeVersion, RAB_COLUMNS, RAB_ROW_TYPE_LABEL, type RabColumn } from '@/lib/rab-ui';
@@ -80,7 +82,7 @@ function cell(row: RabRowDto, column: RabColumn): string {
     case 'taxPercent':
       return row.taxPercent === null ? '' : formatNumber(row.taxPercent, { trim: true });
     case 'weight':
-      return formatRounded(row.weight, 4);
+      return formatRounded(row.weight, DECIMALS.weight);
     default:
       // Amounts are exact (D-043); show them like the workbook, to 2 decimals.
       return row[column] === null ? '' : formatRounded(row[column], 2);
@@ -653,6 +655,7 @@ export function RabEditor({
               </Button>
             </div>
           )}
+          {rows.length > 0 && <GridTools />}
         </div>
         {editable && (
           <Button
@@ -696,313 +699,319 @@ export function RabEditor({
           {editable ? 'Mulai dengan menambah bagian (SECTION) atau item pekerjaan.' : ''}
         </p>
       ) : (
-        <div className="panel rab-grid-wrap">
-          <table className="rab-grid">
-            <thead>
-              <tr>
-                <th scope="col" className="rab-sticky-no">
-                  No
-                </th>
-                <th scope="col" className="rab-sticky-desc">
-                  Uraian
-                </th>
-                {shown.map((c) => (
-                  <th
-                    key={c.key}
-                    scope="col"
-                    className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}
-                  >
-                    {c.label}
+        <>
+          <div className="panel rab-grid-wrap">
+            <table className="rab-grid">
+              <thead>
+                <tr>
+                  <th scope="col" className="rab-sticky-no">
+                    No
                   </th>
-                ))}
-                {editable && (
-                  <th scope="col" className="rab-actions-cell">
-                    <span className="sr-only">Aksi</span>
+                  <th scope="col" className="rab-sticky-desc">
+                    Uraian
                   </th>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {rows
-                .filter((row) => (search.trim() ? matches.has(row.id) : !hidden(row)))
-                .map((row) =>
-                  editingId === row.id && editable ? (
-                    <tr key={row.id}>
-                      <td colSpan={shown.length + 3} className="rab-form-cell">
-                        <RowForm
-                          title={`Ubah ${RAB_ROW_TYPE_LABEL[row.rowType].toLowerCase()}`}
-                          row={row}
-                          parents={rows.filter(
-                            (r) =>
-                              r.rowType !== 'ITEM' &&
-                              r.id !== row.id &&
-                              !isDescendant(rows, r.id, row.id),
-                          )}
-                          reopened={reopened}
-                          busy={busy}
-                          onCancel={() => setEditingId(undefined)}
-                          onSubmit={async (body) => {
-                            const result = await run(
-                              'PATCH',
-                              `/items/${row.id}`,
-                              body,
-                              'Baris disimpan.',
-                            );
-                            if (result.ok) setEditingId(undefined);
-                            return result;
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  ) : workItemFor === row.id && editable && version.previousVersionId ? (
-                    <tr key={row.id}>
-                      <td colSpan={shown.length + 3} className="rab-form-cell">
-                        <WorkItemForm
-                          projectId={projectId}
-                          previousVersionId={version.previousVersionId}
-                          row={row}
-                          usedWorkItemIds={
-                            new Set(rows.map((r) => r.workItemId).filter((id) => id !== null))
-                          }
-                          reopened={reopened}
-                          busy={busy}
-                          onCancel={() => setWorkItemFor(undefined)}
-                          onSubmit={async (workItemId, reason) => {
-                            const result = await run(
-                              'POST',
-                              `/items/${row.id}/work-item`,
-                              { workItemId, ...(reopened ? { reason } : {}) },
-                              'Identitas pekerjaan dikoreksi; pekerjaan lama tetap tersimpan.',
-                            );
-                            if (result.ok) setWorkItemFor(undefined);
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  ) : (
-                    <Fragment key={row.id}>
-                      <tr
-                        id={`rab-row-${row.id}`}
-                        className={[
-                          row.rowType === 'ITEM'
-                            ? ''
-                            : `rab-group rab-${row.rowType.toLowerCase()}`,
-                          draggingId === row.id ? 'rab-dragging' : '',
-                          dropMark?.rowId === row.id ? `rab-drop-${dropMark.edge}` : '',
-                        ]
-                          .filter(Boolean)
-                          .join(' ')}
-                        onDragOver={(event) => dragOverRow(event, row)}
-                        onDrop={(event) => void dropRow(event, row)}
-                      >
-                        <td className="rab-sticky-no">
-                          {editable && (
-                            <button
-                              type="button"
-                              className="rab-drag-handle"
-                              draggable={!busy}
-                              aria-label={`Seret ${row.description} untuk mengubah urutan`}
-                              title="Seret untuk mengubah urutan"
-                              onDragStart={(event) => {
-                                event.dataTransfer.effectAllowed = 'move';
-                                event.dataTransfer.setData('text/plain', row.id);
-                                setDraggingId(row.id);
-                              }}
-                              onDragEnd={() => {
-                                setDraggingId(undefined);
-                                setDropMark(undefined);
-                              }}
-                            >
-                              <span aria-hidden="true">☰</span>
-                            </button>
-                          )}
-                          {row.displayNumber}
-                        </td>
-                        <td
-                          className="rab-sticky-desc"
-                          style={{ paddingLeft: `${12 + row.depth * 18}px` }}
-                        >
-                          {row.rowType !== 'ITEM' && hasChildren.has(row.id) ? (
-                            <button
-                              type="button"
-                              className="rab-toggle"
-                              aria-expanded={!collapsed.has(row.id)}
-                              aria-label={`${collapsed.has(row.id) ? 'Buka' : 'Ciutkan'} ${row.description}`}
-                              onClick={() => toggleGroup(row.id)}
-                            >
-                              <span aria-hidden="true">{collapsed.has(row.id) ? '▸' : '▾'}</span>
-                            </button>
-                          ) : (
-                            row.rowType !== 'ITEM' && (
-                              <span className="rab-toggle-space" aria-hidden="true" />
-                            )
-                          )}
-                          {row.description}
-                          {row.workItemCode && <span className="rab-code">{row.workItemCode}</span>}
-                          <CorrectionBadge locator={row.sourceLocator} />
-                        </td>
-                        {shown.map((c) => (
-                          <td
-                            key={c.key}
-                            className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}
-                          >
-                            {c.key === 'analysisCode' && row.analysis ? (
-                              <Link
-                                className="link-button"
-                                href={`/projects/${projectId}/rab/${row.analysis.rabVersionId}/analyses/${row.analysis.analysisId}`}
-                                title={row.analysis.name}
-                              >
-                                {row.analysisCode ?? row.analysis.code}
-                              </Link>
-                            ) : row[c.key] !== null && row[c.key] !== '' ? (
-                              <SourceValue {...rowSource(row, c.key)}>
-                                {cell(row, c.key)}
-                              </SourceValue>
-                            ) : (
-                              cell(row, c.key)
+                  {shown.map((c) => (
+                    <th
+                      key={c.key}
+                      scope="col"
+                      className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
+                  {editable && (
+                    <th scope="col" className="rab-actions-cell">
+                      <span className="sr-only">Aksi</span>
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {rows
+                  .filter((row) => (search.trim() ? matches.has(row.id) : !hidden(row)))
+                  .map((row) =>
+                    editingId === row.id && editable ? (
+                      <tr key={row.id}>
+                        <td colSpan={shown.length + 3} className="rab-form-cell">
+                          <RowForm
+                            title={`Ubah ${RAB_ROW_TYPE_LABEL[row.rowType].toLowerCase()}`}
+                            row={row}
+                            parents={rows.filter(
+                              (r) =>
+                                r.rowType !== 'ITEM' &&
+                                r.id !== row.id &&
+                                !isDescendant(rows, r.id, row.id),
                             )}
-                            {c.key === 'unitPrice' &&
-                              (row.priceSource === 'SOURCE_OVERRIDE' ||
-                                row.priceSource === 'DIRECT') && (
-                                <InfoHint
-                                  label={
-                                    row.priceSource === 'SOURCE_OVERRIDE'
-                                      ? 'Harga sumber dipertahankan (override)'
-                                      : 'Harga langsung dari sumber'
-                                  }
-                                  text={
-                                    row.priceNote ??
-                                    (row.priceSource === 'SOURCE_OVERRIDE'
-                                      ? 'Harga dokumen sumber dipakai walau berbeda dengan analisa, berdasarkan keputusan reviewer.'
-                                      : 'Item ini tidak memakai analisa; harganya diambil langsung dari dokumen sumber.')
-                                  }
-                                  tone="amber"
-                                />
-                              )}
-                          </td>
-                        ))}
-                        {editable && (
-                          <td className="rab-actions-cell">
-                            <div className="rab-row-actions">
-                              <ActionMenu
-                                label={`Tindakan ${row.description}`}
-                                items={[
-                                  {
-                                    label: 'Ubah',
-                                    onSelect: () => (
-                                      setAdding(undefined),
-                                      setWorkItemFor(undefined),
-                                      setEditingId(row.id)
-                                    ),
-                                  },
-                                  ...(row.rowType !== 'ITEM'
-                                    ? [
-                                        {
-                                          label: '+ Sub-bagian',
-                                          onSelect: () => (
-                                            setEditingId(undefined),
-                                            reveal(row.id),
-                                            setAdding({ parentId: row.id })
-                                          ),
-                                        },
-                                      ]
-                                    : []),
-                                  ...(row.rowType === 'ITEM' && version.previousVersionId
-                                    ? [
-                                        {
-                                          label: 'Ganti WI',
-                                          onSelect: () => (
-                                            setEditingId(undefined),
-                                            setWorkItemFor(row.id)
-                                          ),
-                                        },
-                                      ]
-                                    : []),
-                                  {
-                                    label: 'Hapus baris',
-                                    destructive: true,
-                                    separatorBefore: true,
-                                    onSelect: () => {
-                                      if (reopened) setDeletingId(row.id);
-                                      else if (window.confirm(`Hapus baris "${row.description}"?`))
-                                        void run(
-                                          'DELETE',
-                                          `/items/${row.id}`,
-                                          undefined,
-                                          'Baris dihapus.',
-                                        );
-                                    },
-                                  },
-                                ]}
-                              />
-                            </div>
-                          </td>
-                        )}
+                            reopened={reopened}
+                            busy={busy}
+                            onCancel={() => setEditingId(undefined)}
+                            onSubmit={async (body) => {
+                              const result = await run(
+                                'PATCH',
+                                `/items/${row.id}`,
+                                body,
+                                'Baris disimpan.',
+                              );
+                              if (result.ok) setEditingId(undefined);
+                              return result;
+                            }}
+                          />
+                        </td>
                       </tr>
-                      {deletingId === row.id && editable && (
-                        <tr>
-                          <td colSpan={shown.length + 3} className="rab-form-cell">
-                            <InlineReasonForm
-                              id="rab-delete-reason"
-                              destructive
-                              title={`Hapus baris "${row.description}"`}
-                              description="Baris dan nilainya dihapus dari versi yang sedang dikoreksi; kondisi sebelumnya tetap ada di snapshot."
-                              confirmLabel="Hapus baris"
-                              busy={busy}
-                              onCancel={() => setDeletingId(undefined)}
-                              onSubmit={async (reason) => {
-                                const result = await run(
-                                  'DELETE',
-                                  `/items/${row.id}`,
-                                  { reason },
-                                  'Baris dihapus.',
-                                );
-                                if (result.ok) setDeletingId(undefined);
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ),
-                )}
-            </tbody>
-            <tfoot>
-              <tr id="rab-total" className="rab-total">
-                <td className="rab-sticky-no" />
-                <th scope="row" className="rab-sticky-desc">
-                  Total
-                </th>
-                {shown.map((c) => (
-                  <td key={c.key} className="num">
-                    {c.key === 'subtotal' ? (
-                      <SourceValue
-                        title="Total RAB"
-                        value={totals.realCost}
-                        formula="ROUND(Σ jumlah item termasuk PPN, 2), HALF_UP"
-                        sources={totalSources}
-                      >
-                        {formatNumber(totals.realCost)}
-                      </SourceValue>
-                    ) : c.key === 'weight' && totals.realCost !== '0.00' ? (
-                      <SourceValue
-                        title="Total bobot"
-                        value="100"
-                        formula="Σ bobot seluruh item = 100% pada total RAB bukan nol"
-                        sources={totalSources}
-                      >
-                        100,0000
-                      </SourceValue>
+                    ) : workItemFor === row.id && editable && version.previousVersionId ? (
+                      <tr key={row.id}>
+                        <td colSpan={shown.length + 3} className="rab-form-cell">
+                          <WorkItemForm
+                            projectId={projectId}
+                            previousVersionId={version.previousVersionId}
+                            row={row}
+                            usedWorkItemIds={
+                              new Set(rows.map((r) => r.workItemId).filter((id) => id !== null))
+                            }
+                            reopened={reopened}
+                            busy={busy}
+                            onCancel={() => setWorkItemFor(undefined)}
+                            onSubmit={async (workItemId, reason) => {
+                              const result = await run(
+                                'POST',
+                                `/items/${row.id}/work-item`,
+                                { workItemId, ...(reopened ? { reason } : {}) },
+                                'Identitas pekerjaan dikoreksi; pekerjaan lama tetap tersimpan.',
+                              );
+                              if (result.ok) setWorkItemFor(undefined);
+                            }}
+                          />
+                        </td>
+                      </tr>
                     ) : (
-                      ''
-                    )}
-                  </td>
-                ))}
-                {editable && <td />}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                      <Fragment key={row.id}>
+                        <tr
+                          id={`rab-row-${row.id}`}
+                          className={[
+                            row.rowType === 'ITEM'
+                              ? ''
+                              : `rab-group rab-${row.rowType.toLowerCase()}`,
+                            draggingId === row.id ? 'rab-dragging' : '',
+                            dropMark?.rowId === row.id ? `rab-drop-${dropMark.edge}` : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          onDragOver={(event) => dragOverRow(event, row)}
+                          onDrop={(event) => void dropRow(event, row)}
+                        >
+                          <td className="rab-sticky-no">
+                            {editable && (
+                              <button
+                                type="button"
+                                className="rab-drag-handle"
+                                draggable={!busy}
+                                aria-label={`Seret ${row.description} untuk mengubah urutan`}
+                                title="Seret untuk mengubah urutan"
+                                onDragStart={(event) => {
+                                  event.dataTransfer.effectAllowed = 'move';
+                                  event.dataTransfer.setData('text/plain', row.id);
+                                  setDraggingId(row.id);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggingId(undefined);
+                                  setDropMark(undefined);
+                                }}
+                              >
+                                <span aria-hidden="true">☰</span>
+                              </button>
+                            )}
+                            {row.displayNumber}
+                          </td>
+                          <td
+                            className="rab-sticky-desc"
+                            style={{ paddingLeft: `${12 + row.depth * 18}px` }}
+                          >
+                            {row.rowType !== 'ITEM' && hasChildren.has(row.id) ? (
+                              <button
+                                type="button"
+                                className="rab-toggle"
+                                aria-expanded={!collapsed.has(row.id)}
+                                aria-label={`${collapsed.has(row.id) ? 'Buka' : 'Ciutkan'} ${row.description}`}
+                                onClick={() => toggleGroup(row.id)}
+                              >
+                                <span aria-hidden="true">{collapsed.has(row.id) ? '▸' : '▾'}</span>
+                              </button>
+                            ) : (
+                              row.rowType !== 'ITEM' && (
+                                <span className="rab-toggle-space" aria-hidden="true" />
+                              )
+                            )}
+                            {row.description}
+                            {row.workItemCode && (
+                              <span className="rab-code">{row.workItemCode}</span>
+                            )}
+                            <CorrectionBadge locator={row.sourceLocator} />
+                          </td>
+                          {shown.map((c) => (
+                            <td
+                              key={c.key}
+                              className={c.key === 'unit' || c.key === 'analysisCode' ? '' : 'num'}
+                            >
+                              {c.key === 'analysisCode' && row.analysis ? (
+                                <Link
+                                  className="link-button"
+                                  href={`/projects/${projectId}/rab/${row.analysis.rabVersionId}/analyses/${row.analysis.analysisId}`}
+                                  title={row.analysis.name}
+                                >
+                                  {row.analysisCode ?? row.analysis.code}
+                                </Link>
+                              ) : row[c.key] !== null && row[c.key] !== '' ? (
+                                <SourceValue {...rowSource(row, c.key)}>
+                                  {cell(row, c.key)}
+                                </SourceValue>
+                              ) : (
+                                cell(row, c.key)
+                              )}
+                              {c.key === 'unitPrice' &&
+                                (row.priceSource === 'SOURCE_OVERRIDE' ||
+                                  row.priceSource === 'DIRECT') && (
+                                  <InfoHint
+                                    label={
+                                      row.priceSource === 'SOURCE_OVERRIDE'
+                                        ? 'Harga sumber dipertahankan (override)'
+                                        : 'Harga langsung dari sumber'
+                                    }
+                                    text={
+                                      row.priceNote ??
+                                      (row.priceSource === 'SOURCE_OVERRIDE'
+                                        ? 'Harga dokumen sumber dipakai walau berbeda dengan analisa, berdasarkan keputusan reviewer.'
+                                        : 'Item ini tidak memakai analisa; harganya diambil langsung dari dokumen sumber.')
+                                    }
+                                    tone="amber"
+                                  />
+                                )}
+                            </td>
+                          ))}
+                          {editable && (
+                            <td className="rab-actions-cell">
+                              <div className="rab-row-actions">
+                                <ActionMenu
+                                  label={`Tindakan ${row.description}`}
+                                  items={[
+                                    {
+                                      label: 'Ubah',
+                                      onSelect: () => (
+                                        setAdding(undefined),
+                                        setWorkItemFor(undefined),
+                                        setEditingId(row.id)
+                                      ),
+                                    },
+                                    ...(row.rowType !== 'ITEM'
+                                      ? [
+                                          {
+                                            label: '+ Sub-bagian',
+                                            onSelect: () => (
+                                              setEditingId(undefined),
+                                              reveal(row.id),
+                                              setAdding({ parentId: row.id })
+                                            ),
+                                          },
+                                        ]
+                                      : []),
+                                    ...(row.rowType === 'ITEM' && version.previousVersionId
+                                      ? [
+                                          {
+                                            label: 'Ganti WI',
+                                            onSelect: () => (
+                                              setEditingId(undefined),
+                                              setWorkItemFor(row.id)
+                                            ),
+                                          },
+                                        ]
+                                      : []),
+                                    {
+                                      label: 'Hapus baris',
+                                      destructive: true,
+                                      separatorBefore: true,
+                                      onSelect: () => {
+                                        if (reopened) setDeletingId(row.id);
+                                        else if (
+                                          window.confirm(`Hapus baris "${row.description}"?`)
+                                        )
+                                          void run(
+                                            'DELETE',
+                                            `/items/${row.id}`,
+                                            undefined,
+                                            'Baris dihapus.',
+                                          );
+                                      },
+                                    },
+                                  ]}
+                                />
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                        {deletingId === row.id && editable && (
+                          <tr>
+                            <td colSpan={shown.length + 3} className="rab-form-cell">
+                              <InlineReasonForm
+                                id="rab-delete-reason"
+                                destructive
+                                title={`Hapus baris "${row.description}"`}
+                                description="Baris dan nilainya dihapus dari versi yang sedang dikoreksi; kondisi sebelumnya tetap ada di snapshot."
+                                confirmLabel="Hapus baris"
+                                busy={busy}
+                                onCancel={() => setDeletingId(undefined)}
+                                onSubmit={async (reason) => {
+                                  const result = await run(
+                                    'DELETE',
+                                    `/items/${row.id}`,
+                                    { reason },
+                                    'Baris dihapus.',
+                                  );
+                                  if (result.ok) setDeletingId(undefined);
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ),
+                  )}
+              </tbody>
+              <tfoot>
+                <tr id="rab-total" className="rab-total">
+                  <td className="rab-sticky-no" />
+                  <th scope="row" className="rab-sticky-desc">
+                    Total
+                  </th>
+                  {shown.map((c) => (
+                    <td key={c.key} className="num">
+                      {c.key === 'subtotal' ? (
+                        <SourceValue
+                          title="Total RAB"
+                          value={totals.realCost}
+                          formula="ROUND(Σ jumlah item termasuk PPN, 2), HALF_UP"
+                          sources={totalSources}
+                        >
+                          {formatNumber(totals.realCost)}
+                        </SourceValue>
+                      ) : c.key === 'weight' && totals.realCost !== '0.00' ? (
+                        <SourceValue
+                          title="Total bobot"
+                          value="100"
+                          formula="Σ bobot seluruh item = 100% pada total RAB bukan nol"
+                          sources={totalSources}
+                        >
+                          100,0000
+                        </SourceValue>
+                      ) : (
+                        ''
+                      )}
+                    </td>
+                  ))}
+                  {editable && <td />}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

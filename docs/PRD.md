@@ -307,6 +307,8 @@ Tampilan:
 - persen
 - sisa
 
+Aturan rinci (mode, baseline per minggu, minggu terbuka, izin): D-073.
+
 ## 14. Validasi Progres
 
 Error minimum:
@@ -346,6 +348,8 @@ volume hari = volume minggu * faktor hari / total faktor
 ```
 
 Setelah rounding, total harian wajib tepat sama dengan volume mingguan. Selisih pembulatan masuk hari aktif terakhir.
+
+Presisi, hari aktif, dan alokasi manual: lihat D-075.
 
 ## 16. Laporan Harian
 
@@ -441,6 +445,8 @@ Tidak ada input progres baru pada laporan periode ini. Data berasal dari minggu-
 ## 23. Kurva S
 
 Time schedule harus versioned karena MC0/Addendum dapat memiliki schedule revisi.
+
+Jadwal disusun per kelompok pekerjaan RAB (A, B.I, B.II, …) dalam % bobot proyek per minggu, satu jadwal per versi RAB approved, DRAFT → APPROVED, diisi lewat grid atau impor sheet `Master Curva S` (D-072); impor menyesuaikan angka ke bobot versi RAB dengan sebaran minggu yang sama (D-074). Kurva S rencana memakai jadwal versi baseline yang sedang berlaku. Realisasi = volume ÷ volume item × bobot item pada versi yang sama (D-076).
 
 Tampilkan:
 

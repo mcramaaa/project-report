@@ -5,7 +5,7 @@ export interface AuditEntry {
   /** Acting user; null for seed/system actions. */
   actorId: string | null;
   action: AuditAction;
-  entityType: 'USER' | 'PROJECT' | 'PROJECT_MEMBER' | 'ROLE' | 'RAB_VERSION' | 'DOCUMENT' | 'RAB_IMPORT' | 'BASELINE_ASSIGNMENT';
+  entityType: 'USER' | 'PROJECT' | 'PROJECT_MEMBER' | 'ROLE' | 'RAB_VERSION' | 'DOCUMENT' | 'RAB_IMPORT' | 'BASELINE_ASSIGNMENT' | 'SCHEDULE_VERSION' | 'SCHEDULE_SCENARIO' | 'PROJECT_WEEK' | 'DAILY_REPORT' | 'WEEKLY_REPORT' | 'REPORT_TEMPLATE' | 'WORKER';
   entityId?: string;
   projectId?: string;
   /** Safe-to-display fields only. Never passwords, hashes, tokens, or secrets (D-034). */

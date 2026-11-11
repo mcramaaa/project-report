@@ -25,28 +25,47 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  sessions             AuthSession[]
-  memberships          ProjectUser[]        @relation("MembershipUser")
-  createdMemberships   ProjectUser[]        @relation("MembershipCreatedBy")
-  revokedMemberships   ProjectUser[]        @relation("MembershipRevokedBy")
-  globalRoles          UserGlobalRole[]     @relation("GlobalRoleUser")
-  createdGlobalRoles   UserGlobalRole[]     @relation("GlobalRoleCreatedBy")
-  revokedGlobalRoles   UserGlobalRole[]     @relation("GlobalRoleRevokedBy")
-  auditLogs            AuditLog[]
-  createdRabVersions   RabVersion[]         @relation("RabVersionCreatedBy")
-  createdBaselines     BaselineAssignment[] @relation("BaselineCreatedBy")
-  revokedBaselines     BaselineAssignment[] @relation("BaselineRevokedBy")
-  approvedRabVersions  RabVersion[]         @relation("RabVersionApprovedBy")
-  discardedRabVersions RabVersion[]         @relation("RabVersionDiscardedBy")
-  uploadedDocuments    ProjectDocument[]
-  createdImports       RabImport[]          @relation("ImportCreatedBy")
-  approvedImports      RabImport[]          @relation("ImportApprovedBy")
-  rejectedImports      RabImport[]          @relation("ImportRejectedBy")
-  importDecisions      RabImportDecision[]
-  createdPriceLists    PriceList[]
-  priceDecisions       RabVersionItem[]     @relation("ItemPriceDecidedBy")
-  approvedSnapshots    RabVersionSnapshot[] @relation("SnapshotApprovedBy")
-  createdSnapshots     RabVersionSnapshot[] @relation("SnapshotCreatedBy")
+  sessions              AuthSession[]
+  memberships           ProjectUser[]        @relation("MembershipUser")
+  createdMemberships    ProjectUser[]        @relation("MembershipCreatedBy")
+  revokedMemberships    ProjectUser[]        @relation("MembershipRevokedBy")
+  globalRoles           UserGlobalRole[]     @relation("GlobalRoleUser")
+  createdGlobalRoles    UserGlobalRole[]     @relation("GlobalRoleCreatedBy")
+  revokedGlobalRoles    UserGlobalRole[]     @relation("GlobalRoleRevokedBy")
+  auditLogs             AuditLog[]
+  createdRabVersions    RabVersion[]         @relation("RabVersionCreatedBy")
+  createdBaselines      BaselineAssignment[] @relation("BaselineCreatedBy")
+  revokedBaselines      BaselineAssignment[] @relation("BaselineRevokedBy")
+  approvedRabVersions   RabVersion[]         @relation("RabVersionApprovedBy")
+  discardedRabVersions  RabVersion[]         @relation("RabVersionDiscardedBy")
+  uploadedDocuments     ProjectDocument[]
+  createdImports        RabImport[]          @relation("ImportCreatedBy")
+  approvedImports       RabImport[]          @relation("ImportApprovedBy")
+  rejectedImports       RabImport[]          @relation("ImportRejectedBy")
+  importDecisions       RabImportDecision[]
+  createdPriceLists     PriceList[]
+  priceDecisions        RabVersionItem[]     @relation("ItemPriceDecidedBy")
+  approvedSnapshots     RabVersionSnapshot[] @relation("SnapshotApprovedBy")
+  createdSnapshots      RabVersionSnapshot[] @relation("SnapshotCreatedBy")
+  createdSchedules      ScheduleVersion[]    @relation("ScheduleCreatedBy")
+  createdScenarios      ScheduleScenario[]   @relation("ScenarioCreatedBy")
+  updatedScenarios      ScheduleScenario[]   @relation("ScenarioUpdatedBy")
+  approvedSchedules     ScheduleVersion[]    @relation("ScheduleApprovedBy")
+  enteredProgress       WeeklyProgress[]     @relation("ProgressEnteredBy")
+  updatedProgress       WeeklyProgress[]     @relation("ProgressUpdatedBy")
+  createdDailyReports   DailyReport[]        @relation("DailyReportCreatedBy")
+  updatedDailyReports   DailyReport[]        @relation("DailyReportUpdatedBy")
+  finalizedDailyReports DailyReport[]        @relation("DailyReportFinalizedBy")
+  dailyAllocations      DailyAllocation[]    @relation("DailyAllocationUpdatedBy")
+  createdWorkers        Worker[]             @relation("WorkerCreatedBy")
+  updatedWorkers        Worker[]             @relation("WorkerUpdatedBy")
+  submittedWeekly       WeeklyReport[]       @relation("WeeklySubmittedBy")
+  reviewedWeekly        WeeklyReport[]       @relation("WeeklyReviewedBy")
+  finalizedWeekly       WeeklyReport[]       @relation("WeeklyFinalizedBy")
+  weeklySnapshots       WeeklyReportSnapshot[]
+  reportTemplates       ReportTemplate[]
+  reportLogos           ProjectLogo[]
+  reportWorkbooks       ReportWorkbook[]
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -103,6 +122,14 @@ model Project {
   rabImports          RabImport[]
   priceLists          PriceList[]
   analyses            AhspAnalysis[]
+  schedules           ScheduleVersion[]
+  scheduleScenarios   ScheduleScenario[]
+  weeklyProgress      WeeklyProgress[]
+  dailyReports        DailyReport[]
+  weeklyReports       WeeklyReport[]
+  reportTemplates     ReportTemplate[]
+  reportLogos         ProjectLogo[]
+  reportWorkbooks     ReportWorkbook[]
 
   @@map("projects")
 }
@@ -123,8 +150,12 @@ model ProjectWeek {
   createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  project      Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  reportPeriod ReportPeriod @relation(fields: [reportPeriodId], references: [id], onDelete: Restrict)
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  reportPeriod    ReportPeriod     @relation(fields: [reportPeriodId], references: [id], onDelete: Restrict)
+  scheduleEntries ScheduleEntry[]
+  progress        WeeklyProgress[]
+  dailyReports    DailyReport[]
+  weeklyReport    WeeklyReport?
 
   @@unique([projectId, weekNumber])
   @@index([reportPeriodId])
@@ -310,6 +341,7 @@ model RabVersion {
   priceList           PriceList?
   analyses            AhspAnalysis[]
   snapshots           RabVersionSnapshot[]
+  schedule            ScheduleVersion?
 
   @@index([projectId, status])
   @@map("rab_versions")
@@ -345,6 +377,256 @@ model BaselineAssignment {
   @@map("baseline_assignments")
 }
 
+enum ScheduleStatus {
+  DRAFT
+  APPROVED
+  /// Approved schedule opened again for revision; entries before reopen are in the audit log (D-072).
+  REOPENED
+}
+
+/// D-072: one time schedule per approved RAB version, in % of project weight per RAB group per week.
+model ScheduleVersion {
+  id               String         @id @default(uuid(7)) @db.Char(36)
+  projectId        String         @map("project_id") @db.Char(36)
+  rabVersionId     String         @unique @map("rab_version_id") @db.Char(36)
+  status           ScheduleStatus @default(DRAFT)
+  /// Last imported workbook; null when filled by hand only.
+  sourceDocumentId String?        @map("source_document_id") @db.Char(36)
+  createdBy        String         @map("created_by") @db.Char(36)
+  approvedBy       String?        @map("approved_by") @db.Char(36)
+  approvedAt       DateTime?      @map("approved_at") @db.DateTime(3)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  rabVersion     RabVersion         @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  sourceDocument ProjectDocument?   @relation(fields: [sourceDocumentId], references: [id], onDelete: Restrict)
+  createdByUser  User               @relation("ScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approvedByUser User?              @relation("ScheduleApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  entries        ScheduleEntry[]
+  scenarios      ScheduleScenario[]
+
+  @@index([projectId])
+  @@map("schedule_versions")
+}
+
+/// Planned % of project weight for one RAB group in one project week; only non-zero values are stored.
+model ScheduleEntry {
+  id                String  @id @default(uuid(7)) @db.Char(36)
+  scheduleVersionId String  @map("schedule_version_id") @db.Char(36)
+  /// SUBSECTION, or SECTION without SUBSECTION (scheduleGroupIds).
+  groupItemId       String  @map("group_item_id") @db.Char(36)
+  weekId            String  @map("week_id") @db.Char(36)
+  plannedWeight     Decimal @map("planned_weight") @db.Decimal(30, 18)
+
+  scheduleVersion ScheduleVersion @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+  groupItem       RabVersionItem  @relation(fields: [groupItemId], references: [id], onDelete: Restrict)
+  week            ProjectWeek     @relation(fields: [weekId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleVersionId, groupItemId, weekId])
+  @@index([groupItemId])
+  @@index([weekId])
+  @@map("schedule_entries")
+}
+
+/// D-078: a named what-if copy of a schedule's entries; may run past the project end (weekCount).
+model ScheduleScenario {
+  id                String   @id @default(uuid(7)) @db.Char(36)
+  projectId         String   @map("project_id") @db.Char(36)
+  scheduleVersionId String   @map("schedule_version_id") @db.Char(36)
+  name              String   @db.VarChar(120)
+  weekCount         Int      @map("week_count") @db.UnsignedSmallInt
+  createdBy         String   @map("created_by") @db.Char(36)
+  updatedBy         String   @map("updated_by") @db.Char(36)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project         Project                 @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  scheduleVersion ScheduleVersion         @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+  createdByUser   User                    @relation("ScenarioCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser   User                    @relation("ScenarioUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  entries         ScheduleScenarioEntry[]
+
+  @@index([projectId])
+  @@index([scheduleVersionId])
+  @@map("schedule_scenarios")
+}
+
+/// Week by number, not by `weeks` row: scenario weeks may lie past the project end.
+model ScheduleScenarioEntry {
+  id            String  @id @default(uuid(7)) @db.Char(36)
+  scenarioId    String  @map("scenario_id") @db.Char(36)
+  groupItemId   String  @map("group_item_id") @db.Char(36)
+  weekNumber    Int     @map("week_number") @db.UnsignedSmallInt
+  plannedWeight Decimal @map("planned_weight") @db.Decimal(30, 18)
+
+  scenario  ScheduleScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  groupItem RabVersionItem   @relation(fields: [groupItemId], references: [id], onDelete: Restrict)
+
+  @@unique([scenarioId, groupItemId, weekNumber])
+  @@index([groupItemId])
+  @@map("schedule_scenario_entries")
+}
+
+enum ProgressInputMode {
+  VOLUME_WEEK
+  PERCENT_CUMULATIVE
+}
+
+/// D-075: DAILY_FACTOR is computed on read; MANUAL uses the rows in daily_allocations.
+enum DailyAllocationMethod {
+  DAILY_FACTOR
+  MANUAL
+}
+
+/// D-073: realised volume of one work item in one project week (the fact); never deleted, changes are audited.
+model WeeklyProgress {
+  id              String                @id @default(uuid(7)) @db.Char(36)
+  projectId       String                @map("project_id") @db.Char(36)
+  weekId          String                @map("week_id") @db.Char(36)
+  workItemId      String                @map("work_item_id") @db.Char(36)
+  inputMode       ProgressInputMode     @map("input_mode")
+  /// PERCENT_CUMULATIVE only: the percent as typed.
+  inputPercentage Decimal?              @map("input_percentage") @db.Decimal(9, 6)
+  actualVolume    Decimal               @map("actual_volume") @db.Decimal(30, 12)
+  dailyMethod     DailyAllocationMethod @default(DAILY_FACTOR) @map("daily_method")
+  note            String?               @db.Text
+  enteredBy       String                @map("entered_by") @db.Char(36)
+  enteredAt       DateTime              @default(now()) @map("entered_at") @db.DateTime(3)
+  updatedBy       String                @map("updated_by") @db.Char(36)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project          Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  week             ProjectWeek       @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  workItem         WorkItem          @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  enteredByUser    User              @relation("ProgressEnteredBy", fields: [enteredBy], references: [id], onDelete: Restrict)
+  updatedByUser    User              @relation("ProgressUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  dailyAllocations DailyAllocation[]
+
+  @@unique([weekId, workItemId])
+  @@index([projectId, workItemId])
+  @@index([workItemId])
+  @@map("weekly_progress")
+}
+
+/// D-075: manual daily volumes of one weekly progress row; kept (not deleted) when the row goes back to DAILY_FACTOR.
+model DailyAllocation {
+  id               String   @id @default(uuid(7)) @db.Char(36)
+  weeklyProgressId String   @map("weekly_progress_id") @db.Char(36)
+  workDate         DateTime @map("work_date") @db.Date
+  volume           Decimal  @db.Decimal(30, 12)
+  updatedBy        String   @map("updated_by") @db.Char(36)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  weeklyProgress WeeklyProgress @relation(fields: [weeklyProgressId], references: [id], onDelete: Restrict)
+  updatedByUser  User           @relation("DailyAllocationUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+
+  @@unique([weeklyProgressId, workDate])
+  @@map("daily_allocations")
+}
+
+/// D-079: DRAFT → FINAL; REOPENED after a reopen with reason, then FINAL again.
+enum DailyReportStatus {
+  DRAFT
+  FINAL
+  REOPENED
+}
+
+enum WeatherCondition {
+  CLEAR
+  CLOUDY
+  DRIZZLE
+  RAIN
+  OTHER
+}
+
+enum DailyResourceCategory {
+  LABOR
+  MATERIAL
+  EQUIPMENT
+}
+
+/// D-079: one report per project date.
+model DailyReport {
+  id          String            @id @default(uuid(7)) @db.Char(36)
+  projectId   String            @map("project_id") @db.Char(36)
+  weekId      String            @map("week_id") @db.Char(36)
+  reportDate  DateTime          @map("report_date") @db.Date
+  status      DailyReportStatus @default(DRAFT)
+  note        String?           @db.Text
+  createdBy   String            @map("created_by") @db.Char(36)
+  updatedBy   String            @map("updated_by") @db.Char(36)
+  finalizedBy String?           @map("finalized_by") @db.Char(36)
+  finalizedAt DateTime?         @map("finalized_at") @db.DateTime(3)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project         Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  week            ProjectWeek           @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  createdByUser   User                  @relation("DailyReportCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  updatedByUser   User                  @relation("DailyReportUpdatedBy", fields: [updatedBy], references: [id], onDelete: Restrict)
+  finalizedByUser User?                 @relation("DailyReportFinalizedBy", fields: [finalizedBy], references: [id], onDelete: Restrict)
+  resources       DailyReportResource[]
+  weather         DailyReportWeather[]
+  work            DailyReportWork[]
+
+  @@unique([projectId, reportDate])
+  @@index([weekId])
+  @@map("daily_reports")
+}
+
+/// Labor (count of people), material and equipment lines. `sourceKey` ties a line to the AHSP-calculated item
+/// (price item id or "description|unit"); null for lines typed by hand.
+model DailyReportResource {
+  id                 String                @id @default(uuid(7)) @db.Char(36)
+  dailyReportId      String                @map("daily_report_id") @db.Char(36)
+  category           DailyResourceCategory
+  sortOrder          Int                   @map("sort_order") @db.UnsignedSmallInt
+  sourceKey          String?               @map("source_key") @db.VarChar(1100)
+  name               String                @db.VarChar(500)
+  unit               String?               @db.VarChar(30)
+  /// Frozen at FINAL; while DRAFT the calculation is live.
+  calculatedQuantity Decimal?              @map("calculated_quantity") @db.Decimal(30, 12)
+  actualQuantity     Decimal?              @map("actual_quantity") @db.Decimal(30, 12)
+  note               String?               @db.VarChar(1000)
+
+  dailyReport DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+
+  @@index([dailyReportId, category, sortOrder])
+  @@map("daily_report_resources")
+}
+
+model DailyReportWeather {
+  id            String           @id @default(uuid(7)) @db.Char(36)
+  dailyReportId String           @map("daily_report_id") @db.Char(36)
+  sortOrder     Int              @map("sort_order") @db.UnsignedSmallInt
+  condition     WeatherCondition
+  /// "HH:MM"
+  fromTime      String?          @map("from_time") @db.Char(5)
+  toTime        String?          @map("to_time") @db.Char(5)
+  note          String?          @db.VarChar(500)
+
+  dailyReport DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+
+  @@index([dailyReportId])
+  @@map("daily_report_weather")
+}
+
+/// Work volumes of the day, frozen at FINAL (D-079 butir 7).
+model DailyReportWork {
+  id            String  @id @default(uuid(7)) @db.Char(36)
+  dailyReportId String  @map("daily_report_id") @db.Char(36)
+  workItemId    String  @map("work_item_id") @db.Char(36)
+  volume        Decimal @db.Decimal(30, 12)
+
+  dailyReport DailyReport @relation(fields: [dailyReportId], references: [id], onDelete: Cascade)
+  workItem    WorkItem    @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+
+  @@unique([dailyReportId, workItemId])
+  @@map("daily_report_work")
+}
+
 /// Append-only archive of each approved state (D-068); never updated or deleted, never recomputed from live data.
 model RabVersionSnapshot {
   id           String    @id @default(uuid(7)) @db.Char(36)
@@ -376,8 +658,10 @@ model WorkItem {
   canonicalDescription String   @map("canonical_description") @db.VarChar(1000)
   createdAt            DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
-  project      Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  project      Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
   versionItems RabVersionItem[]
+  progress     WeeklyProgress[]
+  dailyWork    DailyReportWork[]
 
   @@unique([projectId, internalCode])
   @@map("work_items")
@@ -417,14 +701,16 @@ model RabVersionItem {
   createdAt             DateTime       @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt             DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
 
-  analysisVersion     AhspAnalysisVersion? @relation(fields: [analysisVersionId], references: [id], onDelete: Restrict)
-  priceDecidedByUser  User?                @relation("ItemPriceDecidedBy", fields: [priceDecidedBy], references: [id], onDelete: Restrict)
-  rabVersion          RabVersion           @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
-  workItem            WorkItem?            @relation(fields: [workItemId], references: [id], onDelete: Restrict)
-  parent              RabVersionItem?      @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
-  children            RabVersionItem[]     @relation("RabItemTree")
-  previousVersionItem RabVersionItem?      @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
-  copies              RabVersionItem[]     @relation("RabItemCopy")
+  analysisVersion     AhspAnalysisVersion?    @relation(fields: [analysisVersionId], references: [id], onDelete: Restrict)
+  priceDecidedByUser  User?                   @relation("ItemPriceDecidedBy", fields: [priceDecidedBy], references: [id], onDelete: Restrict)
+  rabVersion          RabVersion              @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  workItem            WorkItem?               @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  parent              RabVersionItem?         @relation("RabItemTree", fields: [parentItemId], references: [id], onDelete: Restrict)
+  children            RabVersionItem[]        @relation("RabItemTree")
+  previousVersionItem RabVersionItem?         @relation("RabItemCopy", fields: [previousVersionItemId], references: [id], onDelete: Restrict)
+  copies              RabVersionItem[]        @relation("RabItemCopy")
+  scheduleEntries     ScheduleEntry[]
+  scenarioEntries     ScheduleScenarioEntry[]
 
   @@unique([rabVersionId, workItemId])
   @@index([rabVersionId, parentItemId, sortOrder])
@@ -454,9 +740,10 @@ model ProjectDocument {
   uploadedBy       String   @map("uploaded_by") @db.Char(36)
   uploadedAt       DateTime @default(now()) @map("uploaded_at") @db.DateTime(3)
 
-  project  Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  uploader User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
-  imports  RabImportDocument[]
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  uploader        User                @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  imports         RabImportDocument[]
+  scheduleImports ScheduleVersion[]
 
   @@index([projectId])
   @@index([sha256])
@@ -720,4 +1007,140 @@ model AhspComponent {
 
   @@index([analysisVersionId, sortOrder])
   @@map("ahsp_components")
+}
+
+/// D-080: company-wide worker list. Deactivated, never deleted. KTP file is private under storage/workers/.
+model Worker {
+  id              String   @id @default(uuid(7)) @db.Char(36)
+  name            String   @db.VarChar(150)
+  position        String   @db.VarChar(150)
+  nik             String   @unique @db.Char(16)
+  ktpFilename     String?  @map("ktp_filename") @db.VarChar(64)
+  ktpMimeType     String?  @map("ktp_mime_type") @db.VarChar(100)
+  ktpFileSize     Int?     @map("ktp_file_size")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdBy       String   @map("created_by") @db.Char(36)
+  updatedBy       String   @map("updated_by") @db.Char(36)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  createdByUser User @relation("WorkerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User @relation("WorkerUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([isActive, name])
+  @@map("workers")
+}
+
+enum WeeklyReportStatus {
+  DRAFT
+  REVIEWED
+  FINAL
+  REOPENED
+}
+
+/// D-081: one weekly report per project week; content is computed live until FINAL, then read from the latest snapshot.
+model WeeklyReport {
+  id          String             @id @default(uuid(7)) @db.Char(36)
+  projectId   String             @map("project_id") @db.Char(36)
+  weekId      String             @unique @map("week_id") @db.Char(36)
+  status      WeeklyReportStatus @default(DRAFT)
+  submittedBy String             @map("submitted_by") @db.Char(36)
+  submittedAt DateTime           @map("submitted_at") @db.DateTime(3)
+  reviewedBy  String?            @map("reviewed_by") @db.Char(36)
+  reviewedAt  DateTime?          @map("reviewed_at") @db.DateTime(3)
+  reviewNote  String?            @map("review_note") @db.Text
+  finalizedBy String?            @map("finalized_by") @db.Char(36)
+  finalizedAt DateTime?          @map("finalized_at") @db.DateTime(3)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project         Project                @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  week            ProjectWeek            @relation(fields: [weekId], references: [id], onDelete: Restrict)
+  submittedByUser User                   @relation("WeeklySubmittedBy", fields: [submittedBy], references: [id])
+  reviewedByUser  User?                  @relation("WeeklyReviewedBy", fields: [reviewedBy], references: [id])
+  finalizedByUser User?                  @relation("WeeklyFinalizedBy", fields: [finalizedBy], references: [id])
+  snapshots       WeeklyReportSnapshot[]
+
+  @@index([projectId, status])
+  @@map("weekly_reports")
+}
+
+/// D-081 butir 4: immutable content of a FINAL weekly report; a reopen keeps it, the next final adds one.
+model WeeklyReportSnapshot {
+  id             String   @id @default(uuid(7)) @db.Char(36)
+  weeklyReportId String   @map("weekly_report_id") @db.Char(36)
+  payload        Json
+  createdBy      String   @map("created_by") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  weeklyReport  WeeklyReport @relation(fields: [weeklyReportId], references: [id], onDelete: Restrict)
+  createdByUser User         @relation(fields: [createdBy], references: [id])
+
+  @@index([weeklyReportId, createdAt])
+  @@map("weekly_report_snapshots")
+}
+
+enum ReportType {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// D-082: per-project layout of one report type; `config` is validated by the API (shared reportTemplateSchema).
+model ReportTemplate {
+  id         String     @id @default(uuid(7)) @db.Char(36)
+  projectId  String     @map("project_id") @db.Char(36)
+  reportType ReportType @map("report_type")
+  config     Json
+  updatedBy  String     @map("updated_by") @db.Char(36)
+  createdAt  DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  updatedByUser User    @relation(fields: [updatedBy], references: [id])
+
+  @@unique([projectId, reportType])
+  @@map("report_templates")
+}
+
+enum ReportLogoKind {
+  AGENCY
+  CONSULTANT
+  CONTRACTOR
+}
+
+/// D-082 butir 3: one logo per kind per project; the file lives under storage/projects/<id>/logos/.
+model ProjectLogo {
+  id        String         @id @default(uuid(7)) @db.Char(36)
+  projectId String         @map("project_id") @db.Char(36)
+  kind      ReportLogoKind
+  filename  String         @db.VarChar(64)
+  mimeType  String         @map("mime_type") @db.VarChar(100)
+  fileSize  Int            @map("file_size")
+  updatedBy String         @map("updated_by") @db.Char(36)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  updatedByUser User    @relation(fields: [updatedBy], references: [id])
+
+  @@unique([projectId, kind])
+  @@map("project_logos")
+}
+
+/// D-086: the office's own Excel workbook per report type; exports fill its input cells and keep everything else.
+model ReportWorkbook {
+  id           String     @id @default(uuid(7)) @db.Char(36)
+  projectId    String     @map("project_id") @db.Char(36)
+  reportType   ReportType @map("report_type")
+  filename     String     @db.VarChar(64)
+  originalName String     @map("original_name") @db.VarChar(255)
+  fileSize     Int        @map("file_size")
+  updatedBy    String     @map("updated_by") @db.Char(36)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  updatedByUser User    @relation(fields: [updatedBy], references: [id])
+
+  @@unique([projectId, reportType])
+  @@map("report_workbooks")
 }

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Icon } from './icon';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
 
 type Variant = 'primary' | 'secondary' | 'danger';
 
@@ -10,24 +10,34 @@ const VARIANTS: Record<Variant, string> = {
   danger: 'btn-danger',
 };
 
-export function Button({ variant = 'primary', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
-  return (
-    <button
-      className={`btn ${VARIANTS[variant]} ${className}`}
-      {...props}
-    />
-  );
+export function Button({
+  variant = 'primary',
+  className = '',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
+  return <button className={`btn ${VARIANTS[variant]} ${className}`} {...props} />;
 }
 
 const CONTROL = 'field';
 
-export function Field({ label, error, id, ...props }: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; id: string }) {
+export function Field({
+  label,
+  error,
+  id,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; error?: string; id: string }) {
   return (
     <div>
       <label htmlFor={id} className="field-label">
         {label}
       </label>
-      <input id={id} aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} className={CONTROL} {...props} />
+      <input
+        id={id}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={CONTROL}
+        {...props}
+      />
       {error && (
         <p id={`${id}-error`} className="field-error">
           {error}
@@ -37,11 +47,15 @@ export function Field({ label, error, id, ...props }: InputHTMLAttributes<HTMLIn
   );
 }
 
-export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`${CONTROL} ${className}`} {...props} />;
-}
+export { Select, SuggestInput } from './select';
 
-export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success' | 'info' | 'warning'; children: ReactNode }) {
+export function Alert({
+  kind = 'error',
+  children,
+}: {
+  kind?: 'error' | 'success' | 'info' | 'warning';
+  children: ReactNode;
+}) {
   return (
     <div role={kind === 'error' ? 'alert' : 'status'} className={`alert alert-${kind}`}>
       <Icon name={kind === 'success' ? 'check' : 'info'} size={17} />
@@ -53,16 +67,30 @@ export function Alert({ kind = 'error', children }: { kind?: 'error' | 'success'
 export function Loading({ label = 'Memuat…' }: { label?: string }) {
   return (
     <p role="status" className="loading">
-      <span className="spinner" aria-hidden="true" />{label}
+      <span className="spinner" aria-hidden="true" />
+      {label}
     </p>
   );
 }
 
 export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="empty-state"><span className="empty-icon"><Icon name="folder" size={22} /></span><span>{children}</span></div>;
+  return (
+    <div className="empty-state">
+      <span className="empty-icon">
+        <Icon name="folder" size={22} />
+      </span>
+      <span>{children}</span>
+    </div>
+  );
 }
 
-export function Badge({ tone = 'slate', children }: { tone?: 'slate' | 'green' | 'red' | 'blue' | 'amber'; children: ReactNode }) {
+export function Badge({
+  tone = 'slate',
+  children,
+}: {
+  tone?: 'slate' | 'green' | 'red' | 'blue' | 'amber';
+  children: ReactNode;
+}) {
   return <span className={`badge badge-${tone}`}>{children}</span>;
 }
 
@@ -122,7 +150,9 @@ export function Section({
       {title && (
         <div className="surface-header">
           <div className="min-w-0">
-            <h2 id={headingId} className="surface-title">{title}</h2>
+            <h2 id={headingId} className="surface-title">
+              {title}
+            </h2>
             {description && <p className="surface-subtitle">{description}</p>}
           </div>
           {action}

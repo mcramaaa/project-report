@@ -26,19 +26,29 @@ export function ActionMenu({ label, items }: { label: string; items: ActionMenuI
     if (!buttons.length) return;
     event.preventDefault();
     const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === 'Home' ? 0
-      : event.key === 'End' ? buttons.length - 1
-        : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? buttons.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
     buttons[next].focus();
   }
 
   return (
     <details ref={menuRef} className="rab-row-menu" onKeyDown={closeOnEscape}>
-      <summary className="rab-row-menu-trigger" aria-label={label} title="Tindakan lainnya" aria-haspopup="menu">
+      <summary
+        className="rab-row-menu-trigger"
+        aria-label={label}
+        title="Tindakan lainnya"
+        aria-haspopup="menu"
+      >
         <span aria-hidden="true">⋯</span>
       </summary>
       <div className="rab-row-menu-list" role="menu" aria-label={label}>
-        <span className="rab-row-menu-label" role="presentation">Aksi</span>
+        <span className="rab-row-menu-label" role="presentation">
+          Aksi
+        </span>
         {items.map((item) => (
           <div key={item.label} role="none">
             {item.separatorBefore && <span className="rab-row-menu-separator" role="separator" />}
