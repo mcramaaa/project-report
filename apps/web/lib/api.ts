@@ -37,16 +37,21 @@ export async function api<T = void>(method: string, path: string, body?: unknown
   const text = await res.text();
   const data = text ? JSON.parse(text) : undefined;
   if (res.ok) return data as T;
+  throw responseError(path, res.status, data);
+}
 
-  if (res.status === 401 && path !== '/auth/login') {
+/** Error for a non-2xx API response. A 401 (except on login) ends the session and goes to /login. */
+export function responseError(path: string, status: number, data: unknown): ApiError {
+  if (status === 401 && path !== '/auth/login') {
     // Session ended (expired, revoked, user deactivated). Outside React, so a full navigation is the simplest reset.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = '/login';
   }
+  const body = (data ?? undefined) as { errors?: { path?: string; message: string }[]; message?: unknown } | undefined;
   const fieldErrors: Record<string, string> = {};
-  for (const e of (data?.errors ?? []) as { path?: string; message: string }[]) if (e.path !== undefined) fieldErrors[e.path] ??= e.message;
-  const message = typeof data?.message === 'string' ? data.message : (FALLBACK[res.status] ?? 'Terjadi kesalahan. Coba lagi.');
-  throw new ApiError(res.status, message, fieldErrors, data);
+  for (const e of body?.errors ?? []) if (e.path !== undefined) fieldErrors[e.path] ??= e.message;
+  const message = typeof body?.message === 'string' ? body.message : (FALLBACK[status] ?? 'Terjadi kesalahan. Coba lagi.');
+  return new ApiError(status, message, fieldErrors, data);
 }
 
 export function errorMessage(err: unknown): string {

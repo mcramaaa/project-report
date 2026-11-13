@@ -1,5 +1,11 @@
-/** Unzipped size allowed for one .xlsx; real project workbooks stay far below. */
-export const MAX_XLSX_UNZIPPED_BYTES = 300 * 1024 * 1024;
+import { UPLOAD_MAX_BYTES } from '@laporan-proyek/shared';
+
+/**
+ * Unzipped size allowed for one .xlsx. Office workbooks unzip to 4–8× their file size (a 98 MB file to 744 MB), so
+ * the cap is 10× the upload limit; a zip bomb is hundreds of times its size. Memory no longer follows the XML size
+ * since the workbook is streamed (D-089), only the number of cells.
+ */
+export const MAX_XLSX_UNZIPPED_BYTES = 10 * UPLOAD_MAX_BYTES;
 
 /**
  * Total unzipped size from the zip's central directory, read before ExcelJS inflates anything, so a

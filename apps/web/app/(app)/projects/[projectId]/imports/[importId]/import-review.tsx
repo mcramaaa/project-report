@@ -4,7 +4,11 @@ import { SourceValue } from '@/components/source-value';
 import { workbookSource } from '@/lib/value-source';
 
 import {
+  RAB_COLUMN_LABELS,
+  RAB_COLUMN_ROLES,
   rabVersionLabel,
+  type RabColumnMap,
+  type RabColumnRole,
   type DraftAnalysis,
   type DraftRow,
   type ImportIssue,
@@ -18,7 +22,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
-import { Alert, Badge, Button, EmptyState, Field } from '@/components/ui';
+import { Alert, Badge, Button, EmptyState, Field, Select } from '@/components/ui';
 import { GridTools } from '@/components/grid-tools';
 import { api, errorMessage } from '@/lib/api';
 import { CATEGORY_LABEL, IMPORT_STATUS } from '@/lib/import-ui';
@@ -198,6 +202,36 @@ export function ImportReview({
           </dl>
         )}
       </section>
+
+      {draft?.sources
+        .filter((s) => s.role === 'RAB' && s.layout === 'HEADER' && s.columns)
+        .map((s) => (
+          <ColumnMappingPanel
+            key={s.documentId}
+            filename={s.filename}
+            sheet={s.sheet}
+            columns={s.columns!}
+            headerLabels={s.headerLabels ?? []}
+            editable={
+              canReview &&
+              !busy &&
+              !run.rabVersionId &&
+              (run.status === 'NEEDS_REVIEW' ||
+                run.status === 'FAILED' ||
+                run.status === 'REJECTED')
+            }
+            onRemap={async (columns) => {
+              const out = await run_(
+                'POST',
+                '/remap',
+                { sources: [{ documentId: s.documentId, columns }] },
+                'Run baru dibuat dengan pemetaan kolom yang dikoreksi.',
+              );
+              if (out && !('import' in out))
+                router.push(`/projects/${projectId}/imports/${out.id}`);
+            }}
+          />
+        ))}
 
       {(run.status === 'UPLOADED' || run.status === 'PROCESSING') && (
         <Alert kind="info">Sedang diproses… halaman diperbarui otomatis.</Alert>
@@ -1135,5 +1169,187 @@ function RejectForm({ busy, onReject }: { busy: boolean; onReject: (reason: stri
         Tolak
       </Button>
     </div>
+  );
+}
+
+const OPTIONAL_ROLES: RabColumnRole[] = ['unit', 'amount'];
+
+function columnLetter(n: number): string {
+  let out = '';
+  for (let c = n; c > 0; c = Math.floor((c - 1) / 26))
+    out = String.fromCharCode(65 + ((c - 1) % 26)) + out;
+  return out;
+}
+
+/**
+ * D-090: the columns a header-word sheet was read with. The reviewer checks them against the header text and,
+ * when one is wrong, processes the documents again with the corrected mapping (a new linked run).
+ */
+function ColumnMappingPanel({
+  filename,
+  sheet,
+  columns,
+  headerLabels,
+  editable,
+  onRemap,
+}: {
+  filename: string;
+  sheet: string | null;
+  columns: RabColumnMap;
+  headerLabels: { col: number; label: string; sample?: string; sampleNumeric?: boolean }[];
+  editable: boolean;
+  onRemap: (columns: RabColumnMap) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<RabColumnMap>(columns);
+  const changed = JSON.stringify(draft) !== JSON.stringify(columns);
+  const labelOf = (col: number | null) => {
+    if (col === null) return '—';
+    const h = headerLabels.find((x) => x.col === col);
+    // A sample value tells apart columns with the same title (e.g. two "Harga Satuan": base price and with PPN).
+    const sample = h?.sample
+      ? ` — ${h.sampleNumeric ? Number(h.sample).toLocaleString('id-ID', { maximumFractionDigits: 2 }) : h.sample}`
+      : '';
+    return `${columnLetter(col)} · ${h?.label || '(tanpa judul)'}${sample}`;
+  };
+  const missing = RAB_COLUMN_ROLES.filter((r) => !OPTIONAL_ROLES.includes(r) && !draft[r]);
+  const tax = draft.taxPercent ?? '0';
+  const taxInvalid = !/^\d{1,3}(\.\d{1,2})?$/.test(tax) || Number(tax) > 100;
+
+  return (
+    <section className="panel form-panel space-y-3" aria-labelledby="column-map-title">
+      <div>
+        <h2 id="column-map-title" className="section-heading">
+          Pemetaan kolom
+        </h2>
+        <p className="text-sm text-slate-600">
+          {filename}, sheet {sheet}. Sheet ini tidak memakai header kantor (VOLUME + NO. ANALISA),
+          jadi kolom dikenali dari judul header. Nilai setelah tanda — adalah contoh dari item
+          pertama. Periksa setiap kolom; bila ada yang keliru, ubah lalu proses ulang.
+        </p>
+      </div>
+      <table className="data-table">
+        <thead className="bg-slate-50 text-left text-slate-600">
+          <tr>
+            <th scope="col" className="px-3 py-2 font-medium">
+              Data
+            </th>
+            <th scope="col" className="px-3 py-2 font-medium">
+              Kolom di sheet
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {RAB_COLUMN_ROLES.map((role) => {
+            const optional = OPTIONAL_ROLES.includes(role);
+            return (
+              <tr key={role}>
+                <th scope="row" className="px-3 py-2 text-left font-normal">
+                  {RAB_COLUMN_LABELS[role]}
+                  {optional && <span className="text-xs text-slate-500"> (opsional)</span>}
+                </th>
+                <td className="px-3 py-2">
+                  {editable ? (
+                    <Select
+                      aria-label={`Kolom ${RAB_COLUMN_LABELS[role]}`}
+                      value={String(draft[role] ?? '')}
+                      onChange={(e) =>
+                        setDraft((d) => ({
+                          ...d,
+                          [role]: e.target.value ? Number(e.target.value) : null,
+                        }))
+                      }
+                    >
+                      {optional && <option value="">— tidak ada —</option>}
+                      {headerLabels.map((h) => (
+                        <option key={h.col} value={String(h.col)}>
+                          {labelOf(h.col)}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : (
+                    labelOf(draft[role])
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          <tr>
+            <th scope="row" className="px-3 py-2 text-left font-normal">
+              Baris header terakhir
+            </th>
+            <td className="px-3 py-2">
+              {editable ? (
+                <input
+                  type="number"
+                  min={1}
+                  className="field w-28"
+                  aria-label="Baris header terakhir"
+                  value={draft.headerRow}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, headerRow: Math.max(1, Number(e.target.value) || 1) }))
+                  }
+                />
+              ) : (
+                draft.headerRow
+              )}
+              <span className="field-hint"> Data dibaca mulai baris {draft.headerRow + 1}.</span>
+            </td>
+          </tr>
+          <tr>
+            <th scope="row" className="px-3 py-2 text-left font-normal">
+              PPN (%)
+            </th>
+            <td className="px-3 py-2">
+              {editable ? (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="field w-28"
+                  aria-label="PPN (%)"
+                  value={draft.taxPercent ?? '0'}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, taxPercent: e.target.value.trim().replace(',', '.') }))
+                  }
+                />
+              ) : (
+                `${draft.taxPercent ?? '0'}%`
+              )}
+              <span className="field-hint">
+                {' '}
+                0 bila harga satuan sudah termasuk PPN; isi (mis. 11) bila kolom harga adalah harga
+                sebelum PPN.
+              </span>
+              {taxInvalid && (
+                <p className="field-error">PPN berupa angka 0–100, paling banyak 2 desimal.</p>
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      {editable && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            disabled={!changed || missing.length > 0 || taxInvalid}
+            onClick={() =>
+              window.confirm(
+                'Proses ulang dengan pemetaan ini? Dibuat run baru yang tertaut ke run ini; run ini keluar dari daftar (riwayat tetap tersimpan) dan keputusan review-nya tidak ikut.',
+              ) && void onRemap(draft)
+            }
+          >
+            Proses ulang dengan pemetaan ini
+          </Button>
+          {changed && (
+            <Button variant="secondary" onClick={() => setDraft(columns)}>
+              Kembalikan
+            </Button>
+          )}
+          {missing.length > 0 && (
+            <p className="field-error">
+              Wajib diisi: {missing.map((r) => RAB_COLUMN_LABELS[r]).join(', ')}.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

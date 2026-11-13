@@ -810,6 +810,8 @@ model RabImportDocument {
   /// RAB = main RAB/recap document; SUPPORT = analysis/price document (D-055).
   role       DocumentRole @default(RAB)
   rabSheet   String?      @map("rab_sheet") @db.VarChar(120)
+  /// D-090: reviewer-corrected column mapping (rabColumnMapSchema) for a sheet read by header words.
+  columnMap  Json?        @map("column_map")
   sortOrder  Int          @default(0) @map("sort_order") @db.UnsignedSmallInt
 
   import   RabImport       @relation(fields: [importId], references: [id], onDelete: Restrict)

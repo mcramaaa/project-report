@@ -7,6 +7,8 @@ if (existsSync('../../.env')) process.loadEnvFile('../../.env');
 const apiUrl = process.env.API_URL ?? 'http://localhost:3001';
 
 const nextConfig: NextConfig = {
+  // Body yang diteruskan ke API (upload RAB/workbook) dibuffer; default Next.js hanya 10 MB.
+  experimental: { proxyClientMaxBodySize: '100mb' },
   // Dev server only serves its assets to known hosts; allow the APP_URL host (e.g. a LAN IP).
   allowedDevOrigins: [new URL(process.env.APP_URL ?? 'http://localhost:3000').hostname],
   // Browser talks only to this origin; /api is proxied so the session cookie stays first-party (D-031).

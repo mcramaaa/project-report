@@ -10,10 +10,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { DocumentDto } from '@laporan-proyek/shared';
-import ExcelJS from 'exceljs';
+import { UPLOAD_MAX_BYTES, UPLOAD_MAX_LABEL, type DocumentDto } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
+import { loadCompactWorkbook } from '../imports/workbook/compact-workbook';
 import { rabSheetCandidates } from '../imports/workbook/rab-sheet';
 import { WorkbookModel } from '../imports/workbook/workbook-model';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,7 +26,7 @@ export interface UploadedPart {
   buffer: Buffer;
 }
 
-export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
+export const MAX_UPLOAD_BYTES = UPLOAD_MAX_BYTES;
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** <root>/storage, same depth from src/documents and dist/documents; STORAGE_DIR overrides (tests). */
@@ -77,11 +77,12 @@ export class DocumentsService {
       if (!/\.xlsx$/i.test(name) || f.buffer.subarray(0, 4).toString('hex') !== '504b0304') {
         throw new BadRequestException(`${name}: hanya file Excel .xlsx yang didukung (v1).`);
       }
-      if (f.size > MAX_UPLOAD_BYTES) throw new BadRequestException(`${name}: maksimal 30 MB.`);
+      if (f.size > MAX_UPLOAD_BYTES) throw new BadRequestException(`${name}: maksimal ${UPLOAD_MAX_LABEL}.`);
       checkXlsxSize(f.buffer, () => new BadRequestException(`${name}: isi file terlalu besar atau rusak; simpan ulang dari Excel.`));
-      const workbook = new ExcelJS.Workbook();
+      // The inventory looks at the first 40 rows of each sheet (rab-sheet.ts); a large workbook is not read in full.
+      let workbook;
       try {
-        await workbook.xlsx.load(f.buffer as unknown as ArrayBuffer);
+        workbook = await loadCompactWorkbook(f.buffer, { headRows: 40 });
       } catch {
         throw new BadRequestException(`${name}: file Excel tidak dapat dibaca.`);
       }
@@ -183,9 +184,9 @@ export class DocumentsService {
     else
       entry = (async () => {
         const file = await this.read(projectId, documentId);
-        const workbook = new ExcelJS.Workbook();
+        let workbook;
         try {
-          await workbook.xlsx.load(file.data as unknown as ArrayBuffer);
+          workbook = await loadCompactWorkbook(file.data);
         } catch {
           throw new BadRequestException('Dokumen Excel tidak dapat dibaca.');
         }

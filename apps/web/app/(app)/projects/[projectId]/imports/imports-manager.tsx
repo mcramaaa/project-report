@@ -2,6 +2,7 @@
 
 import {
   MC_MAX_NUMBER,
+  UPLOAD_MAX_BYTES,
   rabVersionLabel,
   type DocumentDto,
   type RabImportSummaryDto,
@@ -9,9 +10,11 @@ import {
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
+import { FileDropzone, useUploadQueue } from '@/components/file-dropzone';
 import { Alert, Badge, Button, EmptyState, Select } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { uploadForm } from '@/lib/upload';
 import { IMPORT_STATUS } from '@/lib/import-ui';
 import { formatDate } from '@/lib/project-fields';
 
@@ -39,26 +42,27 @@ export function ImportsManager({
   const [target, setTarget] = useState<RabVersionType>('CONTRACT');
   /** Empty = lowest allowed MC number (D-069). */
   const [mcNumber, setMcNumber] = useState('');
+  const docQueue = useUploadQueue();
 
-  async function upload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    if (!form.getAll('files').some((f) => f instanceof File && f.size > 0))
-      return setNotice({ kind: 'error', text: 'Pilih file .xlsx.' });
-    setBusy(true);
+  /** Each file is sent in its own request so every row shows its own progress. */
+  async function uploadDocuments(files: File[]) {
     setNotice(undefined);
-    try {
-      const docs = await api<DocumentDto[]>('POST', `/projects/${projectId}/documents`, form);
+    const { results, failed } = await docQueue.upload(files, (file, onProgress) => {
+      const form = new FormData();
+      form.append('files', file);
+      return uploadForm<DocumentDto[]>(`/projects/${projectId}/documents`, form, onProgress);
+    });
+    const count = results.flat().length;
+    if (count > 0) {
       setNotice({
-        kind: 'success',
-        text: `${docs.length} dokumen diunggah dan disimpan apa adanya.`,
+        kind: failed > 0 ? 'error' : 'success',
+        text:
+          `${count} dokumen diunggah dan disimpan apa adanya.` +
+          (failed > 0 ? ` ${failed} file gagal, lihat daftar di atas.` : ''),
       });
-      (event.target as HTMLFormElement).reset();
       router.refresh();
-    } catch (err) {
-      setNotice({ kind: 'error', text: errorMessage(err) });
-    } finally {
-      setBusy(false);
+    } else if (failed > 0) {
+      setNotice({ kind: 'error', text: `${failed} file gagal diunggah, lihat daftar di atas.` });
     }
   }
 
@@ -131,32 +135,19 @@ export function ImportsManager({
             Dokumen proyek
           </h2>
           {canUpload && !closed && (
-            <form
-              onSubmit={upload}
-              className="panel form-panel flex flex-wrap items-end gap-3"
-              aria-label="Upload dokumen"
-            >
-              <div>
-                <label htmlFor="files" className="field-label">
-                  File Excel (.xlsx, maks. 30 MB per file)
-                </label>
-                <input
-                  id="files"
-                  name="files"
-                  type="file"
-                  accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                  multiple
-                  className="field"
-                />
-              </div>
-              <Button type="submit" disabled={busy}>
-                {busy ? 'Mengunggah…' : 'Upload'}
-              </Button>
-              <p className="field-hint w-full">
-                RAB, rekap, analisa, upah, bahan, dan alat boleh dalam satu file atau beberapa file
-                (Struktur/Arsitektur/MEP). File asli disimpan lengkap.
-              </p>
-            </form>
+            <section className="panel form-panel space-y-3" aria-label="Upload dokumen">
+              <FileDropzone
+                label="File Excel (.xlsx)"
+                hint="RAB, rekap, analisa, upah, bahan, dan alat boleh dalam satu file atau beberapa file (Struktur/Arsitektur/MEP). File asli disimpan lengkap."
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                maxBytes={UPLOAD_MAX_BYTES}
+                multiple
+                disabled={busy || docQueue.busy}
+                items={docQueue.items}
+                onRemove={docQueue.remove}
+                onFiles={(files) => void uploadDocuments(files)}
+              />
+            </section>
           )}
           {documents.length === 0 ? (
             <EmptyState>Belum ada dokumen.</EmptyState>

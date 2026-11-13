@@ -1,5 +1,6 @@
 import { Decimal } from '@laporan-proyek/calc';
 import type { RabRowType, RabVersionType } from '@laporan-proyek/shared';
+import { detectHeaderless, readHeaderlessSheet, type HeaderlessColumns } from './headerless-sheet';
 import { excelDecimal, type WorkbookModel } from './workbook-model';
 
 /**
@@ -37,6 +38,8 @@ export interface RabSheetRow {
   /** Cached floats of price + PPN and amount as 17-digit strings (D-054 reconciliation); never app values. */
   workbook: { unitPriceWithTax: string | null; subtotal: string | null };
   priceCell: { sheet: string; row: number; col: number };
+  /** D-092: the source price is this formula over the traced base cell (headerless HPS layout). */
+  sourcePriceFormula?: { baseCell: string; factor: string; rounding: 'DOWN' | 'UP' | 'NEAREST' | null; scale: number | null };
 }
 
 export interface RabSheet {
@@ -45,6 +48,8 @@ export interface RabSheet {
   rows: RabSheetRow[];
   /** "JUMLAH TOTAL"/"JUMLAH" and "DIBULATKAN" of the chosen block, when present. */
   totals: { value: string; rounded: string | null; valueRaw: string | null } | null;
+  /** Set when the sheet was read by header words (D-090): the column mapping that was used. */
+  headerless?: HeaderlessColumns;
 }
 
 export class RabSheetError extends Error {}
@@ -53,7 +58,7 @@ const upper = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
 
 /** Sheets with a RAB header (VOLUME + NO. ANALISA) in the first 40 rows. */
 export function rabSheetCandidates(model: WorkbookModel): string[] {
-  return model.sheetNames().filter((s) => findHeaderRow(model, s) !== null);
+  return model.sheetNames().filter((s) => findHeaderRow(model, s) !== null || detectHeaderless(model, s) !== null);
 }
 
 function findHeaderRow(model: WorkbookModel, sheet: string): number | null {
@@ -133,9 +138,16 @@ const isSection = (no: string) => /^[A-Z]$/.test(no);
 const isSubsection = (no: string) => /^[A-Z]\.[IVXLC]+$/.test(no);
 const isTotalLabel = (t: string) => /^(JUMLAH|DIBULATKAN|TOTAL|SUB ?TOTAL|REAL COST)\b/.test(t);
 
-export function readRabSheet(model: WorkbookModel, sheetName: string, target: RabVersionType, mc = 0): RabSheet {
+export function readRabSheet(model: WorkbookModel, sheetName: string, target: RabVersionType, mc = 0, columns?: HeaderlessColumns): RabSheet {
   const sheet = model.sheetName(sheetName);
   if (!sheet) throw new RabSheetError(`Sheet "${sheetName}" tidak ada.`);
+  // A reviewer-corrected mapping (D-090) is used as given; the reader still only takes rows with a code and values.
+  if (columns) return readHeaderlessSheet(model, sheet, columns);
+  // Without the office header (VOLUME + NO. ANALISA), read the sheet by its header words (headerless-sheet.ts).
+  if (findHeaderRow(model, sheet) === null) {
+    const headerless = detectHeaderless(model, sheet);
+    if (headerless) return readHeaderlessSheet(model, sheet, headerless);
+  }
   const cols = detectRabColumns(model, sheet, target, mc);
   const rows: RabSheetRow[] = [];
   let section: number | null = null;

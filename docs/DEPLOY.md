@@ -9,6 +9,10 @@ Internet ──443──> Caddy (HTTPS otomatis) ──> web :3000 ──/api─
 Hanya port 22, 80, dan 443 yang terbuka ke internet. Contoh di bawah memakai domain
 `laporan.domainanda.com` dan user Linux `laporan`; ganti sesuai milik Anda.
 
+RAM: impor RAB membaca workbook ke memori (D-089): file 32 MB butuh ±0,6 GB heap, file 100 MB ±1,8 GB. Untuk menerima
+file sampai batas 100 MB, pakai VPS dengan RAM ≥ 4 GB dan heap API 3 GB (langkah 6). Di VPS 2 GB, file di atas ±30 MB
+akan gagal diimpor (API kehabisan memori), walaupun unggahnya sendiri berhasil.
+
 ## 1. Persiapan server (sekali)
 
 Arahkan DNS dulu: buat record `A` `laporan.domainanda.com` ke IP VPS.
@@ -129,6 +133,8 @@ After=network.target docker.service
 User=laporan
 WorkingDirectory=/home/laporan/app/apps/api
 Environment=NODE_ENV=production
+# Heap untuk impor workbook besar (D-089): 3072 untuk file sampai 100 MB (RAM ≥ 4 GB); 1024 di VPS 2 GB.
+Environment=NODE_OPTIONS=--max-old-space-size=3072
 ExecStart=/usr/bin/npm start
 Restart=always
 
@@ -174,6 +180,9 @@ sudo systemctl reload caddy
 Caddy mengambil sertifikat Let's Encrypt sendiri (DNS harus sudah mengarah ke VPS). Buka
 `https://laporan.domainanda.com` dan login dengan admin dari langkah 5.
 
+Caddy tidak membatasi ukuran body. Bila memakai nginx, batas unggah 100 MB (D-089) harus diizinkan di server block:
+`client_max_body_size 100m;` dan `proxy_read_timeout 300s;` (impor file besar memakan waktu).
+
 ## 8. Update versi
 
 ```bash
@@ -216,3 +225,5 @@ backup di VPS yang sama hilang bila VPS-nya hilang.
 | Halaman 502 | Service mati: `sudo journalctl -u laporan-web -u laporan-api -n 50`. |
 | Ekspor PDF Excel kantor gagal | LibreOffice/python3-uno belum terpasang, atau `unshare -rn true` gagal (langkah 1). |
 | `npm run build` gagal "Node" | Versi Node bukan 24: `node -v`. |
+| Unggah RAB sampai 100% lalu gagal; `journalctl -u laporan-api` berisi `heap out of memory` / exit 134 | File terlalu besar untuk heap API: naikkan `--max-old-space-size` di service (langkah 6) dan RAM VPS, lihat D-089. |
+| Unggah berhenti di 10 MB, log web "Request body exceeded 10MB" | Build web lama tanpa `proxyClientMaxBodySize`; `npm run build` ulang. Cek juga `client_max_body_size` nginx. |

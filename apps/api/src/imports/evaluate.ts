@@ -1,4 +1,5 @@
 import { calculateRab, compareWithWorkbook, Decimal, type RabTotals } from '@laporan-proyek/calc';
+import { formulaMatches, formulaNote } from './price-formula';
 import type { DraftRow, ImportIssue, RabImportDecisionKind, RabImportDraft, RabReconciliation, ReconciliationEntry } from '@laporan-proyek/shared';
 
 /**
@@ -30,6 +31,8 @@ export interface EffectiveRow {
   row: DraftRow;
   analysis: EffectiveAnalysis | null;
   priceSource: 'ANALYSIS' | 'SOURCE_OVERRIDE' | 'DIRECT' | 'MANUAL';
+  /** Generated price note (D-092 formula); a reviewer's reason takes precedence. */
+  priceNote?: string;
   unitPrice: string | null;
   analysisUnitPrice: string | null;
   /** undefined = still undecided (non-contract); null = new work item. */
@@ -94,6 +97,12 @@ export function evaluateImport(draft: RabImportDraft, decisions: DecisionRecord[
         if (row.sourceUnitPrice !== null && new Decimal(price).equals(row.sourceUnitPrice)) {
           effective.priceSource = 'ANALYSIS';
           effective.unitPrice = price;
+        } else if (!choice && formulaMatches(price, row.sourceUnitPrice, row.sourcePriceFormula)) {
+          // D-092: the source price follows from the analysis through its formula (HPS L = ROUNDDOWN(K × 1.11, 0)):
+          // the RAB keeps the source price with the analysis linked; a later analysis correction does not overwrite it.
+          effective.priceSource = 'SOURCE_OVERRIDE';
+          effective.unitPrice = row.sourceUnitPrice;
+          effective.priceNote = formulaNote(row.sourcePriceFormula!);
         } else if (choice) {
           const source = (choice.value as { source: string }).source;
           effective.priceDecision = choice;

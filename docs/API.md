@@ -111,7 +111,7 @@ POST /projects/:projectId/documents   multipart files[]   document.upload   -> D
 GET  /projects/:projectId/documents/:documentId/download  document.read
 ```
 
-- v1 hanya `.xlsx` (ZIP signature + ekstensi), maks. 30 MB per file
+- v1 hanya `.xlsx` (ZIP signature + ekstensi), maks. 100 MB per file
 - `DocumentDto`: `{ id, originalFilename, mimeType, fileSize, sha256, uploadedBy, uploadedAt }`
 
 ## 5. RAB Import (D-048–D-053)
@@ -124,6 +124,7 @@ POST /projects/:projectId/rab-imports/:importId/decisions  { rowKey, kind, value
 POST /projects/:projectId/rab-imports/:importId/confirm-proposals  { baseVersionId, token }   rabImport.review (D-065)
 GET  /projects/:projectId/rab-imports/:importId/work-items?q=&page=    rabImport.review -> { baseVersion, items, total, page, pageSize } (D-067)
 POST /projects/:projectId/rab-imports/:importId/retry                  rabImport.review -> run baru
+POST /projects/:projectId/rab-imports/:importId/remap                  rabImport.review -> run baru dengan pemetaan kolom (D-090)
 DELETE /projects/:projectId/rab-imports/:importId                     rabImport.review -> 204, soft delete run belum digunakan (D-066)
 POST /projects/:projectId/rab-imports/:importId/approve                rabImport.approve
 POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport.approve
@@ -372,7 +373,7 @@ GET    /projects/:projectId/exports/weekly/:weekNumber/pdf      PDF dari workboo
 GET    /projects/:projectId/exports/monthly/:periodNumber/pdf   PDF dari workbook bulanan kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-087)
 GET    /projects/:projectId/exports/daily/:date/pdf             Halaman hari itu dari workbook harian kantor yang diisi (rab.read; 404 tanpa workbook, 503 tanpa LibreOffice; D-088)
 GET    /projects/:projectId/exports/monthly/:periodNumber       laporan bulanan B.n .xlsx dari template MONTHLY (rab.read; D-087)
-POST   /projects/:projectId/report-templates/workbooks/:reportType   multipart `files` .xlsx ≤ 25 MB, workbook kantor (project.update; D-086)
+POST   /projects/:projectId/report-templates/workbooks/:reportType   multipart `files` .xlsx ≤ 100 MB, workbook kantor (project.update; D-086)
 DELETE /projects/:projectId/report-templates/workbooks/:reportType   (project.update)
 ```
 

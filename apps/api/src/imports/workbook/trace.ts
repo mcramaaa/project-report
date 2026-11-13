@@ -131,6 +131,23 @@ function nextHop(
           node = node.args[0]!;
           continue;
         }
+        // IF(cond, constant, x) / IF(cond, x, constant), e.g. IF(O40=0, 0, VLOOKUP(...)): when the cell's cached value
+        // is not that constant, Excel took the other branch, which is followed. Otherwise the branch is unknown (D-091).
+        if (node.name === 'IF' && node.args.length === 3) {
+          const [, thenNode, elseNode] = node.args as [FormulaNode, FormulaNode, FormulaNode];
+          const thenConst = numberLiteral(thenNode);
+          const elseConst = numberLiteral(elseNode);
+          const value = typeof at.value === 'number' ? at.value : null;
+          if (value !== null && thenConst !== null && elseConst === null && value !== thenConst) {
+            node = elseNode;
+            continue;
+          }
+          if (value !== null && elseConst !== null && thenConst === null && value !== elseConst) {
+            node = thenNode;
+            continue;
+          }
+          return null; // unknown branch: the chain stops here, as for any computing formula
+        }
         if (node.name === 'ROUND' && node.args.length === 2) {
           const scale = numberLiteral(node.args[1]!);
           if (scale === null) {
@@ -158,6 +175,13 @@ function nextHop(
   }
 }
 
+/** Cached workbook values equal (numbers within float noise). */
+function sameValue(a: CellScalar, b: CellScalar): boolean {
+  if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+  if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  return a === b;
+}
+
 function vlookup(
   model: WorkbookModel,
   args: FormulaNode[],
@@ -168,11 +192,7 @@ function vlookup(
 ): { cell: CellInfo; via: 'VLOOKUP' } | null {
   const here = formatAddress(at.address);
   const [keyNode, rangeNode, colNode, exactNode] = args;
-  const exact = exactNode && ((exactNode.kind === 'boolean' && !exactNode.value) || numberLiteral(exactNode) === 0);
-  if (!exact) {
-    problems.push({ code: 'APPROXIMATE', cell: here, message: `VLOOKUP di ${here} bukan pencocokan tepat (FALSE); tidak dapat dibuktikan.` });
-    return null;
-  }
+  const exact = !!exactNode && ((exactNode.kind === 'boolean' && !exactNode.value) || numberLiteral(exactNode) === 0);
   const column = colNode ? numberLiteral(colNode) : null;
   if (!rangeNode || rangeNode.kind !== 'range' || column === null || column < 1) {
     problems.push({ code: 'UNSUPPORTED', cell: here, message: `VLOOKUP di ${here} memakai tabel/kolom yang tidak tetap.` });
@@ -196,6 +216,19 @@ function vlookup(
   if (!sheet) return null;
   const range = `${sheet}!${formatAddress({ ...rangeNode.start, sheet: null })}:${formatAddress({ ...rangeNode.end, sheet: null })}`;
   const rows = model.lookupRows(sheet, rangeNode.start.col, rangeNode.start.row, rangeNode.end.row, key);
+  if (!exact) {
+    // Approximate match (4th argument TRUE or omitted): Excel's answer depends on sort order, so it is only accepted
+    // when the key is in the table exactly once and the workbook's own cached result is that row's value (D-091).
+    const target = rows.length === 1 ? model.cell(sheet, rows[0]!, rangeNode.start.col + column - 1) : null;
+    if (!target || !sameValue(at.value, target.value)) {
+      problems.push({
+        code: 'APPROXIMATE',
+        cell: here,
+        message: `VLOOKUP di ${here} bukan pencocokan tepat (argumen ke-4 kosong/TRUE) dan hasilnya tidak terbukti sama dengan baris kunci "${String(key)}" di ${range}.`,
+      });
+      return null;
+    }
+  }
   if (rows.length === 0) {
     problems.push({ code: 'NOT_FOUND', cell: here, message: `VLOOKUP di ${here}: "${String(key)}" tidak ditemukan di ${range}.` });
     return null;

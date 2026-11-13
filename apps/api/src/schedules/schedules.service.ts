@@ -10,11 +10,11 @@ import {
   type ScheduleSummaryDto,
 } from '@laporan-proyek/shared';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import ExcelJS from 'exceljs';
 import { writeAudit } from '../audit/audit';
 import type { AuthUser } from '../auth/auth-context';
 import { DocumentsService } from '../documents/documents.service';
 import type { Prisma } from '../generated/prisma/client';
+import { loadCompactWorkbook } from '../imports/workbook/compact-workbook';
 import { WorkbookModel } from '../imports/workbook/workbook-model';
 import { isUniqueViolation } from '../prisma/errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -246,9 +246,9 @@ export class SchedulesService {
   async import(actor: AuthUser, projectId: string, scheduleId: string, input: ImportScheduleInput): Promise<ScheduleDetailDto> {
     // Read and parse outside the transaction (file I/O); the parse is checked against the locked state below.
     const file = await this.documents.read(projectId, input.documentId);
-    const workbook = new ExcelJS.Workbook();
+    let workbook;
     try {
-      await workbook.xlsx.load(file.data as unknown as ArrayBuffer);
+      workbook = await loadCompactWorkbook(file.data);
     } catch {
       throw new BadRequestException('Dokumen Excel tidak dapat dibaca.');
     }

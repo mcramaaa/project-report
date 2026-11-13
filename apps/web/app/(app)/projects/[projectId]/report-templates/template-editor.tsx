@@ -4,8 +4,10 @@ import {
   defaultReportTemplate,
   LOGO_KINDS,
   LOGO_LABELS,
+  LOGO_MAX_BYTES,
   REPORT_TYPE_LABELS,
   REPORT_TYPES,
+  REPORT_WORKBOOK_MAX_BYTES,
   type LogoKind,
   type ReportSignature,
   type ReportTemplateConfig,
@@ -15,11 +17,13 @@ import {
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
+import { FileDropzone, useUploadQueue } from '@/components/file-dropzone';
 import { useLeaveWarning } from '@/components/grid-tools';
 import { ReportDocument, type ReportDoc } from '@/components/report-document';
 import { Alert, Button, Section, Select } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { logoUrls } from '@/lib/report-print';
+import { uploadForm } from '@/lib/upload';
 
 type Move = (i: number, dir: -1 | 1) => void;
 const move = <T,>(xs: T[], i: number, dir: -1 | 1): T[] => {
@@ -148,18 +152,11 @@ export function TemplateEditor({
       `Template ${REPORT_TYPE_LABELS[type].toLowerCase()} disimpan.`,
       [type],
     );
-  const uploadLogo = (kind: LogoKind, file: File) => {
-    const body = new FormData();
-    body.append('files', file);
-    return run(
-      () =>
-        api<ReportTemplatesDto>(
-          'POST',
-          `/projects/${projectId}/report-templates/logos/${kind}`,
-          body,
-        ),
-      `Logo ${LOGO_LABELS[kind].toLowerCase()} disimpan.`,
-    );
+  /** Upload finished: show the server's new state (the file itself is uploaded by the dropzone). */
+  const onUploaded = (dto: ReportTemplatesDto, message: string) => {
+    setData(dto);
+    setError(undefined);
+    setNotice(message);
   };
   const logoUrl = logoUrls(projectId, data);
   const sample = samples[type];
@@ -200,20 +197,16 @@ export function TemplateEditor({
                   {url ? <img src={url} alt={LOGO_LABELS[kind]} /> : <span>Belum ada logo</span>}
                   <p>{LOGO_LABELS[kind]}</p>
                   {canEdit && (
+                    <LogoUploader
+                      projectId={projectId}
+                      kind={kind}
+                      label={url ? 'Ganti logo' : 'Unggah logo'}
+                      disabled={busy}
+                      onUploaded={onUploaded}
+                    />
+                  )}
+                  {canEdit && (
                     <div className="row-actions">
-                      <label className="btn btn-secondary">
-                        {url ? 'Ganti' : 'Unggah'}
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          className="sr-only"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            e.target.value = '';
-                            if (f) void uploadLogo(kind, f);
-                          }}
-                        />
-                      </label>
                       {url && (
                         <Button
                           type="button"
@@ -240,24 +233,13 @@ export function TemplateEditor({
             })}
           </div>
           <WorkbookCard
+            projectId={projectId}
             type={type}
             workbook={data.workbooks.find((w) => w.reportType === type)}
             pdf={data.workbookPdf}
             canEdit={canEdit}
             busy={busy}
-            onUpload={(file) => {
-              const body = new FormData();
-              body.append('files', file);
-              void run(
-                () =>
-                  api<ReportTemplatesDto>(
-                    'POST',
-                    `/projects/${projectId}/report-templates/workbooks/${type}`,
-                    body,
-                  ),
-                'File Excel kantor disimpan. Ekspor Excel dan PDF memakai file ini.',
-              );
-            }}
+            onUploaded={onUploaded}
             onRemove={() => {
               if (
                 window.confirm('Hapus file Excel kantor? Ekspor kembali memakai layout template.')
@@ -842,23 +824,70 @@ const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 
 /** D-086: the office's own workbook; when present, exports fill it instead of building the layout. */
+/** Drag-and-drop upload for one report logo (PNG/JPG/WebP, max 2 MB). */
+function LogoUploader({
+  projectId,
+  kind,
+  label,
+  disabled,
+  onUploaded,
+}: {
+  projectId: string;
+  kind: LogoKind;
+  label: string;
+  disabled: boolean;
+  onUploaded: (dto: ReportTemplatesDto, message: string) => void;
+}) {
+  const queue = useUploadQueue();
+  return (
+    <FileDropzone
+      label={label}
+      hint="PNG, JPG, atau WebP."
+      accept="image/png,image/jpeg,image/webp"
+      maxBytes={LOGO_MAX_BYTES}
+      items={queue.items}
+      disabled={disabled || queue.busy}
+      onRemove={queue.remove}
+      onFiles={(files) =>
+        void queue
+          .upload(files, (file, onProgress) => {
+            const body = new FormData();
+            body.append('files', file);
+            return uploadForm<ReportTemplatesDto>(
+              `/projects/${projectId}/report-templates/logos/${kind}`,
+              body,
+              onProgress,
+            );
+          })
+          .then(({ results }) => {
+            const dto = results[results.length - 1];
+            if (dto) onUploaded(dto, `Logo ${LOGO_LABELS[kind].toLowerCase()} disimpan.`);
+          })
+      }
+    />
+  );
+}
+
 function WorkbookCard({
+  projectId,
   type,
   workbook,
   pdf,
   canEdit,
   busy,
-  onUpload,
+  onUploaded,
   onRemove,
 }: {
+  projectId: string;
   type: ReportType;
   workbook: ReportWorkbookDto | undefined;
   pdf: boolean;
   canEdit: boolean;
   busy: boolean;
-  onUpload: (file: File) => void;
+  onUploaded: (dto: ReportTemplatesDto, message: string) => void;
   onRemove: () => void;
 }) {
+  const queue = useUploadQueue();
   // What the app writes into each office workbook (D-086, D-087, D-088).
   const sheets = {
     DAILY: [
@@ -890,21 +919,36 @@ function WorkbookCard({
         )}
       </div>
       {canEdit && (
-        <div className="row-actions">
-          <label className="btn btn-secondary">
-            {workbook ? 'Ganti file' : 'Unggah file Excel'}
-            <input
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              className="sr-only"
-              disabled={busy}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = '';
-                if (f) onUpload(f);
-              }}
-            />
-          </label>
+        <div className="space-y-3">
+          <FileDropzone
+            label={workbook ? 'Ganti file Excel kantor' : 'Unggah file Excel kantor'}
+            hint="Workbook .xlsx dari kantor."
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            maxBytes={REPORT_WORKBOOK_MAX_BYTES}
+            items={queue.items}
+            disabled={busy || queue.busy}
+            onRemove={queue.remove}
+            onFiles={(files) =>
+              void queue
+                .upload(files, (file, onProgress) => {
+                  const body = new FormData();
+                  body.append('files', file);
+                  return uploadForm<ReportTemplatesDto>(
+                    `/projects/${projectId}/report-templates/workbooks/${type}`,
+                    body,
+                    onProgress,
+                  );
+                })
+                .then(({ results }) => {
+                  const dto = results[results.length - 1];
+                  if (dto)
+                    onUploaded(
+                      dto,
+                      'File Excel kantor disimpan. Ekspor Excel dan PDF memakai file ini.',
+                    );
+                })
+            }
+          />
           {workbook && (
             <Button type="button" variant="secondary" disabled={busy} onClick={onRemove}>
               Hapus

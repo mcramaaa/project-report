@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DECIMALS } from './format.js';
+import { UPLOAD_MAX_BYTES } from './uploads.js';
 
 /** D-082: report layout templates per project and report type. */
 export const REPORT_TYPES = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
@@ -260,7 +261,7 @@ export interface ReportWorkbookDto {
   updatedAt: string;
   updatedBy: { id: string; name: string };
 }
-export const REPORT_WORKBOOK_MAX_BYTES = 25 * 1024 * 1024;
+export const REPORT_WORKBOOK_MAX_BYTES = UPLOAD_MAX_BYTES;
 
 export interface ReportTemplatesDto {
   templates: ReportTemplateDto[];

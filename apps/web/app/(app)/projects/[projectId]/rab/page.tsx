@@ -8,6 +8,7 @@ import { RAB_STATUS_BADGE } from '@/lib/rab-ui';
 import { serverGet } from '@/lib/server-api';
 import { BaselinePanel } from './baseline-panel';
 import { CreateRabVersion } from './create-rab-version';
+import { DiscardDraft } from './discard-draft';
 
 export default async function RabVersionsPage({
   params,
@@ -143,6 +144,13 @@ export default async function RabVersionsPage({
                               >
                                 Bandingkan
                               </Link>
+                            )}
+                            {v.status === 'DRAFT' && canEdit && (
+                              <DiscardDraft
+                                projectId={project.id}
+                                versionId={v.id}
+                                label={v.label}
+                              />
                             )}
                           </div>
                         </td>

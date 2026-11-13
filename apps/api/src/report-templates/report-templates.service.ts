@@ -14,6 +14,7 @@ import {
   type ReportTemplateConfig,
   type ReportTemplatesDto,
   type ReportType,
+  UPLOAD_MAX_LABEL,
 } from '@laporan-proyek/shared';
 import { writeAudit } from '../audit/audit';
 import { AccessService } from '../auth/access.service';
@@ -191,7 +192,7 @@ export class ReportTemplatesService {
   /** D-086: the office workbook for a report type; checked to be a readable .xlsx before it replaces the old one. */
   async uploadWorkbook(actor: AuthUser, projectId: string, type: ReportType, file: UploadedPart | undefined): Promise<ReportTemplatesDto> {
     if (!file) throw new BadRequestException('Pilih file Excel laporan.');
-    if (file.size > REPORT_WORKBOOK_MAX_BYTES) throw new BadRequestException('File Excel maksimal 25 MB.');
+    if (file.size > REPORT_WORKBOOK_MAX_BYTES) throw new BadRequestException(`File Excel maksimal ${UPLOAD_MAX_LABEL}.`);
     checkXlsxSize(file.buffer, () => new BadRequestException('Isi file Excel terlalu besar setelah diekstrak.'));
     try {
       await Xlsx.open(file.buffer);

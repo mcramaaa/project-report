@@ -1,10 +1,15 @@
 'use client';
 
-import type { Paginated, WorkerDto, WorkerImportResult } from '@laporan-proyek/shared';
+import { KTP_MAX_BYTES, type Paginated, type WorkerDto, type WorkerImportResult } from '@laporan-proyek/shared';
 import { useEffect, useState, type FormEvent } from 'react';
+import { FileDropzone, newUploadItem, type UploadItem } from '@/components/file-dropzone';
 import { Modal } from '@/components/modal';
 import { Alert, Badge, Button, EmptyState, Field, Loading, Select, SuggestInput } from '@/components/ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
+import { uploadForm } from '@/lib/upload';
+
+const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+const XLSX_TYPES = '.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const PAGE_SIZE = 50;
 type Active = 'true' | 'false' | 'all';
@@ -220,7 +225,12 @@ function WorkerForm({ worker, positions, onCancel, onSaved }: { worker?: WorkerD
   const [error, setError] = useState<string>();
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  /** Foto KTP yang dipilih; dikirim setelah data pekerja tersimpan, dengan progres. */
+  const [ktp, setKtp] = useState<UploadItem[]>([]);
   const key = worker?.id ?? 'new';
+
+  const patchKtp = (k: string, change: Partial<UploadItem>) =>
+    setKtp((prev) => prev.map((i) => (i.key === k ? { ...i, ...change } : i)));
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -229,20 +239,26 @@ function WorkerForm({ worker, positions, onCancel, onSaved }: { worker?: WorkerD
     setError(undefined);
     setFieldErrors({});
     let saved = worker;
+    let photo: UploadItem | undefined;
     try {
       const body = { name: form.get('name'), position: form.get('position'), nik: form.get('nik') };
       saved = await api<WorkerDto>(worker ? 'PATCH' : 'POST', worker ? `/workers/${worker.id}` : '/workers', body);
-      const file = form.get('ktp');
-      if (file instanceof File && file.size > 0) {
+      photo = ktp[0];
+      if (photo) {
         const upload = new FormData();
-        upload.append('files', file);
-        saved = await api<WorkerDto>('POST', `/workers/${saved.id}/ktp`, upload);
+        upload.append('files', photo.file);
+        const id = photo.key;
+        patchKtp(id, { status: 'uploading', progress: 0, error: undefined });
+        saved = await uploadForm<WorkerDto>(`/workers/${saved.id}/ktp`, upload, (progress) => patchKtp(id, { progress }));
+        patchKtp(id, { status: 'done', progress: 1 });
       }
       onSaved(saved);
     } catch (err) {
       // Data saved but the photo failed: say so, so the user retries only the photo.
-      setError(saved && saved !== worker ? `Data tersimpan, tetapi foto KTP gagal diunggah: ${errorMessage(err)}` : errorMessage(err));
-      if (err instanceof ApiError) setFieldErrors(err.fieldErrors);
+      const photoFailed = !!saved && saved !== worker;
+      setError(photoFailed ? `Data tersimpan, tetapi foto KTP gagal diunggah: ${errorMessage(err)}` : errorMessage(err));
+      if (photo) patchKtp(photo.key, { status: 'error', progress: 0, error: errorMessage(err) });
+      if (err instanceof ApiError && !photoFailed) setFieldErrors(err.fieldErrors);
       setSubmitting(false);
     }
   }
@@ -280,13 +296,18 @@ function WorkerForm({ worker, positions, onCancel, onSaved }: { worker?: WorkerD
           required
           error={fieldErrors.nik}
         />
-        <Field
-          id={`w-ktp-${key}`}
-          name="ktp"
-          type="file"
-          accept="image/jpeg,image/png,image/webp,application/pdf"
-          label={worker?.hasKtp ? 'Ganti foto KTP (opsional)' : 'Foto KTP (opsional, maks. 5 MB)'}
-        />
+        <div className="sm:col-span-2">
+          <FileDropzone
+            label={worker?.hasKtp ? 'Ganti foto KTP (opsional)' : 'Foto KTP (opsional)'}
+            hint="JPG, PNG, WebP, atau PDF."
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            maxBytes={KTP_MAX_BYTES}
+            disabled={submitting}
+            items={ktp}
+            onFiles={(files) => setKtp(files.slice(0, 1).map(newUploadItem))}
+            onRemove={() => setKtp([])}
+          />
+        </div>
       </div>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onCancel}>
@@ -303,20 +324,28 @@ function WorkerForm({ worker, positions, onCancel, onSaved }: { worker?: WorkerD
 function ImportForm({ onDone }: { onDone: (r: WorkerImportResult) => void }) {
   const [error, setError] = useState<{ message: string; rows: string[] }>();
   const [submitting, setSubmitting] = useState(false);
+  const [file, setFile] = useState<UploadItem[]>([]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const file = new FormData(event.currentTarget).get('file');
-    if (!(file instanceof File) || !file.size) return setError({ message: 'Pilih file Excel (.xlsx).', rows: [] });
+    const picked = file[0];
+    if (!picked) return setError({ message: 'Pilih file Excel (.xlsx).', rows: [] });
     const body = new FormData();
-    body.append('files', file);
+    body.append('files', picked.file);
+    const id = picked.key;
+    const patch = (change: Partial<UploadItem>) =>
+      setFile((prev) => prev.map((i) => (i.key === id ? { ...i, ...change } : i)));
     setSubmitting(true);
     setError(undefined);
+    patch({ status: 'uploading', progress: 0, error: undefined });
     try {
-      onDone(await api<WorkerImportResult>('POST', '/workers/import', body));
+      const result = await uploadForm<WorkerImportResult>('/workers/import', body, (progress) => patch({ progress }));
+      patch({ status: 'done', progress: 1 });
+      onDone(result);
     } catch (err) {
       const rows = err instanceof ApiError ? ((err.details as { errors?: unknown[] })?.errors ?? []).filter((e): e is string => typeof e === 'string') : [];
       setError({ message: errorMessage(err), rows });
+      patch({ status: 'error', progress: 0, error: errorMessage(err) });
       setSubmitting(false);
     }
   }
@@ -346,7 +375,16 @@ function ImportForm({ onDone }: { onDone: (r: WorkerImportResult) => void }) {
           )}
         </Alert>
       )}
-      <Field id="import-file" name="file" type="file" label="File Excel (.xlsx)" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+      <FileDropzone
+        label="File Excel (.xlsx)"
+        hint="Gunakan template Excel di atas."
+        accept={XLSX_TYPES}
+        maxBytes={IMPORT_MAX_BYTES}
+        disabled={submitting}
+        items={file}
+        onFiles={(files) => setFile(files.slice(0, 1).map(newUploadItem))}
+        onRemove={() => setFile([])}
+      />
       <div className="flex justify-end">
         <Button type="submit" disabled={submitting}>
           {submitting ? 'Mengimpor…' : 'Impor'}

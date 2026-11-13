@@ -428,7 +428,7 @@ export default async function GuidePage() {
               items={[
                 <>
                   Tab RAB → {b('Impor dari Excel')}. Di {b('Dokumen proyek')}, pilih file .xlsx
-                  (maks. 30 MB per file) lalu {b('Upload')}. RAB, rekap, analisa, upah, bahan, dan
+                  (maks. 100 MB per file) lalu {b('Upload')}. RAB, rekap, analisa, upah, bahan, dan
                   alat boleh dalam satu file atau beberapa file.
                 </>,
                 <>

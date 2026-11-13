@@ -20,5 +20,6 @@ export * from './daily-reports.js';
 export * from './workers.js';
 export * from './weekly-reports.js';
 export * from './report-templates.js';
+export * from './uploads.js';
 export * from './format.js';
 export * from './report-format.js';

@@ -76,6 +76,8 @@ npm run db:seed:workers       # opsional, development saja: 12 pekerja contoh (N
 npm run ai:ping               # uji koneksi 9router (data dummy; model utama + fallback; key tidak dicetak)
 npm run db:seed:sample        # opsional, development saja: proyek SDN 2 Serangan + RAB Kontrak & MC-0 dari workbook di storage/temp
 npm run dev                   # API dan web bersamaan; port web mengikuti APP_URL
+# Impor workbook besar (puluhan MB, D-089) butuh heap Node lebih dari bawaan:
+# NODE_OPTIONS=--max-old-space-size=3072 npm run dev
 ```
 
 - Web: http://localhost:3000
