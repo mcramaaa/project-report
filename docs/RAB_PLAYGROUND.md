@@ -1,6 +1,9 @@
 # RAB Playground — impor RAB dibantu AI (rancangan D-093)
 
-Status: **usulan, menunggu persetujuan** (2026-11-11). Belum ada kode.
+Status: **tahap 1 berjalan** (2026-11-15). Skema profil + profil bawaan ada di `packages/shared/src/rab-profile.ts`.
+Pembaca RAB kantor (`rab-sheet.ts`) sudah membaca kata header dan label total dari profil; pembaca tanpa header
+(`headerless-sheet.ts`) dan formulir analisa (`analysis-block.ts`) belum. `apps/api/src/imports/rab-profile.spec.ts`
+membuktikan profil bawaan menjawab sama persis dengan regex lama.
 
 ## 1. Masalah
 

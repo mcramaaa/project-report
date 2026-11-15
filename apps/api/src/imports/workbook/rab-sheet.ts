@@ -1,5 +1,5 @@
 import { Decimal } from '@laporan-proyek/calc';
-import type { RabRowType, RabVersionType } from '@laporan-proyek/shared';
+import { matchesWord, RAB_BUILTIN_PROFILE, type RabProfile, type RabRowType, type RabVersionType } from '@laporan-proyek/shared';
 import { detectHeaderless, readHeaderlessSheet, type HeaderlessColumns } from './headerless-sheet';
 import { excelDecimal, type WorkbookModel } from './workbook-model';
 
@@ -57,18 +57,18 @@ export class RabSheetError extends Error {}
 const upper = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
 
 /** Sheets with a RAB header (VOLUME + NO. ANALISA) in the first 40 rows. */
-export function rabSheetCandidates(model: WorkbookModel): string[] {
-  return model.sheetNames().filter((s) => findHeaderRow(model, s) !== null || detectHeaderless(model, s) !== null);
+export function rabSheetCandidates(model: WorkbookModel, profile: RabProfile = RAB_BUILTIN_PROFILE): string[] {
+  return model.sheetNames().filter((s) => findHeaderRow(model, s, profile) !== null || detectHeaderless(model, s) !== null);
 }
 
-function findHeaderRow(model: WorkbookModel, sheet: string): number | null {
+function findHeaderRow(model: WorkbookModel, sheet: string, profile: RabProfile): number | null {
   for (let r = 1; r <= Math.min(40, model.rowCount(sheet)); r++) {
     let volume = false;
     let analysis = false;
     for (let c = 1; c <= Math.min(40, model.columnCount(sheet)); c++) {
       const t = upper(model.text(sheet, r, c));
-      if (t === 'VOLUME') volume = true;
-      if (/^NO\.? ?ANALISA/.test(t)) analysis = true;
+      if (matchesWord(t, profile.rab.volume)) volume = true;
+      if (matchesWord(t, profile.rab.analysis)) analysis = true;
     }
     if (volume && analysis) return r;
   }
@@ -80,8 +80,9 @@ const blockMatches = (label: string, target: RabVersionType, mc: number) =>
     ? /KONTRAK|PENAWARAN/.test(label)
     : new RegExp(`^MC\\s*-?\\s*${mc}\\b`).test(label) || (mc === 0 && /MUTUAL/.test(label));
 
-export function detectRabColumns(model: WorkbookModel, sheet: string, target: RabVersionType, mc = 0): RabColumns {
-  const headerRow = findHeaderRow(model, sheet);
+export function detectRabColumns(model: WorkbookModel, sheet: string, target: RabVersionType, mc = 0, profile: RabProfile = RAB_BUILTIN_PROFILE): RabColumns {
+  const p = profile.rab;
+  const headerRow = findHeaderRow(model, sheet, profile);
   if (headerRow === null) throw new RabSheetError(`Sheet "${sheet}" tidak memiliki header RAB (VOLUME dan NO. ANALISA).`);
   const width = Math.min(60, model.columnCount(sheet));
   // Header text may continue on the next one or two rows ("HARGA" / "SATUAN" / "(Rp)").
@@ -95,7 +96,7 @@ export function detectRabColumns(model: WorkbookModel, sheet: string, target: Ra
     // ADDENDUM still bounds a block in older workbooks, though it is never a target (D-069).
     if (t && /KONTRAK|PENAWARAN|MC\s*-?\s*\d+|ADDENDUM|MUTUAL/.test(t)) blocks.push({ col: c, label: t });
   }
-  const volumeCols = Array.from({ length: width }, (_, i) => i + 1).filter((c) => top(c) === 'VOLUME');
+  const volumeCols = Array.from({ length: width }, (_, i) => i + 1).filter((c) => matchesWord(top(c), p.volume));
   let span: [number, number] = [1, width];
   let block: string | null = null;
   if (blocks.length > 0) {
@@ -116,39 +117,48 @@ export function detectRabColumns(model: WorkbookModel, sheet: string, target: Ra
     return null;
   };
 
-  const volume = first((c) => top(c) === 'VOLUME', true);
+  const volume = first((c) => matchesWord(top(c), p.volume), true);
   // NO / uraian headers may sit one row above, merged down over the header row.
   const near = (c: number) => [top(c), upper(model.text(sheet, headerRow - 1, c))];
-  const no = first((c) => near(c).some((t) => t === 'NO' || t === 'NO.'), false);
-  const description = first((c) => near(c).some((t) => /^(JENIS PEKERJAAN|URAIAN)/.test(t)), false);
-  const analysis = first((c) => /^NO\.? ?ANALISA/.test(top(c)), false);
-  const price = first((c) => /^HARGA/.test(label(c)) && !/PPN/.test(label(c)), true);
-  const tax = first((c) => /^PPN\b/.test(label(c)), true) ?? first((c) => /^PPN\b/.test(label(c)), false);
-  const priceWithTax = first((c) => /^HARGA/.test(label(c)) && /PPN/.test(label(c)), true);
-  const amount = first((c) => /^(SUB ?JUMLAH|JUMLAH)\b/.test(label(c)), true);
+  const no = first((c) => near(c).some((t) => matchesWord(t, p.no)), false);
+  const description = first((c) => near(c).some((t) => matchesWord(t, p.description)), false);
+  const analysis = first((c) => matchesWord(top(c), p.analysis), false);
+  // A price header that mentions the tax word anywhere ("HARGA SAT + PPN") is the price + PPN column.
+  const mentionsTax = (c: number) => p.tax.words.some((w) => label(c).includes(w));
+  const price = first((c) => matchesWord(label(c), p.price) && !mentionsTax(c), true);
+  const tax = first((c) => matchesWord(label(c), p.tax), true) ?? first((c) => matchesWord(label(c), p.tax), false);
+  const priceWithTax = first((c) => matchesWord(label(c), p.price) && mentionsTax(c), true);
+  const amount = first((c) => matchesWord(label(c), p.amount), true);
   if (!volume || !no || !description || !price) {
     throw new RabSheetError(`Kolom NO, uraian, VOLUME, atau HARGA tidak dikenali di sheet "${sheet}".`);
   }
   // The unit column is "SAT"/"SATUAN" or, without its own header, the column after VOLUME.
-  const unit = first((c) => /^(SAT|SATUAN)$/.test(top(c)), true) ?? volume + 1;
+  const unit = first((c) => matchesWord(top(c), p.unit), true) ?? volume + 1;
   return { headerRow, no, description, analysis, volume, unit, price, tax, priceWithTax, amount, block };
 }
 
 const isSection = (no: string) => /^[A-Z]$/.test(no);
 const isSubsection = (no: string) => /^[A-Z]\.[IVXLC]+$/.test(no);
-const isTotalLabel = (t: string) => /^(JUMLAH|DIBULATKAN|TOTAL|SUB ?TOTAL|REAL COST)\b/.test(t);
 
-export function readRabSheet(model: WorkbookModel, sheetName: string, target: RabVersionType, mc = 0, columns?: HeaderlessColumns): RabSheet {
+export function readRabSheet(
+  model: WorkbookModel,
+  sheetName: string,
+  target: RabVersionType,
+  mc = 0,
+  columns?: HeaderlessColumns,
+  profile: RabProfile = RAB_BUILTIN_PROFILE,
+): RabSheet {
+  const p = profile.rab;
   const sheet = model.sheetName(sheetName);
   if (!sheet) throw new RabSheetError(`Sheet "${sheetName}" tidak ada.`);
   // A reviewer-corrected mapping (D-090) is used as given; the reader still only takes rows with a code and values.
   if (columns) return readHeaderlessSheet(model, sheet, columns);
   // Without the office header (VOLUME + NO. ANALISA), read the sheet by its header words (headerless-sheet.ts).
-  if (findHeaderRow(model, sheet) === null) {
+  if (findHeaderRow(model, sheet, profile) === null) {
     const headerless = detectHeaderless(model, sheet);
     if (headerless) return readHeaderlessSheet(model, sheet, headerless);
   }
-  const cols = detectRabColumns(model, sheet, target, mc);
+  const cols = detectRabColumns(model, sheet, target, mc, profile);
   const rows: RabSheetRow[] = [];
   let section: number | null = null;
   let subsection: number | null = null;
@@ -165,12 +175,14 @@ export function readRabSheet(model: WorkbookModel, sheetName: string, target: Ra
     const description = model.text(sheet, r, cols.description);
     // Totals may be labelled in the description or in a column left of the price ("JUMLAH" in the price
     // column on office RAB sheets); section subtotals labelled in the description are skipped.
-    const labelled = [1, 2, 3, 4, 5, 6, 7, cols.price].map((c) => ({ c, t: upper(model.text(sheet, r, c)) })).find((x) => isTotalLabel(x.t));
+    const labelled = [1, 2, 3, 4, 5, 6, 7, cols.price]
+      .map((c) => ({ c, t: upper(model.text(sheet, r, c)) }))
+      .find((x) => matchesWord(x.t, p.totalLabels));
     if (labelled) {
       parentItem = null;
-      const grandTotal = /^JUMLAH TOTAL/.test(labelled.t) || (labelled.t === 'JUMLAH' && labelled.c !== cols.description);
+      const grandTotal = matchesWord(labelled.t, p.grandTotal) || (matchesWord(labelled.t, p.bareTotal) && labelled.c !== cols.description);
       if (grandTotal) totalValue = blockAmount(model, sheet, r, cols) ?? totalValue;
-      if (/^DIBULATKAN/.test(labelled.t)) {
+      if (matchesWord(labelled.t, p.rounded)) {
         rounded = blockAmount(model, sheet, r, cols)?.value ?? null;
         break;
       }
