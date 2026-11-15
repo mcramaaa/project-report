@@ -20,8 +20,13 @@ import {
   RAB_BUILTIN_PROFILE,
   rabProfileSchema,
   type CreateRabProfileInput,
+  type DraftRow,
+  type PreviewRabProfileInput,
   type RabProfile,
   type RabProfileDto,
+  type RabProfilePreviewDto,
+  type RabVersionType,
+  type SourceLocator,
 } from '@laporan-proyek/shared';
 import { Decimal } from '@laporan-proyek/calc';
 import { AiClient } from '../ai/ai.client';
@@ -292,6 +297,83 @@ export class RabImportsService implements OnModuleInit {
     });
   }
 
+  /** Reads the documents and builds the draft exactly as a run does (processing and the profile preview). */
+  private async draftFor(
+    projectId: string,
+    docs: { documentId: string; role: 'RAB' | 'SUPPORT'; rabSheet?: string; columns?: RabColumnMap; document: { originalFilename: string; sha256: string; storedFilename: string } }[],
+    targetVersionType: RabVersionType,
+    targetRevisionNumber: number,
+    profile: RabProfile,
+  ): Promise<{ draft: RabImportDraft; official: Map<string, OfficialVersion> }> {
+    const sources = [];
+    for (const d of docs) {
+      const workbook = await loadCompactWorkbook(documentPath(projectId, d.document.storedFilename));
+      sources.push({
+        model: new WorkbookModel(d.documentId, d.document.originalFilename, workbook),
+        documentId: d.documentId,
+        filename: d.document.originalFilename,
+        sha256: d.document.sha256,
+        role: d.role,
+        rabSheet: d.rabSheet,
+        columns: d.columns,
+      });
+    }
+    const official = await this.officialVersions(projectId);
+    const draft = buildDraft(sources, {
+      targetVersionType,
+      targetRevisionNumber,
+      officialAnalyses: [...official.values()] satisfies OfficialAnalysis[],
+      previousItems: targetVersionType === 'CONTRACT' ? [] : await this.previousItems(projectId),
+      profile,
+    });
+    return { draft, official };
+  }
+
+  /**
+   * RAB_PLAYGROUND stage 2: what a run would read with an unsaved profile. Read-only: nothing is stored and AI is
+   * never called, so no workbook content leaves the server.
+   */
+  async previewProfile(projectId: string, input: PreviewRabProfileInput): Promise<RabProfilePreviewDto> {
+    const ids = input.sources.map((s) => s.documentId);
+    if (new Set(ids).size !== ids.length) throw new BadRequestException('Dokumen yang sama dipilih lebih dari sekali.');
+    const docs = await this.prisma.projectDocument.findMany({ where: { id: { in: ids }, projectId }, select: { id: true, originalFilename: true, sha256: true, storedFilename: true } });
+    if (docs.length !== ids.length) throw new BadRequestException('Dokumen tidak ditemukan di proyek ini.');
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    let mc = 0;
+    if (input.targetVersionType === 'MC') {
+      const versions = await this.prisma.rabVersion.findMany({ where: { projectId, status: { not: 'DISCARDED' } }, select: { versionType: true, revisionNumber: true } });
+      mc = input.targetRevisionNumber ?? nextMcNumber(versions);
+    } else if (input.targetRevisionNumber !== undefined) {
+      throw new BadRequestException('Nomor hanya untuk MC.');
+    }
+    let built: Awaited<ReturnType<RabImportsService['draftFor']>>;
+    try {
+      built = await this.draftFor(
+        projectId,
+        input.sources.map((s) => ({ documentId: s.documentId, role: s.role, rabSheet: s.rabSheet, columns: s.columns, document: byId.get(s.documentId)! })),
+        input.targetVersionType,
+        mc,
+        { ...input.profile, name: 'Pratinjau', origin: 'MANUAL' },
+      );
+    } catch (err) {
+      if (!(err instanceof DraftInputError)) throw err;
+      return { error: err.message, sources: [], counts: { items: 0, analysis: 0, direct: 0, unresolved: 0, none: 0, analyses: 0 }, reconciliation: null, issues: [] };
+    }
+    const { draft, official } = built;
+    const evaluation = evaluateImport(draft, [], official);
+    const locators = new Map<string, SourceLocator>([...draft.rows.map((r) => [r.key, r.locator] as const), ...draft.analyses.map((a) => [a.key, a.locator] as const)]);
+    const cellOf = (l: SourceLocator | undefined) => (!l ? null : l.cell ? `${l.sheet}!${l.cell}` : l.row ? `${l.sheet} baris ${l.row}` : l.sheet);
+    const items = draft.rows.filter((r) => r.rowType === 'ITEM');
+    const count = (kind: DraftRow['price']['kind']) => items.filter((r) => r.price.kind === kind).length;
+    return {
+      error: null,
+      sources: draft.sources,
+      counts: { items: items.length, analysis: count('ANALYSIS'), direct: count('DIRECT'), unresolved: count('UNRESOLVED'), none: count('NONE'), analyses: draft.analyses.length },
+      reconciliation: evaluation.reconciliation,
+      issues: evaluation.issues.map((i) => ({ ...i, cell: cellOf(locators.get(i.rowKey ?? i.analysisKey ?? '')) })),
+    };
+  }
+
   /** D-094: saved mapping profiles of the project, newest first. */
   async listProfiles(projectId: string): Promise<RabProfileDto[]> {
     const rows = await this.prisma.rabMappingProfile.findMany({ where: { projectId }, include: { creator: USER_REF }, orderBy: { createdAt: 'desc' } });
@@ -341,28 +423,13 @@ export class RabImportsService implements OnModuleInit {
     if (count === 0) return;
     const row = await this.prisma.rabImport.findUniqueOrThrow({ where: { id: importId }, include: IMPORT_INCLUDE });
     try {
-      const profile = profileOf(row.mappingProfile);
-      const sources = [];
-      for (const d of row.documents) {
-        const workbook = await loadCompactWorkbook(documentPath(row.projectId, d.document.storedFilename));
-        sources.push({
-          model: new WorkbookModel(d.documentId, d.document.originalFilename, workbook),
-          documentId: d.documentId,
-          filename: d.document.originalFilename,
-          sha256: d.document.sha256,
-          role: d.role,
-          rabSheet: d.rabSheet ?? undefined,
-          columns: columnMapOf(d.columnMap),
-        });
-      }
-      const official = await this.officialVersions(row.projectId);
-      const draft = buildDraft(sources, {
-        targetVersionType: row.targetVersionType,
-        targetRevisionNumber: row.targetRevisionNumber,
-        officialAnalyses: [...official.values()] satisfies OfficialAnalysis[],
-        previousItems: row.targetVersionType === 'CONTRACT' ? [] : await this.previousItems(row.projectId),
-        profile,
-      });
+      const { draft, official } = await this.draftFor(
+        row.projectId,
+        row.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap), document: d.document })),
+        row.targetVersionType,
+        row.targetRevisionNumber,
+        profileOf(row.mappingProfile),
+      );
       await this.suggestWithAi(importId, draft, [...official.values()]);
       // Schema validation of the structured draft before it is stored (flow: draft → schema validation).
       const valid = rabImportDraftSchema.parse(draft);

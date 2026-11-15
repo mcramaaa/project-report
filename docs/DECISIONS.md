@@ -1631,5 +1631,9 @@ Status: berlaku. Sumber: user, 2026-11-15 (tahap 1 D-093 disetujui: "Tahap 1 Pla
   (audit). Retry/remap membawa profil run lama. Snapshot divalidasi ulang saat diproses; yang tidak lolos skema
   menggagalkan run (tidak jatuh diam-diam ke profil bawaan).
 - Profil run berlaku untuk sheet RAB dan formulir analisa (kantor dan Bina Marga).
-- Belum: daftar kandidat sheet saat upload memakai profil bawaan; tidak ada UI (tahap 2). Profil antar proyek
-  (pertanyaan terbuka D-093 no. 2) belum.
+- Tahap 2 (UI): pratinjau `POST /rab-profiles/preview` menjalankan pembaca dan evaluasi yang sama dengan run impor
+  dengan profil yang belum disimpan; tidak menyimpan apa pun dan tidak memanggil AI (isi workbook tidak keluar
+  server). Nama profil hanya wajib saat menyimpan. Playground menawarkan semua sheet dokumen (bukan hanya kandidat
+  profil bawaan); run impor hanya memakai profil tersimpan.
+- Belum: daftar kandidat sheet di halaman unggah tetap memakai profil bawaan; profil antar proyek (pertanyaan terbuka
+  D-093 no. 2); asisten AI (tahap 3).

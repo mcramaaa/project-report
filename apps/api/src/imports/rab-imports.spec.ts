@@ -1500,6 +1500,32 @@ describe('mapping profiles (D-094)', () => {
     expect(await t.prisma.rabImport.findUniqueOrThrow({ where: { id: remap.body.id } })).toMatchObject({ status: 'NEEDS_REVIEW', mappingProfileId: saved.body.id });
   });
 
+  it('preview reads with an unsaved profile, stores nothing, and points issues at cells', async () => {
+    const doc = await upload(admin, 'boq-preview.xlsx', await xlsxOf({ BOQ: boq() }));
+    const preview = `/projects/${project.id}/rab-profiles/preview`;
+    const body = (profile: unknown) => ({ targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], profile });
+
+    const filler = await member('FILLER');
+    expect((await filler.post(preview, body(RAB_BUILTIN_PROFILE))).status).toBe(403);
+
+    // The built-in profile stops where a run would fail, with the reader's message (origin and name are ignored).
+    const failed = await admin.post(preview, body(RAB_BUILTIN_PROFILE));
+    expect(failed.status, JSON.stringify(failed.body)).toBe(200);
+    expect(failed.body).toMatchObject({ error: expect.stringContaining('BOQ'), counts: { items: 0 }, issues: [] });
+
+    const read = await admin.post(preview, body(profileBody().profile));
+    expect(read.status, JSON.stringify(read.body)).toBe(200);
+    expect(read.body).toMatchObject({ error: null, counts: { items: 2, direct: 2, analysis: 0, unresolved: 0 } });
+    expect(read.body.sources[0]).toMatchObject({ layout: 'HEADER', columns: { quantity: 6 } });
+    expect(read.body.reconciliation).toMatchObject({ realCost: expect.any(String) });
+    const cells = read.body.issues.map((i: { cell: string | null }) => i.cell).filter(Boolean);
+    expect(cells.length).toBeGreaterThan(0);
+    expect(cells.every((c: string) => c.startsWith('BOQ'))).toBe(true);
+
+    expect(await t.prisma.rabImport.count({ where: { projectId: project.id } })).toBe(0);
+    expect(await t.prisma.rabMappingProfile.count({ where: { projectId: project.id } })).toBe(0);
+  });
+
   it('refuses a profile of another project', async () => {
     const other = await createProject(t.prisma, 'IMP-002');
     const saved = await admin.post(`/projects/${other.id}/rab-profiles`, profileBody());

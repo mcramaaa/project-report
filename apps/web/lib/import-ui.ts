@@ -10,3 +10,5 @@ export const IMPORT_STATUS: Record<RabImportStatus, { label: string; tone: 'slat
 };
 
 export const CATEGORY_LABEL: Record<string, string> = { LABOR: 'Tenaga', MATERIAL: 'Bahan', EQUIPMENT: 'Alat' };
+
+export const SEVERITY_TONE = { BLOCKING: 'red', WARNING: 'blue', INFO: 'slate' } as const;

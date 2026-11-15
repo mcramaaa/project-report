@@ -5,6 +5,8 @@ import {
   createRabImportSchema,
   createRabProfileSchema,
   type CreateRabProfileInput,
+  previewRabProfileSchema,
+  type PreviewRabProfileInput,
   rabImportDecisionsSchema,
   remapRabImportSchema,
   requiredReasonSchema,
@@ -35,6 +37,14 @@ export class RabProfilesController {
   @RequireProjectPermission('rabImport.review')
   create(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Body(new ZodPipe(createRabProfileSchema)) body: CreateRabProfileInput) {
     return this.imports.createProfile(auth.user, projectId, body);
+  }
+
+  /** Stage 2 playground: read documents with an unsaved profile; stores nothing, calls no AI. */
+  @Post('preview')
+  @RequireProjectPermission('rabImport.review')
+  @HttpCode(200)
+  preview(@Param('projectId') projectId: string, @Body(new ZodPipe(previewRabProfileSchema)) body: PreviewRabProfileInput) {
+    return this.imports.previewProfile(projectId, body);
   }
 }
 

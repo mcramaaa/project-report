@@ -130,6 +130,7 @@ POST /projects/:projectId/rab-imports/:importId/approve                rabImport
 POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport.approve
 GET  /projects/:projectId/rab-profiles                                 rabImport.review | rabImport.approve -> profil pemetaan proyek, terbaru dulu (D-094)
 POST /projects/:projectId/rab-profiles   { profile }                   rabImport.review -> 201, baris baru asal MANUAL (D-094)
+POST /projects/:projectId/rab-profiles/preview  { targetVersionType, targetRevisionNumber?, sources, profile }  rabImport.review -> 200 { error, sources, counts, reconciliation, issues[+cell] }; tidak menyimpan, tanpa AI (tahap 2)
 ```
 
 - `rabSheet` wajib bila dokumen RAB punya lebih dari satu kandidat sheet; dokumen `SUPPORT` tidak perlu sheet RAB (D-055)

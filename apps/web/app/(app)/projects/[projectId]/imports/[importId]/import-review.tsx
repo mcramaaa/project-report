@@ -25,13 +25,11 @@ import { InlineReasonForm } from '@/components/corrections';
 import { Alert, Badge, Button, EmptyState, Field, Select } from '@/components/ui';
 import { GridTools } from '@/components/grid-tools';
 import { api, errorMessage } from '@/lib/api';
-import { CATEGORY_LABEL, IMPORT_STATUS } from '@/lib/import-ui';
+import { CATEGORY_LABEL, IMPORT_STATUS, SEVERITY_TONE } from '@/lib/import-ui';
 import { formatNumber, formatRounded } from '@/lib/project-fields';
 
 type Decision = { rowKey: string; kind: string; value: unknown; reason?: string };
 type Filter = 'all' | 'open' | 'warning';
-
-const SEVERITY_TONE = { BLOCKING: 'red', WARNING: 'blue', INFO: 'slate' } as const;
 
 export function ImportReview({
   projectId,

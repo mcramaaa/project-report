@@ -6,6 +6,7 @@ import {
   rabVersionLabel,
   type DocumentDto,
   type RabImportSummaryDto,
+  type RabProfileDto,
   type RabVersionType,
 } from '@laporan-proyek/shared';
 import Link from 'next/link';
@@ -25,6 +26,7 @@ export function ImportsManager({
   closed,
   documents,
   imports,
+  profiles,
   canUpload,
   canReview,
 }: {
@@ -32,6 +34,8 @@ export function ImportsManager({
   closed: boolean;
   documents: DocumentDto[] | null;
   imports: RabImportSummaryDto[] | null;
+  /** D-094: saved mapping profiles; empty = only the built-in profile. */
+  profiles: RabProfileDto[];
   canUpload: boolean;
   canReview: boolean;
 }) {
@@ -42,6 +46,8 @@ export function ImportsManager({
   const [target, setTarget] = useState<RabVersionType>('CONTRACT');
   /** Empty = lowest allowed MC number (D-069). */
   const [mcNumber, setMcNumber] = useState('');
+  /** Empty = built-in profile. */
+  const [profileId, setProfileId] = useState('');
   const docQueue = useUploadQueue();
 
   /** Each file is sent in its own request so every row shows its own progress. */
@@ -79,6 +85,7 @@ export function ImportsManager({
         targetVersionType: target,
         ...(target === 'MC' && mcNumber !== '' ? { targetRevisionNumber: Number(mcNumber) } : {}),
         sources,
+        ...(profileId ? { mappingProfileId: profileId } : {}),
       });
       router.push(`/projects/${projectId}/imports/${run.id}`);
     } catch (err) {
@@ -131,9 +138,16 @@ export function ImportsManager({
 
       {documents !== null && (
         <section className="space-y-3" aria-labelledby="docs-title">
-          <h2 id="docs-title" className="text-base font-semibold">
-            Dokumen proyek
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="docs-title" className="text-base font-semibold">
+              Dokumen proyek
+            </h2>
+            {canReview && (
+              <Link className="btn btn-secondary" href={`/projects/${projectId}/imports/profiles`}>
+                Profil pemetaan
+              </Link>
+            )}
+          </div>
           {canUpload && !closed && (
             <section className="panel form-panel space-y-3" aria-label="Upload dokumen">
               <FileDropzone
@@ -294,6 +308,25 @@ export function ImportsManager({
                     value={mcNumber}
                     onChange={(e) => setMcNumber(e.target.value)}
                   />
+                </div>
+              )}
+              {profiles.length > 0 && (
+                <div>
+                  <label htmlFor="mapping-profile" className="field-label">
+                    Profil pemetaan
+                  </label>
+                  <Select
+                    id="mapping-profile"
+                    value={profileId}
+                    onChange={(e) => setProfileId(e.target.value)}
+                  >
+                    <option value="">Profil bawaan</option>
+                    {profiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {formatDate(p.createdAt.slice(0, 10))}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
               )}
               <Button disabled={busy} onClick={createImport}>

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createRabImportSchema, type ImportIssue, type RabImportDraft, type RabReconciliation } from './rab-import.js';
 
 /**
  * Mapping profile of a RAB workbook (RAB_PLAYGROUND.md §4, stage 1). Declarative data: the office RAB reader
@@ -120,6 +121,27 @@ export type RabProfile = z.infer<typeof rabProfileSchema>;
  */
 export const createRabProfileSchema = z.object({ profile: rabProfileSchema.omit({ origin: true }) });
 export type CreateRabProfileInput = z.infer<typeof createRabProfileSchema>;
+
+/**
+ * RAB_PLAYGROUND stage 2: read documents with an unsaved profile exactly like a run would, without storing anything
+ * and without calling AI (no workbook content leaves the server).
+ */
+export const previewRabProfileSchema = createRabImportSchema
+  .omit({ mappingProfileId: true })
+  // A preview does not need a name: only saving does.
+  .extend({ profile: rabProfileSchema.omit({ origin: true, name: true }) });
+export type PreviewRabProfileInput = z.infer<typeof previewRabProfileSchema>;
+
+export interface RabProfilePreviewDto {
+  /** Input problem the reader stopped on (no RAB sheet, header not recognised); null when the documents were read. */
+  error: string | null;
+  sources: RabImportDraft['sources'];
+  counts: { items: number; analysis: number; direct: number; unresolved: number; none: number; analyses: number };
+  /** Totals against the workbook's own total (D-054); null when nothing was read. */
+  reconciliation: RabReconciliation | null;
+  /** Issues of the would-be run, each with the cell it came from ("RAB!F14") when known. */
+  issues: (ImportIssue & { cell: string | null })[];
+}
 
 export interface RabProfileDto {
   id: string;

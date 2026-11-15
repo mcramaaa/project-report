@@ -1072,3 +1072,13 @@ a.day-chip:hover { border-color: var(--blue); color: var(--blue-dark); }
 .week-nav .access-tabs { margin-bottom: 0; }
 .week-nav-step .btn[aria-disabled='true'] { opacity: .45; pointer-events: none; }
 .week-jump { width: auto; min-width: 12rem; }
+
+/* RAB mapping profile editor (RAB_PLAYGROUND stage 2): one row per role: label | match mode | words | remove. */
+.profile-section { display: grid; gap: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--line-soft); }
+.profile-section > legend { float: left; width: 100%; padding: 0; }
+.profile-role { display: grid; gap: var(--space-2); justify-items: start; }
+.profile-role > .profile-matcher { justify-self: stretch; }
+.profile-matcher { display: grid; grid-template-columns: minmax(140px, 240px) minmax(150px, 200px) minmax(0, 1fr) 72px; gap: var(--space-2) var(--space-3); align-items: center; width: 100%; }
+@media (max-width: 767px) {
+  .profile-matcher { grid-template-columns: minmax(0, 1fr); }
+}
