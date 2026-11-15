@@ -318,6 +318,8 @@ export const createRabImportSchema = z.object({
     .refine((list) => list.some((x) => x.role === 'RAB'), {
       message: 'Minimal satu dokumen berperan RAB.',
     }),
+  /** D-094: saved mapping profile of the project to read with; absent = built-in profile. */
+  mappingProfileId: z.uuid().optional(),
 });
 export type CreateRabImportInput = z.infer<typeof createRabImportSchema>;
 

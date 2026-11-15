@@ -30,7 +30,7 @@ import { DailyReportsService } from './daily-reports/daily-reports.service';
 import { ScenariosService } from './schedules/scenarios.service';
 import { DocumentsController } from './documents/documents.controller';
 import { DocumentsService } from './documents/documents.service';
-import { RabImportsController } from './imports/rab-imports.controller';
+import { RabImportsController, RabProfilesController } from './imports/rab-imports.controller';
 import { AI_CLIENT, RabImportsService } from './imports/rab-imports.service';
 import { RabController } from './rab/rab.controller';
 import { RabCorrectionsService } from './rab/corrections.service';
@@ -46,7 +46,7 @@ import { WorkersService } from './workers/workers.service';
 
 @Module({
   imports: [PrismaModule],
-  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DailyReportsController, DocumentsController, RabImportsController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController, WorkersController, WeeklyReportsController, MonthlyReportsController, ReportTemplatesController, ReportExportsController],
+  controllers: [HealthController, AuthController, ProjectsController, RabController, BaselinesController, SchedulesController, ScenariosController, ProgressController, DailyReportsController, DocumentsController, RabImportsController, RabProfilesController, AhspController, AdminUsersController, AdminProjectsController, AdminAccessController, WorkersController, WeeklyReportsController, MonthlyReportsController, ReportTemplatesController, ReportExportsController],
   providers: [
     // Order matters: CSRF first (also covers public login), then session.
     { provide: APP_GUARD, useClass: CsrfGuard },

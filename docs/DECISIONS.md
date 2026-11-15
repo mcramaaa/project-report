@@ -1616,3 +1616,19 @@ Rancangan lengkap: `docs/RAB_PLAYGROUND.md`. Ringkas: AI hanya memberi klaim str
 peran kolom, sel F/D/E/komponen/harga dasar); semua angka dibaca sistem dari sel dan dibuktikan mekanis (rujukan
 rumus nyata + hitung ulang desimal = nilai tersimpan, D-054); hasil playground adalah profil pemetaan yang dipakai run
 impor biasa (review dan approval tidak berubah). Mesin penelusur tetap jalan lebih dulu; AI untuk bagian yang gagal.
+
+## D-094 Profil pemetaan RAB per proyek (RAB Playground tahap 1)
+
+Status: berlaku. Sumber: user, 2026-11-15 (tahap 1 D-093 disetujui: "Tahap 1 Playground", "lanjut").
+
+- Kata judul kolom dan label yang dikenali pembaca RAB kantor, pembaca kata header (D-090), dan formulir analisa
+  (D-091) adalah data profil (`rabProfileSchema`, `packages/shared/src/rab-profile.ts`), bukan regex di kode.
+  Profil bawaan (`RAB_BUILTIN_PROFILE`) menjawab sama persis dengan regex sebelumnya (test kesetaraan di
+  `rab-profile.spec.ts`); bentuk nomor (kode item, grup) dan label F kantor (`\s+`) tetap di kode.
+- Profil disimpan per proyek (`rab_mapping_profiles`). Baris tidak pernah diubah: menyimpan perubahan = baris baru.
+  Simpan manual selalu berasal MANUAL (klien tidak dapat mengaku BAWAAN/AI). Izin: `rabImport.review`.
+- Run impor boleh menyebut `mappingProfileId` milik proyek yang sama; run menyimpan FK dan snapshot JSON profil
+  (audit). Retry/remap membawa profil run lama. Snapshot divalidasi ulang saat diproses; yang tidak lolos skema
+  menggagalkan run (tidak jatuh diam-diam ke profil bawaan).
+- Belum: formulir analisa selalu memakai profil bawaan walau run memakai profil proyek; daftar kandidat sheet saat
+  upload memakai profil bawaan; tidak ada UI (tahap 2). Profil antar proyek (pertanyaan terbuka D-093 no. 2) belum.

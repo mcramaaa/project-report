@@ -114,6 +114,22 @@ export const rabProfileSchema = z.object({
 });
 export type RabProfile = z.infer<typeof rabProfileSchema>;
 
+/**
+ * D-094: saving a profile by hand. The server sets the origin (MANUAL): BAWAAN exists only in code and AI only comes
+ * from the assistant (stage 3), so a client cannot claim either.
+ */
+export const createRabProfileSchema = z.object({ profile: rabProfileSchema.omit({ origin: true }) });
+export type CreateRabProfileInput = z.infer<typeof createRabProfileSchema>;
+
+export interface RabProfileDto {
+  id: string;
+  name: string;
+  origin: RabProfileOrigin;
+  profile: RabProfile;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+}
+
 /** Built-in profile: exactly the words and match modes the readers used before profiles (D-044, D-051, D-091). */
 export const RAB_BUILTIN_PROFILE: RabProfile = {
   profileVersion: RAB_PROFILE_VERSION,

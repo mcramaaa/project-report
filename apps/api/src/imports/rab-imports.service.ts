@@ -17,6 +17,11 @@ import {
   rabColumnMapSchema,
   type RabColumnMap,
   type RemapRabImportInput,
+  RAB_BUILTIN_PROFILE,
+  rabProfileSchema,
+  type CreateRabProfileInput,
+  type RabProfile,
+  type RabProfileDto,
 } from '@laporan-proyek/shared';
 import { Decimal } from '@laporan-proyek/calc';
 import { AiClient } from '../ai/ai.client';
@@ -42,6 +47,19 @@ function columnMapOf(value: unknown): RabColumnMap | undefined {
   if (value === null || value === undefined) return undefined;
   const parsed = rabColumnMapSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
+}
+
+/** D-094: profile a run reads with; null snapshot = built-in. A snapshot that no longer parses fails the run. */
+function profileOf(snapshot: unknown): RabProfile {
+  if (snapshot === null || snapshot === undefined) return RAB_BUILTIN_PROFILE;
+  const parsed = rabProfileSchema.safeParse(snapshot);
+  if (!parsed.success) throw new DraftInputError('Profil pemetaan run ini tidak lagi valid; simpan ulang profil lalu buat impor baru.');
+  return parsed.data;
+}
+
+/** Stored profiles were validated on save (createProfile); runs re-validate their snapshot in profileOf. */
+function profileDto(r: { id: string; name: string; origin: RabProfileDto['origin']; profile: unknown; createdAt: Date; creator: { id: string; name: string } }): RabProfileDto {
+  return { id: r.id, name: r.name, origin: r.origin, profile: r.profile as RabProfile, createdBy: r.creator, createdAt: r.createdAt.toISOString() };
 }
 
 const USER_REF = { select: { id: true, name: true } } as const;
@@ -143,6 +161,10 @@ export class RabImportsService implements OnModuleInit {
       } else if (input.targetRevisionNumber !== undefined) {
         throw new BadRequestException('Nomor hanya untuk MC.');
       }
+      const mapping = input.mappingProfileId
+        ? await tx.rabMappingProfile.findFirst({ where: { id: input.mappingProfileId, projectId }, select: { id: true, profile: true } })
+        : null;
+      if (input.mappingProfileId && !mapping) throw new BadRequestException('Profil pemetaan tidak ditemukan di proyek ini.');
       const attempt = previousImportId ? ((await tx.rabImport.findUnique({ where: { id: previousImportId }, select: { attemptNumber: true } }))?.attemptNumber ?? 0) + 1 : 1;
       const created = await tx.rabImport.create({
         data: {
@@ -154,6 +176,8 @@ export class RabImportsService implements OnModuleInit {
           guideVersion: GUIDE_VERSION,
           parserVersion: PARSER_VERSION,
           createdBy: actor.id,
+          // Profiles are never updated, so the snapshot equals the referenced row; it is kept for audit (§8).
+          ...(mapping ? { mappingProfileId: mapping.id, mappingProfile: mapping.profile as Prisma.InputJsonValue } : {}),
           documents: {
             create: input.sources.map((s, i) => ({
               documentId: s.documentId,
@@ -171,7 +195,15 @@ export class RabImportsService implements OnModuleInit {
         entityType: 'RAB_IMPORT',
         entityId: created.id,
         projectId,
-        newValue: { targetVersionType: input.targetVersionType, targetRevisionNumber, sources: input.sources, previousImportId, attempt, guideVersion: GUIDE_VERSION },
+        newValue: {
+          targetVersionType: input.targetVersionType,
+          targetRevisionNumber,
+          sources: input.sources,
+          previousImportId,
+          attempt,
+          guideVersion: GUIDE_VERSION,
+          mappingProfileId: mapping?.id ?? null,
+        },
       });
       return created.id;
     });
@@ -186,7 +218,12 @@ export class RabImportsService implements OnModuleInit {
     return this.create(
       actor,
       projectId,
-      { targetVersionType: old.targetVersionType, targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined, sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap) })) },
+      {
+        targetVersionType: old.targetVersionType,
+        targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined,
+        sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap) })),
+        mappingProfileId: old.mappingProfileId ?? undefined,
+      },
       old.id,
     );
   }
@@ -220,6 +257,7 @@ export class RabImportsService implements OnModuleInit {
           rabSheet: d.rabSheet ?? undefined,
           columns: mapped.get(d.documentId) ?? columnMapOf(d.columnMap),
         })),
+        mappingProfileId: old.mappingProfileId ?? undefined,
       },
       old.id,
     );
@@ -254,6 +292,36 @@ export class RabImportsService implements OnModuleInit {
     });
   }
 
+  /** D-094: saved mapping profiles of the project, newest first. */
+  async listProfiles(projectId: string): Promise<RabProfileDto[]> {
+    const rows = await this.prisma.rabMappingProfile.findMany({ where: { projectId }, include: { creator: USER_REF }, orderBy: { createdAt: 'desc' } });
+    return rows.map(profileDto);
+  }
+
+  /** D-094: saves a profile by hand as a new row (origin MANUAL); existing rows are never changed. */
+  async createProfile(actor: AuthUser, projectId: string, input: CreateRabProfileInput): Promise<RabProfileDto> {
+    const profile: RabProfile = { ...input.profile, origin: 'MANUAL' };
+    const row = await this.prisma.$transaction(async (tx) => {
+      const project = await tx.project.findUnique({ where: { id: projectId }, select: { status: true } });
+      if (!project) throw new NotFoundException('Proyek tidak ditemukan.');
+      if (project.status === 'CLOSED') throw new ConflictException('Proyek sudah ditutup; profil tidak dapat disimpan.');
+      const created = await tx.rabMappingProfile.create({
+        data: { projectId, name: profile.name, origin: 'MANUAL', profile: profile as unknown as Prisma.InputJsonValue, createdBy: actor.id },
+        include: { creator: USER_REF },
+      });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'CREATE_RAB_MAPPING_PROFILE',
+        entityType: 'RAB_MAPPING_PROFILE',
+        entityId: created.id,
+        projectId,
+        newValue: { name: profile.name, origin: 'MANUAL', profileVersion: profile.profileVersion },
+      });
+      return created;
+    });
+    return profileDto(row);
+  }
+
   /** Waits for background processing (tests, seed). */
   async waitFor(importId: string): Promise<void> {
     await this.inflight.get(importId);
@@ -273,6 +341,7 @@ export class RabImportsService implements OnModuleInit {
     if (count === 0) return;
     const row = await this.prisma.rabImport.findUniqueOrThrow({ where: { id: importId }, include: IMPORT_INCLUDE });
     try {
+      const profile = profileOf(row.mappingProfile);
       const sources = [];
       for (const d of row.documents) {
         const workbook = await loadCompactWorkbook(documentPath(row.projectId, d.document.storedFilename));
@@ -292,6 +361,7 @@ export class RabImportsService implements OnModuleInit {
         targetRevisionNumber: row.targetRevisionNumber,
         officialAnalyses: [...official.values()] satisfies OfficialAnalysis[],
         previousItems: row.targetVersionType === 'CONTRACT' ? [] : await this.previousItems(row.projectId),
+        profile,
       });
       await this.suggestWithAi(importId, draft, [...official.values()]);
       // Schema validation of the structured draft before it is stored (flow: draft → schema validation).

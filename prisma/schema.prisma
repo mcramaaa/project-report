@@ -25,47 +25,48 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  sessions              AuthSession[]
-  memberships           ProjectUser[]        @relation("MembershipUser")
-  createdMemberships    ProjectUser[]        @relation("MembershipCreatedBy")
-  revokedMemberships    ProjectUser[]        @relation("MembershipRevokedBy")
-  globalRoles           UserGlobalRole[]     @relation("GlobalRoleUser")
-  createdGlobalRoles    UserGlobalRole[]     @relation("GlobalRoleCreatedBy")
-  revokedGlobalRoles    UserGlobalRole[]     @relation("GlobalRoleRevokedBy")
-  auditLogs             AuditLog[]
-  createdRabVersions    RabVersion[]         @relation("RabVersionCreatedBy")
-  createdBaselines      BaselineAssignment[] @relation("BaselineCreatedBy")
-  revokedBaselines      BaselineAssignment[] @relation("BaselineRevokedBy")
-  approvedRabVersions   RabVersion[]         @relation("RabVersionApprovedBy")
-  discardedRabVersions  RabVersion[]         @relation("RabVersionDiscardedBy")
-  uploadedDocuments     ProjectDocument[]
-  createdImports        RabImport[]          @relation("ImportCreatedBy")
-  approvedImports       RabImport[]          @relation("ImportApprovedBy")
-  rejectedImports       RabImport[]          @relation("ImportRejectedBy")
-  importDecisions       RabImportDecision[]
-  createdPriceLists     PriceList[]
-  priceDecisions        RabVersionItem[]     @relation("ItemPriceDecidedBy")
-  approvedSnapshots     RabVersionSnapshot[] @relation("SnapshotApprovedBy")
-  createdSnapshots      RabVersionSnapshot[] @relation("SnapshotCreatedBy")
-  createdSchedules      ScheduleVersion[]    @relation("ScheduleCreatedBy")
-  createdScenarios      ScheduleScenario[]   @relation("ScenarioCreatedBy")
-  updatedScenarios      ScheduleScenario[]   @relation("ScenarioUpdatedBy")
-  approvedSchedules     ScheduleVersion[]    @relation("ScheduleApprovedBy")
-  enteredProgress       WeeklyProgress[]     @relation("ProgressEnteredBy")
-  updatedProgress       WeeklyProgress[]     @relation("ProgressUpdatedBy")
-  createdDailyReports   DailyReport[]        @relation("DailyReportCreatedBy")
-  updatedDailyReports   DailyReport[]        @relation("DailyReportUpdatedBy")
-  finalizedDailyReports DailyReport[]        @relation("DailyReportFinalizedBy")
-  dailyAllocations      DailyAllocation[]    @relation("DailyAllocationUpdatedBy")
-  createdWorkers        Worker[]             @relation("WorkerCreatedBy")
-  updatedWorkers        Worker[]             @relation("WorkerUpdatedBy")
-  submittedWeekly       WeeklyReport[]       @relation("WeeklySubmittedBy")
-  reviewedWeekly        WeeklyReport[]       @relation("WeeklyReviewedBy")
-  finalizedWeekly       WeeklyReport[]       @relation("WeeklyFinalizedBy")
-  weeklySnapshots       WeeklyReportSnapshot[]
-  reportTemplates       ReportTemplate[]
-  reportLogos           ProjectLogo[]
-  reportWorkbooks       ReportWorkbook[]
+  sessions               AuthSession[]
+  memberships            ProjectUser[]          @relation("MembershipUser")
+  createdMemberships     ProjectUser[]          @relation("MembershipCreatedBy")
+  revokedMemberships     ProjectUser[]          @relation("MembershipRevokedBy")
+  globalRoles            UserGlobalRole[]       @relation("GlobalRoleUser")
+  createdGlobalRoles     UserGlobalRole[]       @relation("GlobalRoleCreatedBy")
+  revokedGlobalRoles     UserGlobalRole[]       @relation("GlobalRoleRevokedBy")
+  auditLogs              AuditLog[]
+  createdRabVersions     RabVersion[]           @relation("RabVersionCreatedBy")
+  createdBaselines       BaselineAssignment[]   @relation("BaselineCreatedBy")
+  revokedBaselines       BaselineAssignment[]   @relation("BaselineRevokedBy")
+  approvedRabVersions    RabVersion[]           @relation("RabVersionApprovedBy")
+  discardedRabVersions   RabVersion[]           @relation("RabVersionDiscardedBy")
+  uploadedDocuments      ProjectDocument[]
+  createdImports         RabImport[]            @relation("ImportCreatedBy")
+  approvedImports        RabImport[]            @relation("ImportApprovedBy")
+  rejectedImports        RabImport[]            @relation("ImportRejectedBy")
+  createdMappingProfiles RabMappingProfile[]    @relation("MappingProfileCreatedBy")
+  importDecisions        RabImportDecision[]
+  createdPriceLists      PriceList[]
+  priceDecisions         RabVersionItem[]       @relation("ItemPriceDecidedBy")
+  approvedSnapshots      RabVersionSnapshot[]   @relation("SnapshotApprovedBy")
+  createdSnapshots       RabVersionSnapshot[]   @relation("SnapshotCreatedBy")
+  createdSchedules       ScheduleVersion[]      @relation("ScheduleCreatedBy")
+  createdScenarios       ScheduleScenario[]     @relation("ScenarioCreatedBy")
+  updatedScenarios       ScheduleScenario[]     @relation("ScenarioUpdatedBy")
+  approvedSchedules      ScheduleVersion[]      @relation("ScheduleApprovedBy")
+  enteredProgress        WeeklyProgress[]       @relation("ProgressEnteredBy")
+  updatedProgress        WeeklyProgress[]       @relation("ProgressUpdatedBy")
+  createdDailyReports    DailyReport[]          @relation("DailyReportCreatedBy")
+  updatedDailyReports    DailyReport[]          @relation("DailyReportUpdatedBy")
+  finalizedDailyReports  DailyReport[]          @relation("DailyReportFinalizedBy")
+  dailyAllocations       DailyAllocation[]      @relation("DailyAllocationUpdatedBy")
+  createdWorkers         Worker[]               @relation("WorkerCreatedBy")
+  updatedWorkers         Worker[]               @relation("WorkerUpdatedBy")
+  submittedWeekly        WeeklyReport[]         @relation("WeeklySubmittedBy")
+  reviewedWeekly         WeeklyReport[]         @relation("WeeklyReviewedBy")
+  finalizedWeekly        WeeklyReport[]         @relation("WeeklyFinalizedBy")
+  weeklySnapshots        WeeklyReportSnapshot[]
+  reportTemplates        ReportTemplate[]
+  reportLogos            ProjectLogo[]
+  reportWorkbooks        ReportWorkbook[]
 
   @@index([isSystemAdmin, isActive])
   @@map("users")
@@ -120,6 +121,7 @@ model Project {
   workItems           WorkItem[]
   documents           ProjectDocument[]
   rabImports          RabImport[]
+  mappingProfiles     RabMappingProfile[]
   priceLists          PriceList[]
   analyses            AhspAnalysis[]
   schedules           ScheduleVersion[]
@@ -759,6 +761,32 @@ enum RabImportStatus {
   FAILED
 }
 
+enum RabProfileOrigin {
+  BAWAAN
+  MANUAL
+  AI
+}
+
+/// D-094: mapping profile of a project's RAB workbooks (RAB_PLAYGROUND §4). Rows are never updated: saving a
+/// changed profile creates a new row, so a run always points at the profile it read with.
+model RabMappingProfile {
+  id        String           @id @default(uuid(7)) @db.Char(36)
+  projectId String           @map("project_id") @db.Char(36)
+  name      String           @db.VarChar(120)
+  origin    RabProfileOrigin
+  /// Validated by the shared zod schema (rabProfileSchema).
+  profile   Json
+  createdBy String           @map("created_by") @db.Char(36)
+  createdAt DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  creator User        @relation("MappingProfileCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  imports RabImport[]
+
+  @@index([projectId, createdAt])
+  @@map("rab_mapping_profiles")
+}
+
 /// One import run of a document package into one target RAB version (D-048).
 model RabImport {
   id                   String          @id @default(uuid(7)) @db.Char(36)
@@ -786,19 +814,24 @@ model RabImport {
   deletedAt            DateTime?       @map("deleted_at") @db.DateTime(3)
   rabVersionId         String?         @map("rab_version_id") @db.Char(36)
   priceListId          String?         @unique @map("price_list_id") @db.Char(36)
+  /// D-094: saved mapping profile the run reads with; null = built-in profile.
+  mappingProfileId     String?         @map("mapping_profile_id") @db.Char(36)
+  /// D-094: snapshot of that profile (rabProfileSchema) taken at creation, for audit (RAB_PLAYGROUND §8).
+  mappingProfile       Json?           @map("mapping_profile")
 
-  project          Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  previousImport   RabImport?            @relation("ImportRetry", fields: [previousImportId], references: [id], onDelete: Restrict)
-  retries          RabImport[]           @relation("ImportRetry")
-  creator          User                  @relation("ImportCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
-  approver         User?                 @relation("ImportApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
-  rejecter         User?                 @relation("ImportRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict)
-  rabVersion       RabVersion?           @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
-  priceList        PriceList?            @relation("ImportPriceList", fields: [priceListId], references: [id], onDelete: Restrict)
-  documents        RabImportDocument[]
-  decisions        RabImportDecision[]
-  aiRuns           AiRun[]
-  analysisVersions AhspAnalysisVersion[]
+  project              Project               @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  mappingProfileSource RabMappingProfile?    @relation(fields: [mappingProfileId], references: [id], onDelete: Restrict)
+  previousImport       RabImport?            @relation("ImportRetry", fields: [previousImportId], references: [id], onDelete: Restrict)
+  retries              RabImport[]           @relation("ImportRetry")
+  creator              User                  @relation("ImportCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  approver             User?                 @relation("ImportApprovedBy", fields: [approvedBy], references: [id], onDelete: Restrict)
+  rejecter             User?                 @relation("ImportRejectedBy", fields: [rejectedBy], references: [id], onDelete: Restrict)
+  rabVersion           RabVersion?           @relation(fields: [rabVersionId], references: [id], onDelete: Restrict)
+  priceList            PriceList?            @relation("ImportPriceList", fields: [priceListId], references: [id], onDelete: Restrict)
+  documents            RabImportDocument[]
+  decisions            RabImportDecision[]
+  aiRuns               AiRun[]
+  analysisVersions     AhspAnalysisVersion[]
 
   @@index([projectId, status])
   @@map("rab_imports")
@@ -1013,18 +1046,18 @@ model AhspComponent {
 
 /// D-080: company-wide worker list. Deactivated, never deleted. KTP file is private under storage/workers/.
 model Worker {
-  id              String   @id @default(uuid(7)) @db.Char(36)
-  name            String   @db.VarChar(150)
-  position        String   @db.VarChar(150)
-  nik             String   @unique @db.Char(16)
-  ktpFilename     String?  @map("ktp_filename") @db.VarChar(64)
-  ktpMimeType     String?  @map("ktp_mime_type") @db.VarChar(100)
-  ktpFileSize     Int?     @map("ktp_file_size")
-  isActive        Boolean  @default(true) @map("is_active")
-  createdBy       String   @map("created_by") @db.Char(36)
-  updatedBy       String   @map("updated_by") @db.Char(36)
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  id          String   @id @default(uuid(7)) @db.Char(36)
+  name        String   @db.VarChar(150)
+  position    String   @db.VarChar(150)
+  nik         String   @unique @db.Char(16)
+  ktpFilename String?  @map("ktp_filename") @db.VarChar(64)
+  ktpMimeType String?  @map("ktp_mime_type") @db.VarChar(100)
+  ktpFileSize Int?     @map("ktp_file_size")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdBy   String   @map("created_by") @db.Char(36)
+  updatedBy   String   @map("updated_by") @db.Char(36)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   createdByUser User @relation("WorkerCreatedBy", fields: [createdBy], references: [id])
   updatedByUser User @relation("WorkerUpdatedBy", fields: [updatedBy], references: [id])

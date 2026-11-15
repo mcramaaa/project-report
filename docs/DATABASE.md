@@ -158,6 +158,16 @@ Satu run impor paket ke satu versi RAB tujuan.
 - created_by, created_at, updated_at, processed_at
 - approved_by, approved_at, rejected_by, rejected_at, reject_reason nullable
 - rab_version_id nullable → rab_versions (hasil), price_list_id nullable → price_lists (hasil)
+- mapping_profile_id nullable → rab_mapping_profiles, mapping_profile JSON nullable — snapshot profil yang dipakai run; null = profil bawaan (D-094)
+
+### rab_mapping_profiles
+
+Profil pemetaan workbook RAB per proyek (D-094). Baris tidak pernah diubah; simpan ulang = baris baru.
+
+- id, project_id → projects
+- name, origin — BAWAAN | MANUAL | AI
+- profile JSON — tervalidasi `rabProfileSchema`
+- created_by → users, created_at
 
 ### rab_import_documents
 

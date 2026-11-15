@@ -118,7 +118,7 @@ GET  /projects/:projectId/documents/:documentId/download  document.read
 
 ```text
 GET  /projects/:projectId/rab-imports                                  rabImport.review | rabImport.approve
-POST /projects/:projectId/rab-imports   { targetVersionType, sources: [{ documentId, role: RAB|SUPPORT, rabSheet? }] }   rabImport.review -> 201, status UPLOADED → diproses di latar
+POST /projects/:projectId/rab-imports   { targetVersionType, sources: [{ documentId, role: RAB|SUPPORT, rabSheet? }], mappingProfileId? }   rabImport.review -> 201, status UPLOADED → diproses di latar
 GET  /projects/:projectId/rab-imports/:importId                        rabImport.review | rabImport.approve -> { import, draft, issues, decisions, aiRuns, reconciliation, packageReview }
 POST /projects/:projectId/rab-imports/:importId/decisions  { rowKey, kind, value, reason? }   rabImport.review
 POST /projects/:projectId/rab-imports/:importId/confirm-proposals  { baseVersionId, token }   rabImport.review (D-065)
@@ -128,6 +128,8 @@ POST /projects/:projectId/rab-imports/:importId/remap                  rabImport
 DELETE /projects/:projectId/rab-imports/:importId                     rabImport.review -> 204, soft delete run belum digunakan (D-066)
 POST /projects/:projectId/rab-imports/:importId/approve                rabImport.approve
 POST /projects/:projectId/rab-imports/:importId/reject   { reason }    rabImport.approve
+GET  /projects/:projectId/rab-profiles                                 rabImport.review | rabImport.approve -> profil pemetaan proyek, terbaru dulu (D-094)
+POST /projects/:projectId/rab-profiles   { profile }                   rabImport.review -> 201, baris baru asal MANUAL (D-094)
 ```
 
 - `rabSheet` wajib bila dokumen RAB punya lebih dari satu kandidat sheet; dokumen `SUPPORT` tidak perlu sheet RAB (D-055)

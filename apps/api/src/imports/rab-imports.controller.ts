@@ -3,6 +3,8 @@ import {
   confirmProposalsSchema,
   type ConfirmProposalsInput,
   createRabImportSchema,
+  createRabProfileSchema,
+  type CreateRabProfileInput,
   rabImportDecisionsSchema,
   remapRabImportSchema,
   requiredReasonSchema,
@@ -17,6 +19,24 @@ import { ZodPipe } from '../common/zod.pipe';
 import { RabImportsService } from './rab-imports.service';
 
 const uuid = new ParseUUIDPipe({ errorHttpStatusCode: 404 });
+
+/** D-094: mapping profiles are part of reviewing imports (RAB_PLAYGROUND §8): rabImport.review. */
+@Controller('projects/:projectId/rab-profiles')
+export class RabProfilesController {
+  constructor(private readonly imports: RabImportsService) {}
+
+  @Get()
+  @RequireProjectPermission('rabImport.review', 'rabImport.approve')
+  list(@Param('projectId') projectId: string) {
+    return this.imports.listProfiles(projectId);
+  }
+
+  @Post()
+  @RequireProjectPermission('rabImport.review')
+  create(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Body(new ZodPipe(createRabProfileSchema)) body: CreateRabProfileInput) {
+    return this.imports.createProfile(auth.user, projectId, body);
+  }
+}
 
 /** D-048/D-049: review actions need rabImport.review; approval/rejection need rabImport.approve. */
 @Controller('projects/:projectId/rab-imports')

@@ -8,6 +8,7 @@ import type {
   EvidenceStep,
   ImportIssue,
   RabImportDraft,
+  RabProfile,
   RabVersionType,
 } from '@laporan-proyek/shared';
 import { GUIDE_VERSION } from './guide/rab-import-guide';
@@ -19,7 +20,7 @@ import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
 import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
-export const PARSER_VERSION = 'rab-parser@6'; // @6: header-word sheets + column mapping (D-090), Bina Marga/Cipta Karya analyses (D-091), HPS price formula (D-092); @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
+export const PARSER_VERSION = 'rab-parser@7'; // @7: RAB sheet header words from the mapping profile (D-094); @6: header-word sheets + column mapping (D-090), Bina Marga/Cipta Karya analyses (D-091), HPS price formula (D-092); @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
 
 export interface DraftSource {
   model: WorkbookModel;
@@ -59,6 +60,12 @@ export interface DraftContext {
   officialAnalyses: OfficialAnalysis[];
   /** Items of the latest approved RAB version, for work item candidates of non-contract imports. */
   previousItems: PreviousItem[];
+  /**
+   * D-094: mapping profile for the RAB sheets; absent = built-in profile.
+   * shortcut: analysis blocks always read with the built-in profile; thread it into analysis-block.ts when a project
+   * needs its own analysis form words.
+   */
+  profile?: RabProfile;
 }
 
 /** Input problems the user fixes by choosing differently (sheet, block); the run becomes FAILED. */
@@ -169,7 +176,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       if (sheets.length === 0) issues.push({ code: 'SUPPORT_WITHOUT_ANALYSIS', severity: 'WARNING', message: `${src.filename}: tidak ditemukan blok analisa; dokumen tetap tersimpan sebagai sumber.` });
       return;
     }
-    const candidates = rabSheetCandidates(src.model);
+    const candidates = rabSheetCandidates(src.model, ctx.profile);
     const sheetName = src.rabSheet ?? (candidates.length === 1 ? candidates[0] : undefined);
     if (!sheetName) {
       throw new DraftInputError(
@@ -180,7 +187,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     }
     let sheet;
     try {
-      sheet = readRabSheet(src.model, sheetName, ctx.targetVersionType, ctx.targetRevisionNumber ?? 0, src.columns);
+      sheet = readRabSheet(src.model, sheetName, ctx.targetVersionType, ctx.targetRevisionNumber ?? 0, src.columns, ctx.profile);
     } catch (err) {
       if (err instanceof RabSheetError) throw new DraftInputError(`${src.filename}: ${err.message}`);
       throw err;

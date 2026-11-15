@@ -8,6 +8,7 @@ import { Client, startApp, type TestApp } from '../test/http';
 import { checkPackageIsolation, copyAnalysesIntoPackage, isIsolated } from '../ahsp/package';
 import { GUIDE_VERSION } from './guide/rab-import-guide';
 import { RabImportsService } from './rab-imports.service';
+import { RAB_BUILTIN_PROFILE } from '@laporan-proyek/shared';
 import { analysisBlock, rabSheet, recap, recapLookup, xlsxOf } from './test-workbook';
 
 let t: TestApp;
@@ -1447,5 +1448,65 @@ describe('sheets read by header words and the reviewer column mapping (D-090)', 
     expect(approved.status, JSON.stringify(approved.body)).toBe(200);
     const versions = (await admin.get(`/projects/${project.id}/rab-versions`)).body as { id: string; totals: { realCost: string } }[];
     expect(versions.find((v) => v.id === approved.body.import.rabVersionId)!.totals.realCost).toBe('19430550.00');
+  });
+});
+
+describe('mapping profiles (D-094)', () => {
+  /** BOQ whose quantity column is titled "Banyaknya": only a project profile knows that word. */
+  const boq = () => ({
+    B3: 'No. Mata Pembayaran', D3: 'Uraian', E3: 'Satuan', F3: 'Banyaknya', G3: 'Harga Satuan', H3: 'Jumlah Harga',
+    B4: '1.2', D4: 'Mobilisasi', E4: 'LS', F4: 1, G4: 2500000, H4: ['F4*G4', 2500000] as [string, number],
+    B5: '1.3', D5: 'Pengukuran', E5: 'LS', F5: 2, G5: 750000, H5: ['F5*G5', 1500000] as [string, number],
+  });
+  const profileBody = () => ({
+    profile: {
+      ...RAB_BUILTIN_PROFILE,
+      name: 'BOQ dinas',
+      headerless: { ...RAB_BUILTIN_PROFILE.headerless, quantity: [{ match: 'PREFIX', words: ['BANYAKNYA'] }] },
+    },
+  });
+
+  it('saves a profile (review permission, validated, always MANUAL) and reads a run with it', async () => {
+    const doc = await upload(admin, 'boq.xlsx', await xlsxOf({ BOQ: boq() }));
+    const builtIn = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }] });
+    expect(builtIn.import.status).toBe('FAILED');
+
+    const profiles = `/projects/${project.id}/rab-profiles`;
+    const filler = await member('FILLER');
+    expect((await filler.post(profiles, profileBody())).status).toBe(403);
+    const lowercase = profileBody();
+    lowercase.profile.headerless.quantity = [{ match: 'PREFIX', words: ['Banyaknya'] }];
+    expect((await admin.post(profiles, lowercase)).status).toBe(400);
+
+    // A client cannot claim BAWAAN/AI: the origin it sends is dropped and the server stores MANUAL.
+    const saved = await admin.post(profiles, { profile: { ...profileBody().profile, origin: 'AI' } });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    expect(saved.body).toMatchObject({ name: 'BOQ dinas', origin: 'MANUAL', profile: { origin: 'MANUAL' }, createdBy: { id: adminId } });
+    expect((await admin.get(profiles)).body.map((p: { id: string }) => p.id)).toEqual([saved.body.id]);
+    expect(await t.prisma.auditLog.count({ where: { action: 'CREATE_RAB_MAPPING_PROFILE', entityId: saved.body.id } })).toBe(1);
+
+    const run = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], mappingProfileId: saved.body.id });
+    expect(run.import.status, run.import.errorMessage).toBe('NEEDS_REVIEW');
+    expect(run.draft.sources[0].columns).toMatchObject({ code: 2, description: 4, unit: 5, quantity: 6, price: 7, amount: 8 });
+    expect(run.draft.rows.filter((r: { rowType: string }) => r.rowType === 'ITEM').map((r: { volume: string }) => r.volume)).toEqual(['1', '2']);
+    // The run keeps a snapshot of the profile it read with (audit, RAB_PLAYGROUND §8).
+    const row = await t.prisma.rabImport.findUniqueOrThrow({ where: { id: run.import.id } });
+    expect(row).toMatchObject({ mappingProfileId: saved.body.id, mappingProfile: saved.body.profile });
+
+    // A remap is a new run of the same documents: it reads with the same profile.
+    const remap = await admin.post(`${base}/${run.import.id}/remap`, { sources: [{ documentId: doc.id, columns: run.draft.sources[0].columns }] });
+    expect(remap.status, JSON.stringify(remap.body)).toBe(201);
+    await t.app.get(RabImportsService).waitFor(remap.body.id);
+    expect(await t.prisma.rabImport.findUniqueOrThrow({ where: { id: remap.body.id } })).toMatchObject({ status: 'NEEDS_REVIEW', mappingProfileId: saved.body.id });
+  });
+
+  it('refuses a profile of another project', async () => {
+    const other = await createProject(t.prisma, 'IMP-002');
+    const saved = await admin.post(`/projects/${other.id}/rab-profiles`, profileBody());
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    const doc = await upload(admin, 'boq-other.xlsx', await xlsxOf({ BOQ: boq() }));
+    const res = await admin.post(base, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], mappingProfileId: saved.body.id });
+    expect(res.status).toBe(400);
+    expect(await t.prisma.rabImport.count({ where: { projectId: project.id } })).toBe(0);
   });
 });

@@ -72,5 +72,6 @@ export const AUDIT_ACTIONS = [
   'APPROVE_RAB_IMPORT',
   'REJECT_RAB_IMPORT',
   'DELETE_RAB_IMPORT',
+  'CREATE_RAB_MAPPING_PROFILE',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
