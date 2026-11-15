@@ -1637,3 +1637,18 @@ Status: berlaku. Sumber: user, 2026-11-15 (tahap 1 D-093 disetujui: "Tahap 1 Pla
   profil bawaan); run impor hanya memakai profil tersimpan.
 - Belum: daftar kandidat sheet di halaman unggah tetap memakai profil bawaan; profil antar proyek (pertanyaan terbuka
   D-093 no. 2); asisten AI (tahap 3).
+
+## D-095 Asisten AI profil pemetaan (RAB Playground tahap 3)
+
+Status: berlaku. Sumber: user, 2026-11-15 (jawaban pertanyaan terbuka D-093 no. 1 dan 3: data ke AI = "Judul + rumus di
+sekitar masalah"; anggaran = "Tanpa batas di aplikasi").
+
+- `POST /projects/:id/rab-profiles/assist` (`rabImport.review`): mesin membaca dulu dengan profil sekarang; asisten
+  menerima pesan reviewer, aturan profil, hasil mesin, daftar sheet, 40 baris pertama sheet terkait, dan rumus/nilai baris
+  bermasalah, dibatasi `ASSIST_CONTEXT_CHARS` (24.000 karakter) per permintaan. Workbook utuh tidak dikirim.
+- Asisten hanya mengusulkan kata per role dengan alamat sel yang memuatnya. Sistem membuktikan: teks sel (sendiri atau
+  judul dua baris seperti pembaca) cocok dengan kata dan cara cocoknya; kata hanya ditambahkan, role tunggal tidak berubah
+  cara cocok. Usulan yang tidak terbukti dikembalikan dengan alasan. Hasil dipratinjau ulang dengan pembaca biasa.
+- Asisten tidak menyimpan profil dan tidak membuat run; reviewer memakai usulan di editor lalu menyimpan sendiri.
+- Setiap percobaan dicatat di `rab_profile_ai_runs` beserta isi yang dikirim (audit data keluar). Tidak ada batas token
+  di aplikasi; biaya dibatasi oleh 9router. Tanpa konfigurasi 9router endpoint menjawab 409.

@@ -5,7 +5,8 @@ Pembaca RAB kantor (`rab-sheet.ts`), pembaca berdasarkan kata header (`headerles
 kantor/Bina Marga (`analysis-block.ts`) sudah membaca kata header dan label dari profil. Profil disimpan per proyek
 dan dipilih per run impor (D-094, `/rab-profiles`, `mappingProfileId`) untuk sheet RAB dan formulir analisa. Tahap 2 berjalan:
 halaman `Impor RAB → Profil pemetaan` (pilih dokumen dan semua sheet, editor profil, pratinjau tanpa menyimpan dan
-tanpa AI, simpan profil, buat run impor dengan profil); form impor biasa dapat memilih profil tersimpan. `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
+tanpa AI, simpan profil, buat run impor dengan profil); form impor biasa dapat memilih profil tersimpan. Tahap 3 berjalan (D-095): panel Asisten AI di playground mengusulkan kata
+per role dengan sel buktinya; sistem membuktikan dan mempratinjau ulang; reviewer yang memakai dan menyimpan. `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
 menjawab sama persis dengan regex lama.
 
 ## 1. Masalah
@@ -108,6 +109,6 @@ lewat combo 9router).
 
 ## 10. Pertanyaan terbuka
 
-1. Persetujuan mengirim potongan isi workbook ke penyedia model eksternal lewat 9router (bagian 6).
+1. Persetujuan mengirim potongan isi workbook ke penyedia model eksternal lewat 9router (bagian 6). **Dijawab 2026-11-15: ya, sesuai bagian 6 (D-095).**
 2. Cakupan profil: per proyek saja, atau bisa dibagikan antar proyek dalam satu instansi?
-3. Batas biaya: anggaran token per sesi playground.
+3. Batas biaya: anggaran token per sesi playground. **Dijawab 2026-11-15: tanpa batas di aplikasi (D-095).**

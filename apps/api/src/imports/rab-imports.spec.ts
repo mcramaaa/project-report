@@ -1526,6 +1526,52 @@ describe('mapping profiles (D-094)', () => {
     expect(await t.prisma.rabMappingProfile.count({ where: { projectId: project.id } })).toBe(0);
   });
 
+  it('assistant: proves proposed words against cells, previews with them, records what was sent (D-095)', async () => {
+    const doc = await upload(admin, 'boq-assist.xlsx', await xlsxOf({ BOQ: boq() }));
+    const assist = `/projects/${project.id}/rab-profiles/assist`;
+    const body = { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], profile: RAB_BUILTIN_PROFILE, message: 'Kuantitas tidak terbaca' };
+    // The mock answers only when the sheet head reached it; one proposal cites the right cell, one a wrong cell.
+    aiReply = (content) =>
+      content.includes('BOQ!F3: Banyaknya')
+        ? {
+            reply: 'Judul kuantitas di BOQ!F3 adalah "Banyaknya".',
+            changes: [
+              { role: 'headerless.quantity', match: 'PREFIX', words: [{ word: 'BANYAKNYA', cell: 'BOQ!F3' }], reason: 'judul kolom F' },
+              { role: 'headerless.code', match: 'PREFIX', words: [{ word: 'KODE BARANG', cell: 'BOQ!B3' }], reason: 'tebakan' },
+            ],
+          }
+        : null;
+
+    const filler = await member('FILLER');
+    expect((await filler.post(assist, body)).status).toBe(403);
+
+    const res = await admin.post(assist, body);
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body).toMatchObject({
+      reply: expect.stringContaining('BOQ!F3'),
+      model: 'mock-primary',
+      accepted: [{ role: 'headerless.quantity', words: ['BANYAKNYA'], cells: ['BOQ!F3'] }],
+      rejected: [{ role: 'headerless.code', words: ['KODE BARANG'], reason: expect.stringContaining('BOQ!B3') }],
+      before: null,
+      after: { error: null, counts: { items: 2, direct: 2 } },
+      sent: { sheets: ['BOQ'] },
+    });
+    expect(res.body.profile.headerless.quantity).toContainEqual({ match: 'PREFIX', words: ['BANYAKNYA'] });
+
+    // What left the server is kept; the assistant never saves a profile or creates a run.
+    const runs = await t.prisma.rabProfileAiRun.findMany({ where: { projectId: project.id } });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ createdBy: adminId, status: 'SUCCEEDED', instructionVersion: 'rab-profile-assist@1' });
+    expect((runs[0]!.request as { content: string; characters: number }).content).toContain('BOQ!F3: Banyaknya');
+    expect(await t.prisma.rabMappingProfile.count({ where: { projectId: project.id } })).toBe(0);
+    expect(await t.prisma.rabImport.count({ where: { projectId: project.id } })).toBe(0);
+
+    // No valid answer: 502, and every failed attempt is still recorded.
+    aiReply = () => null;
+    expect((await admin.post(assist, body)).status).toBe(502);
+    expect(await t.prisma.rabProfileAiRun.count({ where: { projectId: project.id, status: 'FAILED' } })).toBe(2);
+  });
+
   it('refuses a profile of another project', async () => {
     const other = await createProject(t.prisma, 'IMP-002');
     const saved = await admin.post(`/projects/${other.id}/rab-profiles`, profileBody());

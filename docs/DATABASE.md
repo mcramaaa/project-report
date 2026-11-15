@@ -169,6 +169,15 @@ Profil pemetaan workbook RAB per proyek (D-094). Baris tidak pernah diubah; simp
 - profile JSON — tervalidasi `rabProfileSchema`
 - created_by → users, created_at
 
+### rab_profile_ai_runs
+
+Satu percobaan asisten profil pemetaan (D-095).
+
+- id, project_id → projects, created_by → users
+- instruction_version, model, attempt, status — SUCCEEDED | FAILED, error nullable
+- request JSON — pesan reviewer, sheet, jumlah karakter, dan isi yang dikirim ke model
+- response JSON nullable, started_at, finished_at
+
 ### rab_import_documents
 
 - import_id → rab_imports, document_id → project_documents (PK keduanya)

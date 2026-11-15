@@ -3,11 +3,14 @@
 import {
   MC_MAX_NUMBER,
   RAB_BUILTIN_PROFILE,
+  RAB_PROFILE_ROLES,
+  RAB_PROFILE_SECTIONS,
   WORD_MATCHES,
   rabProfileSchema,
   type DocumentDto,
   type RabImportSummaryDto,
   type RabProfile,
+  type RabProfileAssistDto,
   type RabProfileDto,
   type RabProfilePreviewDto,
   type RabVersionType,
@@ -26,7 +29,6 @@ import { formatDate, formatRupiah } from '@/lib/project-fields';
 
 type Editable = Omit<RabProfile, 'origin'>;
 type Source = { role: 'RAB' | 'SUPPORT'; sheet: string; sheets: string[] | null };
-type Role = { path: string[]; label: string; many?: true };
 
 const MATCH_LABEL: Record<WordMatch, string> = {
   EXACT: 'Sama persis',
@@ -35,85 +37,6 @@ const MATCH_LABEL: Record<WordMatch, string> = {
   CONTAINS: 'Memuat',
 };
 
-const role = (path: string, label: string, many?: true): Role => ({ path: path.split('.'), label, many });
-const SECTIONS: { title: string; description: string; roles: Role[] }[] = [
-  {
-    title: 'Sheet RAB kantor',
-    description: 'Sheet dengan judul kolom VOLUME dan NO. ANALISA.',
-    roles: [
-      role('rab.no', 'Kolom NO'),
-      role('rab.volume', 'Kolom volume'),
-      role('rab.analysis', 'Kolom no. analisa'),
-      role('rab.description', 'Kolom uraian'),
-      role('rab.unit', 'Kolom satuan'),
-      role('rab.price', 'Kolom harga (yang juga memuat kata PPN = harga + PPN)'),
-      role('rab.tax', 'Kolom PPN'),
-      role('rab.amount', 'Kolom jumlah'),
-      role('rab.totalLabels', 'Label baris total'),
-      role('rab.grandTotal', 'Label total akhir'),
-      role('rab.bareTotal', 'Label total tanpa keterangan'),
-      role('rab.rounded', 'Label dibulatkan'),
-    ],
-  },
-  {
-    title: 'Sheet berdasarkan kata header (HPS/BOQ)',
-    description: 'Sheet tanpa VOLUME dan NO. ANALISA. Kolom cocok bila salah satu aturannya cocok; kolom paling kanan dipakai.',
-    roles: [
-      role('headerless.code', 'Kolom kode / no. mata pembayaran', true),
-      role('headerless.description', 'Kolom uraian', true),
-      role('headerless.unit', 'Kolom satuan', true),
-      role('headerless.quantity', 'Kolom kuantitas', true),
-      role('headerless.price', 'Kolom harga satuan', true),
-      role('headerless.amount', 'Kolom jumlah', true),
-      role('headerless.division', 'Label baris divisi'),
-    ],
-  },
-  {
-    title: 'Formulir analisa kantor',
-    description: 'Baris judul tepat di bawah kepala analisa.',
-    roles: [
-      role('analysisForm.office.no', 'Kolom NO'),
-      role('analysisForm.office.description', 'Kolom uraian'),
-      role('analysisForm.office.unit', 'Kolom satuan'),
-      role('analysisForm.office.coefficient', 'Kolom koefisien'),
-      role('analysisForm.office.price', 'Kolom harga satuan'),
-      role('analysisForm.office.amount', 'Kolom jumlah harga'),
-    ],
-  },
-  {
-    title: 'Formulir analisa Bina Marga',
-    description: 'Baris judul diawali KOMPONEN; judul boleh dua baris.',
-    roles: [
-      role('analysisForm.binaMarga.component', 'Kolom komponen'),
-      role('analysisForm.binaMarga.unit', 'Kolom satuan'),
-      role('analysisForm.binaMarga.quantity', 'Kolom kuantitas'),
-      role('analysisForm.binaMarga.quantityFallback', 'Kolom kuantitas cadangan'),
-      role('analysisForm.binaMarga.price', 'Kolom harga satuan'),
-      role('analysisForm.binaMarga.amount', 'Kolom jumlah harga'),
-      role('analysisForm.binaMarga.totalRow', 'Label baris harga analisa'),
-    ],
-  },
-  {
-    title: 'Judul blok analisa',
-    description: 'Label di atas blok Bina Marga; nilainya ada di sel sebelah kanan.',
-    roles: [
-      role('analysisForm.title.code', 'Label kode'),
-      role('analysisForm.title.name', 'Label nama pekerjaan'),
-      role('analysisForm.title.unit', 'Label satuan'),
-      role('analysisForm.title.formLabels', 'Label formulir (bukan nilai judul)'),
-    ],
-  },
-  {
-    title: 'Kategori komponen',
-    description: 'Baris kategori di atas komponen analisa.',
-    roles: [
-      role('analysisForm.categories.LABOR', 'Tenaga'),
-      role('analysisForm.categories.MATERIAL', 'Bahan'),
-      role('analysisForm.categories.EQUIPMENT', 'Alat'),
-    ],
-  },
-];
-const ROLES = SECTIONS.flatMap((s) => s.roles);
 const editableSchema = rabProfileSchema.omit({ origin: true });
 
 /** A copy to edit; starting from the built-in profile leaves the name empty so a saved copy is never "Bawaan". */
@@ -168,6 +91,10 @@ export function ProfilePlayground({
   const [target, setTarget] = useState<RabVersionType>('CONTRACT');
   const [mcNumber, setMcNumber] = useState('');
   const [preview, setPreview] = useState<RabProfilePreviewDto>();
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState<RabProfileAssistDto>();
+  /** Shown in the assistant panel, where the reviewer is looking. */
+  const [assistError, setAssistError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string }>();
 
@@ -178,7 +105,7 @@ export function ProfilePlayground({
     : check.error.issues
         .filter((i) => i.path[0] !== 'name')
         .map((i) => {
-          const r = ROLES.find((x) => x.path.every((k, n) => i.path[n] === k));
+          const r = RAB_PROFILE_ROLES.find((x) => x.path.split('.').every((k, n) => i.path[n] === k));
           return `${r?.label ?? (i.path.join('.') || 'Profil')}: ${i.code === 'too_small' ? 'isi minimal satu kata' : i.message}`;
         });
   const nameMissing = profile.name.trim() === '';
@@ -246,6 +173,28 @@ export function ProfilePlayground({
     act(async () => {
       setPreview(await api<RabProfilePreviewDto>('POST', `/projects/${projectId}/rab-profiles/preview`, { ...runBody(), profile }));
     });
+
+  async function ask() {
+    setBusy(true);
+    setAssistError(undefined);
+    setAnswer(undefined);
+    try {
+      setAnswer(await api<RabProfileAssistDto>('POST', `/projects/${projectId}/rab-profiles/assist`, { ...runBody(), profile, message: question }));
+    } catch (err) {
+      setAssistError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Only words the system proved reach the editor; the reviewer still saves the profile. */
+  function applyAnswer(a: RabProfileAssistDto) {
+    setProfile({ ...a.profile, name: profile.name });
+    setDirty(true);
+    setPreview(a.after);
+    setAnswer(undefined);
+    setRevision((n) => n + 1);
+  }
 
   const save = () =>
     act(async () => {
@@ -346,6 +295,37 @@ export function ProfilePlayground({
       </Section>
 
       <Section
+        title="Asisten AI"
+        description="Tanyakan kenapa kolom tidak terbaca atau beri petunjuk; asisten hanya mengusulkan kata, sistem membuktikannya."
+        id="pg-assist"
+      >
+        <div className="space-y-3">
+          <Alert kind="warning">
+            Pertanyaan ini mengirim ke model AI lewat 9router (penyedia eksternal): daftar sheet, 40 baris pertama sheet
+            terpilih, rumus dan nilai di baris bermasalah, ringkasan masalah, dan aturan profil. Workbook utuh tidak dikirim;
+            setiap kiriman dicatat.
+          </Alert>
+          <div>
+            <label htmlFor="pg-question" className="field-label">Pertanyaan atau petunjuk</label>
+            <textarea
+              id="pg-question"
+              className="field"
+              rows={3}
+              maxLength={2000}
+              placeholder="mis. Kolom volume di sheet BOQ berjudul Banyaknya"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+            />
+          </div>
+          <Button disabled={busy || chosen.length === 0 || problems.length > 0 || question.trim() === ''} onClick={ask}>
+            Tanya asisten
+          </Button>
+          {assistError && <Alert>{assistError}</Alert>}
+          {answer && <AssistAnswer answer={answer} onApply={() => applyAnswer(answer)} />}
+        </div>
+      </Section>
+
+      <Section
         title="Profil pemetaan"
         description="Kata judul kolom dan label yang dicari pembaca. Pisahkan beberapa kata dengan koma."
         id="pg-profile"
@@ -377,18 +357,19 @@ export function ProfilePlayground({
               <p id="pg-name-hint" className="field-hint">Wajib diisi untuk menyimpan.</p>
             </div>
           </div>
-          {SECTIONS.map((section) => (
+          {RAB_PROFILE_SECTIONS.map((section) => (
             <fieldset key={section.title} className="profile-section">
               <legend className="font-semibold">{section.title}</legend>
               <p className="field-hint">{section.description}</p>
               {section.roles.map((r) => {
-                const id = r.path.join('-');
+                const path = r.path.split('.');
+                const id = path.join('-');
                 if (!r.many) {
                   return (
-                    <MatcherRow key={`${revision}-${id}`} id={id} label={r.label} matcher={getAt(profile, r.path) as WordMatcher} onChange={(m) => edit(r.path, m)} />
+                    <MatcherRow key={`${revision}-${id}`} id={id} label={r.label} matcher={getAt(profile, path) as WordMatcher} onChange={(m) => edit(path, m)} />
                   );
                 }
-                const list = getAt(profile, r.path) as WordMatcher[];
+                const list = getAt(profile, path) as WordMatcher[];
                 return (
                   <div key={`${revision}-${id}-${list.length}`} className="profile-role">
                     {list.map((m, n) => (
@@ -397,11 +378,11 @@ export function ProfilePlayground({
                         id={`${id}-${n}`}
                         label={n === 0 ? r.label : `${r.label} (aturan ${n + 1})`}
                         matcher={m}
-                        onChange={(next) => edit(r.path, list.map((x, k) => (k === n ? next : x)))}
-                        onRemove={list.length > 1 ? () => edit(r.path, list.filter((_, k) => k !== n)) : undefined}
+                        onChange={(next) => edit(path, list.map((x, k) => (k === n ? next : x)))}
+                        onRemove={list.length > 1 ? () => edit(path, list.filter((_, k) => k !== n)) : undefined}
                       />
                     ))}
-                    <Button type="button" variant="secondary" className="btn-compact" onClick={() => edit(r.path, [...list, { match: 'PREFIX', words: [] }])}>
+                    <Button type="button" variant="secondary" className="btn-compact" onClick={() => edit(path, [...list, { match: 'PREFIX', words: [] }])}>
                       Tambah aturan {r.label.toLowerCase()}
                     </Button>
                   </div>
@@ -492,6 +473,52 @@ function MatcherRow({
         </Button>
       ) : (
         <span />
+      )}
+    </div>
+  );
+}
+
+function AssistAnswer({ answer, onApply }: { answer: RabProfileAssistDto; onApply: () => void }) {
+  const { before, after } = answer;
+  const summary = (c: RabProfilePreviewDto['counts']) => `${c.items} item, ${c.analysis} tertaut analisa, ${c.direct} harga langsung`;
+  return (
+    <div className="panel form-panel space-y-3" aria-live="polite">
+      <p className="text-sm">{answer.reply}</p>
+      {answer.accepted.length > 0 && (
+        <div>
+          <p className="field-label">Usulan terbukti</p>
+          <ul className="list-disc pl-5 text-sm">
+            {answer.accepted.map((a) => (
+              <li key={`${a.role}-${a.words.join()}`}>
+                {a.label}: {a.words.join(', ')} ({MATCH_LABEL[a.match].toLowerCase()}) · sel {a.cells.join(', ')}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {answer.rejected.length > 0 && (
+        <div>
+          <p className="field-label">Usulan ditolak sistem</p>
+          <ul className="list-disc pl-5 text-sm">
+            {answer.rejected.map((r, n) => (
+              <li key={n}>
+                {r.words.join(', ')} · {r.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <p className="text-sm">
+        Sebelum: {before ? summary(before) : 'pembaca berhenti'} · Dengan usulan:{' '}
+        {after.error ? `pembaca berhenti (${after.error})` : summary(after.counts)}
+      </p>
+      <p className="field-hint">
+        Terkirim {answer.sent.characters.toLocaleString('id-ID')} karakter dari sheet {answer.sent.sheets.join(', ') || '—'} · model {answer.model}
+      </p>
+      {answer.accepted.length > 0 && (
+        <Button variant="secondary" onClick={onApply}>
+          Pakai usulan di editor
+        </Button>
       )}
     </div>
   );

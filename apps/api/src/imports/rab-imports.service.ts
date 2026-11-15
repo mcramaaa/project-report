@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import {
   latestInDomainOrder,
   mcNumberError,
@@ -25,6 +25,8 @@ import {
   type RabProfile,
   type RabProfileDto,
   type RabProfilePreviewDto,
+  type AssistRabProfileInput,
+  type RabProfileAssistDto,
   type RabVersionType,
   type SourceLocator,
 } from '@laporan-proyek/shared';
@@ -37,7 +39,9 @@ import { documentPath } from '../documents/documents.service';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextWorkItemNumber, RabService, workItemCode } from '../rab/rab.service';
-import { buildDraft, DraftInputError, looseText, PARSER_VERSION, type OfficialAnalysis } from './build-draft';
+import { buildDraft, DraftInputError, looseText, PARSER_VERSION, type DraftSource, type OfficialAnalysis } from './build-draft';
+import { assistContext, proveChanges, type EditableProfile } from './profile-assist';
+import { PROFILE_ASSIST_INSTRUCTION, PROFILE_ASSIST_RESPONSE_FORMAT, PROFILE_ASSIST_VERSION, profileAssistResponseSchema } from './guide/profile-assist-guide';
 import { blockingIssues, evaluateImport, latestDecisions, type DecisionRecord, type OfficialVersion } from './evaluate';
 import { proposePackage, type BaseItem } from './proposals';
 import { AI_CANDIDATE_RESPONSE_FORMAT, aiCandidateResponseSchema, GUIDE_VERSION, SYSTEM_INSTRUCTION } from './guide/rab-import-guide';
@@ -297,15 +301,12 @@ export class RabImportsService implements OnModuleInit {
     });
   }
 
-  /** Reads the documents and builds the draft exactly as a run does (processing and the profile preview). */
-  private async draftFor(
+  /** Loads the documents' workbooks as a run reads them. */
+  private async loadSources(
     projectId: string,
     docs: { documentId: string; role: 'RAB' | 'SUPPORT'; rabSheet?: string; columns?: RabColumnMap; document: { originalFilename: string; sha256: string; storedFilename: string } }[],
-    targetVersionType: RabVersionType,
-    targetRevisionNumber: number,
-    profile: RabProfile,
-  ): Promise<{ draft: RabImportDraft; official: Map<string, OfficialVersion> }> {
-    const sources = [];
+  ): Promise<DraftSource[]> {
+    const sources: DraftSource[] = [];
     for (const d of docs) {
       const workbook = await loadCompactWorkbook(documentPath(projectId, d.document.storedFilename));
       sources.push({
@@ -318,6 +319,17 @@ export class RabImportsService implements OnModuleInit {
         columns: d.columns,
       });
     }
+    return sources;
+  }
+
+  /** Builds the draft exactly as a run does (processing, the profile preview and the assistant). */
+  private async draftFor(
+    projectId: string,
+    sources: DraftSource[],
+    targetVersionType: RabVersionType,
+    targetRevisionNumber: number,
+    profile: RabProfile,
+  ): Promise<{ draft: RabImportDraft; official: Map<string, OfficialVersion> }> {
     const official = await this.officialVersions(projectId);
     const draft = buildDraft(sources, {
       targetVersionType,
@@ -329,11 +341,8 @@ export class RabImportsService implements OnModuleInit {
     return { draft, official };
   }
 
-  /**
-   * RAB_PLAYGROUND stage 2: what a run would read with an unsaved profile. Read-only: nothing is stored and AI is
-   * never called, so no workbook content leaves the server.
-   */
-  async previewProfile(projectId: string, input: PreviewRabProfileInput): Promise<RabProfilePreviewDto> {
+  /** Playground input: documents of this project (each once) and the MC number a run would get. */
+  private async playgroundSources(projectId: string, input: PreviewRabProfileInput): Promise<{ sources: DraftSource[]; mc: number }> {
     const ids = input.sources.map((s) => s.documentId);
     if (new Set(ids).size !== ids.length) throw new BadRequestException('Dokumen yang sama dipilih lebih dari sekali.');
     const docs = await this.prisma.projectDocument.findMany({ where: { id: { in: ids }, projectId }, select: { id: true, originalFilename: true, sha256: true, storedFilename: true } });
@@ -346,15 +355,24 @@ export class RabImportsService implements OnModuleInit {
     } else if (input.targetRevisionNumber !== undefined) {
       throw new BadRequestException('Nomor hanya untuk MC.');
     }
+    const sources = await this.loadSources(
+      projectId,
+      input.sources.map((s) => ({ documentId: s.documentId, role: s.role, rabSheet: s.rabSheet, columns: s.columns, document: byId.get(s.documentId)! })),
+    );
+    return { sources, mc };
+  }
+
+  /** What a run would read with `profile`; an input problem (no RAB sheet, unknown header) becomes `error`. */
+  private async previewWith(
+    projectId: string,
+    sources: DraftSource[],
+    targetVersionType: RabVersionType,
+    mc: number,
+    profile: EditableProfile,
+  ): Promise<RabProfilePreviewDto> {
     let built: Awaited<ReturnType<RabImportsService['draftFor']>>;
     try {
-      built = await this.draftFor(
-        projectId,
-        input.sources.map((s) => ({ documentId: s.documentId, role: s.role, rabSheet: s.rabSheet, columns: s.columns, document: byId.get(s.documentId)! })),
-        input.targetVersionType,
-        mc,
-        { ...input.profile, name: 'Pratinjau', origin: 'MANUAL' },
-      );
+      built = await this.draftFor(projectId, sources, targetVersionType, mc, { ...profile, name: 'Pratinjau', origin: 'MANUAL' });
     } catch (err) {
       if (!(err instanceof DraftInputError)) throw err;
       return { error: err.message, sources: [], counts: { items: 0, analysis: 0, direct: 0, unresolved: 0, none: 0, analyses: 0 }, reconciliation: null, issues: [] };
@@ -371,6 +389,72 @@ export class RabImportsService implements OnModuleInit {
       counts: { items: items.length, analysis: count('ANALYSIS'), direct: count('DIRECT'), unresolved: count('UNRESOLVED'), none: count('NONE'), analyses: draft.analyses.length },
       reconciliation: evaluation.reconciliation,
       issues: evaluation.issues.map((i) => ({ ...i, cell: cellOf(locators.get(i.rowKey ?? i.analysisKey ?? '')) })),
+    };
+  }
+
+  /**
+   * RAB_PLAYGROUND stage 2: what a run would read with an unsaved profile. Read-only: nothing is stored and AI is
+   * never called, so no workbook content leaves the server.
+   */
+  async previewProfile(projectId: string, input: PreviewRabProfileInput): Promise<RabProfilePreviewDto> {
+    const { sources, mc } = await this.playgroundSources(projectId, input);
+    return this.previewWith(projectId, sources, input.targetVersionType, mc, input.profile);
+  }
+
+  /**
+   * RAB_PLAYGROUND stage 3 (D-095): the machine reads first; the assistant sees the reviewer's message, the rules, the
+   * machine result, sheet heads and the formula surroundings of problem rows (within ASSIST_CONTEXT_CHARS) and proposes
+   * words with the cells that hold them. Only proven words reach the returned profile, which the reviewer may apply;
+   * the assistant never saves a profile. Every attempt is recorded with what was sent.
+   */
+  async assistProfile(actor: AuthUser, projectId: string, input: AssistRabProfileInput): Promise<RabProfileAssistDto> {
+    if (!this.ai) throw new ConflictException('Asisten AI belum dikonfigurasi di server (9router).');
+    const { sources, mc } = await this.playgroundSources(projectId, input);
+    const before = await this.previewWith(projectId, sources, input.targetVersionType, mc, input.profile);
+    const machine = before.error
+      ? `Pembaca berhenti: ${before.error}`
+      : [
+          `Item ${before.counts.items}, tertaut analisa ${before.counts.analysis}, harga langsung ${before.counts.direct}, belum tertaut ${before.counts.unresolved + before.counts.none}, analisa terbaca ${before.counts.analyses}.`,
+          ...before.issues.slice(0, 20).map((i) => `${i.severity} ${i.code}${i.cell ? ` ${i.cell}` : ''}: ${i.message}`),
+        ].join('\n');
+    const context = assistContext({
+      sources: sources.map((s) => ({ model: s.model, filename: s.filename, role: s.role ?? 'RAB', rabSheet: s.rabSheet })),
+      profile: input.profile,
+      machine,
+      problemCells: before.issues.flatMap((i) => (i.cell ? [i.cell] : [])),
+      message: input.message,
+    });
+    const { result, model, attempts } = await this.ai.completeJson(profileAssistResponseSchema, [
+      { role: 'system', content: PROFILE_ASSIST_INSTRUCTION },
+      { role: 'user', content: `Format jawaban: ${PROFILE_ASSIST_RESPONSE_FORMAT}\n\n${context.text}` },
+    ]);
+    await this.prisma.rabProfileAiRun.createMany({
+      data: attempts.map((a) => ({
+        projectId,
+        createdBy: actor.id,
+        instructionVersion: PROFILE_ASSIST_VERSION,
+        model: a.model,
+        attempt: a.attempt,
+        status: a.status,
+        error: a.error,
+        request: { message: input.message, characters: context.characters, sheets: context.sheets, content: context.text },
+        response: (a.response ?? undefined) as Prisma.InputJsonValue | undefined,
+        startedAt: a.startedAt,
+        finishedAt: a.finishedAt,
+      })),
+    });
+    if (!result || !model) throw new BadGatewayException('Asisten AI tidak memberi jawaban yang valid; coba lagi.');
+    const proved = proveChanges(sources.map((s) => s.model), input.profile, result.changes);
+    const after = proved.accepted.length > 0 ? await this.previewWith(projectId, sources, input.targetVersionType, mc, proved.profile) : before;
+    return {
+      reply: result.reply,
+      model,
+      accepted: proved.accepted,
+      rejected: proved.rejected,
+      profile: proved.profile,
+      before: before.error ? null : before.counts,
+      after,
+      sent: { characters: context.characters, sheets: context.sheets },
     };
   }
 
@@ -423,9 +507,13 @@ export class RabImportsService implements OnModuleInit {
     if (count === 0) return;
     const row = await this.prisma.rabImport.findUniqueOrThrow({ where: { id: importId }, include: IMPORT_INCLUDE });
     try {
-      const { draft, official } = await this.draftFor(
+      const sources = await this.loadSources(
         row.projectId,
         row.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap), document: d.document })),
+      );
+      const { draft, official } = await this.draftFor(
+        row.projectId,
+        sources,
         row.targetVersionType,
         row.targetRevisionNumber,
         profileOf(row.mappingProfile),

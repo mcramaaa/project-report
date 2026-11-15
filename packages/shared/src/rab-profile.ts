@@ -143,6 +143,115 @@ export interface RabProfilePreviewDto {
   issues: (ImportIssue & { cell: string | null })[];
 }
 
+/** One editable role of a profile: where its matcher lives and what the reviewer reads. `many` = list of matchers. */
+export interface RabProfileRole {
+  path: string;
+  label: string;
+  many: boolean;
+}
+const roles = (list: [path: string, label: string, many?: true][]): RabProfileRole[] =>
+  list.map(([path, label, many]) => ({ path, label, many: Boolean(many) }));
+/** Every role a reviewer (playground) or the assistant (stage 3) may change, grouped as the editor shows them. */
+export const RAB_PROFILE_SECTIONS: { title: string; description: string; roles: RabProfileRole[] }[] = [
+  {
+    title: 'Sheet RAB kantor',
+    description: 'Sheet dengan judul kolom VOLUME dan NO. ANALISA.',
+    roles: roles([
+      ['rab.no', 'Kolom NO'],
+      ['rab.volume', 'Kolom volume'],
+      ['rab.analysis', 'Kolom no. analisa'],
+      ['rab.description', 'Kolom uraian'],
+      ['rab.unit', 'Kolom satuan'],
+      ['rab.price', 'Kolom harga (yang juga memuat kata PPN = harga + PPN)'],
+      ['rab.tax', 'Kolom PPN'],
+      ['rab.amount', 'Kolom jumlah'],
+      ['rab.totalLabels', 'Label baris total'],
+      ['rab.grandTotal', 'Label total akhir'],
+      ['rab.bareTotal', 'Label total tanpa keterangan'],
+      ['rab.rounded', 'Label dibulatkan'],
+    ]),
+  },
+  {
+    title: 'Sheet berdasarkan kata header (HPS/BOQ)',
+    description: 'Sheet tanpa VOLUME dan NO. ANALISA. Kolom cocok bila salah satu aturannya cocok; kolom paling kanan dipakai.',
+    roles: roles([
+      ['headerless.code', 'Kolom kode / no. mata pembayaran', true],
+      ['headerless.description', 'Kolom uraian', true],
+      ['headerless.unit', 'Kolom satuan', true],
+      ['headerless.quantity', 'Kolom kuantitas', true],
+      ['headerless.price', 'Kolom harga satuan', true],
+      ['headerless.amount', 'Kolom jumlah', true],
+      ['headerless.division', 'Label baris divisi'],
+    ]),
+  },
+  {
+    title: 'Formulir analisa kantor',
+    description: 'Baris judul tepat di bawah kepala analisa.',
+    roles: roles([
+      ['analysisForm.office.no', 'Kolom NO'],
+      ['analysisForm.office.description', 'Kolom uraian'],
+      ['analysisForm.office.unit', 'Kolom satuan'],
+      ['analysisForm.office.coefficient', 'Kolom koefisien'],
+      ['analysisForm.office.price', 'Kolom harga satuan'],
+      ['analysisForm.office.amount', 'Kolom jumlah harga'],
+    ]),
+  },
+  {
+    title: 'Formulir analisa Bina Marga',
+    description: 'Baris judul diawali KOMPONEN; judul boleh dua baris.',
+    roles: roles([
+      ['analysisForm.binaMarga.component', 'Kolom komponen'],
+      ['analysisForm.binaMarga.unit', 'Kolom satuan'],
+      ['analysisForm.binaMarga.quantity', 'Kolom kuantitas'],
+      ['analysisForm.binaMarga.quantityFallback', 'Kolom kuantitas cadangan'],
+      ['analysisForm.binaMarga.price', 'Kolom harga satuan'],
+      ['analysisForm.binaMarga.amount', 'Kolom jumlah harga'],
+      ['analysisForm.binaMarga.totalRow', 'Label baris harga analisa'],
+    ]),
+  },
+  {
+    title: 'Judul blok analisa',
+    description: 'Label di atas blok Bina Marga; nilainya ada di sel sebelah kanan.',
+    roles: roles([
+      ['analysisForm.title.code', 'Label kode'],
+      ['analysisForm.title.name', 'Label nama pekerjaan'],
+      ['analysisForm.title.unit', 'Label satuan'],
+      ['analysisForm.title.formLabels', 'Label formulir (bukan nilai judul)'],
+    ]),
+  },
+  {
+    title: 'Kategori komponen',
+    description: 'Baris kategori di atas komponen analisa.',
+    roles: roles([
+      ['analysisForm.categories.LABOR', 'Tenaga'],
+      ['analysisForm.categories.MATERIAL', 'Bahan'],
+      ['analysisForm.categories.EQUIPMENT', 'Alat'],
+    ]),
+  },
+];
+export const RAB_PROFILE_ROLES: RabProfileRole[] = RAB_PROFILE_SECTIONS.flatMap((s) => s.roles);
+
+/** Stage 3 (D-095): the reviewer's question or instruction to the assistant, with the playground's documents and profile. */
+export const assistRabProfileSchema = previewRabProfileSchema.extend({ message: z.string().trim().min(1).max(2000) });
+export type AssistRabProfileInput = z.infer<typeof assistRabProfileSchema>;
+
+export interface RabProfileAssistDto {
+  /** The assistant's answer to the reviewer, in its own words (never numbers the system relies on). */
+  reply: string;
+  model: string;
+  /** Proposed words whose cited cells hold them: applied to `profile`. */
+  accepted: { role: string; label: string; match: WordMatch; words: string[]; cells: string[]; reason: string }[];
+  /** Proposals the system could not prove, with why. */
+  rejected: { role: string; words: string[]; reason: string }[];
+  /** The playground profile with the accepted words (name left to the reviewer). */
+  profile: Omit<RabProfile, 'origin' | 'name'>;
+  before: RabProfilePreviewDto['counts'] | null;
+  /** What a run would read with `profile`. */
+  after: RabProfilePreviewDto;
+  /** What left the server for this answer (D-095, RAB_PLAYGROUND §6). */
+  sent: { characters: number; sheets: string[] };
+}
+
 export interface RabProfileDto {
   id: string;
   name: string;

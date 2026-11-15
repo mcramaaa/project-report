@@ -43,6 +43,7 @@ model User {
   approvedImports        RabImport[]            @relation("ImportApprovedBy")
   rejectedImports        RabImport[]            @relation("ImportRejectedBy")
   createdMappingProfiles RabMappingProfile[]    @relation("MappingProfileCreatedBy")
+  profileAiRuns          RabProfileAiRun[]
   importDecisions        RabImportDecision[]
   createdPriceLists      PriceList[]
   priceDecisions         RabVersionItem[]       @relation("ItemPriceDecidedBy")
@@ -122,6 +123,7 @@ model Project {
   documents           ProjectDocument[]
   rabImports          RabImport[]
   mappingProfiles     RabMappingProfile[]
+  profileAiRuns       RabProfileAiRun[]
   priceLists          PriceList[]
   analyses            AhspAnalysis[]
   schedules           ScheduleVersion[]
@@ -785,6 +787,29 @@ model RabMappingProfile {
 
   @@index([projectId, createdAt])
   @@map("rab_mapping_profiles")
+}
+
+/// D-095: one attempt of the mapping profile assistant (RAB_PLAYGROUND stage 3). `request` keeps what left the server.
+model RabProfileAiRun {
+  id                 String      @id @default(uuid(7)) @db.Char(36)
+  projectId          String      @map("project_id") @db.Char(36)
+  createdBy          String      @map("created_by") @db.Char(36)
+  instructionVersion String      @map("instruction_version") @db.VarChar(40)
+  model              String      @db.VarChar(120)
+  attempt            Int         @db.UnsignedSmallInt
+  status             AiRunStatus
+  error              String?     @db.Text
+  /// Reviewer message, sheets, character count and the content sent to the model.
+  request            Json
+  response           Json?
+  startedAt          DateTime    @map("started_at") @db.DateTime(3)
+  finishedAt         DateTime    @map("finished_at") @db.DateTime(3)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  creator User    @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([projectId, startedAt])
+  @@map("rab_profile_ai_runs")
 }
 
 /// One import run of a document package into one target RAB version (D-048).

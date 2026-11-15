@@ -7,6 +7,8 @@ import {
   type CreateRabProfileInput,
   previewRabProfileSchema,
   type PreviewRabProfileInput,
+  assistRabProfileSchema,
+  type AssistRabProfileInput,
   rabImportDecisionsSchema,
   remapRabImportSchema,
   requiredReasonSchema,
@@ -45,6 +47,14 @@ export class RabProfilesController {
   @HttpCode(200)
   preview(@Param('projectId') projectId: string, @Body(new ZodPipe(previewRabProfileSchema)) body: PreviewRabProfileInput) {
     return this.imports.previewProfile(projectId, body);
+  }
+
+  /** Stage 3 assistant (D-095): sends sheet heads and problem surroundings to the model via 9router; stores the request. */
+  @Post('assist')
+  @RequireProjectPermission('rabImport.review')
+  @HttpCode(200)
+  assist(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Body(new ZodPipe(assistRabProfileSchema)) body: AssistRabProfileInput) {
+    return this.imports.assistProfile(auth.user, projectId, body);
   }
 }
 
