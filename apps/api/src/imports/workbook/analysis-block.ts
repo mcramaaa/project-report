@@ -1,5 +1,5 @@
 import { Decimal } from '@laporan-proyek/calc';
-import type { AhspCategory } from '@laporan-proyek/shared';
+import { matchesWord, RAB_BUILTIN_PROFILE, type AhspCategory, type WordMatcher } from '@laporan-proyek/shared';
 import { formatAddress, type FormulaNode } from './formula';
 import type { TraceResult } from './trace';
 import { excelDecimal, type CellInfo, type WorkbookModel } from './workbook-model';
@@ -64,20 +64,11 @@ export interface AnalysisBlock {
   components: BlockComponent[];
 }
 
-const LABELS: Record<keyof BlockColumns, RegExp> = {
-  no: /^NO\.?$/,
-  description: /^URAIAN/,
-  unit: /^SATUAN$/,
-  coefficient: /^KOEFISIEN$/,
-  price: /^HARGA SATUAN/,
-  amount: /^JUMLAH HARGA/,
-};
-
-const CATEGORY: [RegExp, AhspCategory][] = [
-  [/^(TENAGA( KERJA)?|UPAH|PEKERJA)$/, 'LABOR'],
-  [/^(BAHAN|MATERIAL)$/, 'MATERIAL'],
-  [/^(PERALATAN|ALAT)$/, 'EQUIPMENT'],
-];
+// shortcut: always the built-in profile's form words; pass a profile in once build-draft chooses one per import.
+const FORM = RAB_BUILTIN_PROFILE.analysisForm;
+const LABELS: Record<keyof BlockColumns, WordMatcher> = FORM.office;
+const CATEGORY = Object.entries(FORM.categories) as [AhspCategory, WordMatcher][];
+const isCategoryLabel = (label: string) => CATEGORY.some(([, m]) => matchesWord(label, m));
 
 export class BlockError extends Error {}
 
@@ -101,8 +92,8 @@ export function blockColumns(model: WorkbookModel, sheet: string, headerRow: num
   for (let c = 1; c <= last; c++) {
     const label = model.text(sheet, labelRow, c).toUpperCase();
     if (!label) continue;
-    for (const [key, pattern] of Object.entries(LABELS) as [keyof BlockColumns, RegExp][]) {
-      if (found[key] === undefined && pattern.test(label)) found[key] = c;
+    for (const [key, matcher] of Object.entries(LABELS) as [keyof BlockColumns, WordMatcher][]) {
+      if (found[key] === undefined && matchesWord(label, matcher)) found[key] = c;
     }
   }
   return Object.keys(LABELS).every((k) => found[k as keyof BlockColumns] !== undefined) ? (found as BlockColumns) : null;
@@ -116,19 +107,20 @@ export function blockColumns(model: WorkbookModel, sheet: string, headerRow: num
 export function binaMargaColumns(model: WorkbookModel, sheet: string, labelRow: number): BlockColumns | null {
   const last = Math.min(model.columnCount(sheet), 40);
   let description = 0;
-  for (let c = 1; c <= last && !description; c++) if (/^KOMPONEN\b/.test(model.text(sheet, labelRow, c).toUpperCase().trim())) description = c;
+  const bm = FORM.binaMarga;
+  for (let c = 1; c <= last && !description; c++) if (matchesWord(model.text(sheet, labelRow, c).toUpperCase().trim(), bm.component)) description = c;
   if (!description) return null;
   // Titles run over two rows, downwards ("HARGA" / "SATUAN" under the KOMPONEN row) or upwards ("PERKIRAAN" above
   // "KUANTITAS"): a column matches when either reading does.
   const text = (rows: number[], c: number) => rows.map((r) => (r >= 1 ? model.text(sheet, r, c).toUpperCase() : '')).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  const right = (pattern: RegExp) => {
-    for (let c = description + 1; c <= last; c++) if (pattern.test(text([labelRow, labelRow + 1], c)) || pattern.test(text([labelRow - 1, labelRow], c))) return c;
+  const right = (m: WordMatcher) => {
+    for (let c = description + 1; c <= last; c++) if (matchesWord(text([labelRow, labelRow + 1], c), m) || matchesWord(text([labelRow - 1, labelRow], c), m)) return c;
     return 0;
   };
-  const unit = right(/^SATUAN$/);
-  const coefficient = right(/^(PERKIRAAN )?KUANTITAS\b/) || right(/^KOEF/);
-  const price = right(/^HARGA SATUAN/);
-  const amount = right(/^JUMLAH HARGA/);
+  const unit = right(bm.unit);
+  const coefficient = right(bm.quantity) || right(bm.quantityFallback);
+  const price = right(bm.price);
+  const amount = right(bm.amount);
   return unit && coefficient && price && amount ? { no: description, description, unit, coefficient, price, amount } : null;
 }
 
@@ -151,7 +143,7 @@ function binaMargaBlock(model: WorkbookModel, sheet: string, labelRow: number): 
   for (let r = labelRow + 2; r <= Math.min(model.rowCount(sheet), labelRow + 200); r++) {
     if (binaMargaColumns(model, sheet, r)) return null;
     const label = [cols.description, cols.description + 1, cols.description + 2, cols.description + 3].map((c) => model.text(sheet, r, c).toUpperCase()).find(Boolean) ?? '';
-    if (!/^(TOTAL HARGA|HARGA SATUAN PEKERJAAN)/.test(label)) continue;
+    if (!matchesWord(label, FORM.binaMarga.totalRow)) continue;
     for (let c = cols.amount; c <= cols.amount + AMOUNT_SPAN; c++) if (model.formulaOf(model.cell(sheet, r, c))) return { cols: { ...cols, amount: c }, totalRow: r };
   }
   return null;
@@ -218,17 +210,17 @@ function binaMargaTitle(model: WorkbookModel, sheet: string, labelRow: number): 
   // Nearest title above the label row: the form repeats it top-left and beside the cost table.
   // Copies beside the cost table are filled by formulas that are sometimes swapped (code under "JENIS PEKERJAAN");
   // a value must look like what its label promises, and other form labels are never values.
-  const FORM_LABEL = /^(TOTAL HARGA|PERKIRAAN VOL|% THD|ITEM PEMBAYARAN|JENIS PEKERJAAN|SATUAN PEMBAYARAN|NO\. PAKET|NAMA PAKET)/i;
+  const t0 = FORM.title;
   const looksLikeCode = (t: string) => /\d/.test(t) && !/\s{1}\S+\s/.test(t) && t.length <= 30;
-  const value = (pattern: RegExp, accept: (t: string) => boolean): string | null => {
+  const value = (label: WordMatcher, accept: (t: string) => boolean): string | null => {
     const last = Math.min(model.columnCount(sheet), 40);
     for (let r = labelRow - 1; r >= Math.max(1, labelRow - 25); r--) {
       for (let c = 1; c <= last; c++) {
-        if (!pattern.test(model.text(sheet, r, c).toUpperCase())) continue;
+        if (!matchesWord(model.text(sheet, r, c).toUpperCase(), label)) continue;
         for (let v = c + 1; v <= Math.min(last, c + 6); v++) {
           const t = model.text(sheet, r, v).replace(/^:\s*/, '').replace(/^\((.*)\)$/, '$1').trim();
           if (!t || t === ':') continue;
-          if (FORM_LABEL.test(t) || !accept(t)) break;
+          if (matchesWord(t.toUpperCase(), t0.formLabels) || !accept(t)) break;
           return t;
         }
       }
@@ -236,9 +228,9 @@ function binaMargaTitle(model: WorkbookModel, sheet: string, labelRow: number): 
     return null;
   };
   return {
-    code: value(/^ITEM PEMBAYARAN/, looksLikeCode),
-    name: value(/^JENIS PEKERJAAN/, (t) => !looksLikeCode(t)) ?? '',
-    unit: value(/^SATUAN PEMBAYARAN/, (t) => t.length <= 15),
+    code: value(t0.code, looksLikeCode),
+    name: value(t0.name, (t) => !looksLikeCode(t)) ?? '',
+    unit: value(t0.unit, (t) => t.length <= 15),
   };
 }
 
@@ -326,6 +318,7 @@ function officeTotalRow(model: WorkbookModel, sheet: string, headerRow: number, 
   for (let r = headerRow + 2; r <= Math.min(model.rowCount(sheet), headerRow + 200); r++) {
     if (blockColumns(model, sheet, r)) return null;
     const label = `${model.text(sheet, r, cols.no)} ${model.text(sheet, r, cols.description)}`.toUpperCase().trim();
+    // Kept as a regex: "\s+" accepts any spacing after "F." only, which a word list cannot say without loosening the rest.
     if (/^(F\.?\s+)?HARGA SATUAN PEKERJAAN\b/.test(label) && model.formulaOf(model.cell(sheet, r, cols.amount))) return r;
   }
   return null;
@@ -482,7 +475,7 @@ function readComponent(model: WorkbookModel, sheet: string, headerRow: number, r
   if (!hasCoef || !hasPrice) throw new BlockError(`nilai komponen ${formatAddress(amount.address)} tidak memakai kolom harga dan koefisien`);
   const description = model.text(sheet, row, cols.description);
   const coefValue = model.cell(sheet, row, cols.coefficient).value;
-  if ((coefValue === null || coefValue === '') && (!description || CATEGORY.some(([pattern]) => pattern.test(description.toUpperCase())))) return null;
+  if ((coefValue === null || coefValue === '') && (!description || isCategoryLabel(description.toUpperCase()))) return null;
   // Excel evaluates a blank coefficient as 0; the component stays with coefficient 0 (D-046).
   const blankCoefficient = coefValue === null || coefValue === '';
   const coefficient = blankCoefficient ? '0' : excelDecimal(coefValue);
@@ -491,7 +484,7 @@ function readComponent(model: WorkbookModel, sheet: string, headerRow: number, r
   let category: AhspCategory | null = null;
   for (let r = row - 1; r > headerRow && !category; r--) {
     const label = model.text(sheet, r, cols.description).toUpperCase();
-    for (const [pattern, cat] of CATEGORY) if (pattern.test(label)) category = cat;
+    for (const [cat, m] of CATEGORY) if (matchesWord(label, m)) category = cat;
   }
   if (!category) throw new BlockError(`kategori komponen baris ${row} tidak dikenali`);
 

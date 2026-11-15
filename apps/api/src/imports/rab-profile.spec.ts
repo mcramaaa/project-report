@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchesWord, RAB_BUILTIN_PROFILE, rabProfileSchema, type RabProfile } from '@laporan-proyek/shared';
+import { matchesWord, RAB_BUILTIN_PROFILE, rabProfileSchema, type RabProfile, type WordMatcher } from '@laporan-proyek/shared';
 import { detectRabColumns, readRabSheet } from './workbook/rab-sheet';
 import { workbookOf, type SheetSpec } from './test-workbook';
 
@@ -51,6 +51,45 @@ describe('RAB mapping profile (RAB_PLAYGROUND stage 1)', () => {
   ];
   it.each(legacy)('built-in "%s" matches exactly what the old regex matched', (role, regex) => {
     for (const s of samples) expect([s, matchesWord(s, p[role])]).toEqual([s, regex.test(s)]);
+  });
+
+  // Same guard for the analysis forms (analysis-block.ts before profiles).
+  const f = RAB_BUILTIN_PROFILE.analysisForm;
+  const formLegacy: [string, WordMatcher, RegExp][] = [
+    ['office.no', f.office.no, /^NO\.?$/],
+    ['office.description', f.office.description, /^URAIAN/],
+    ['office.unit', f.office.unit, /^SATUAN$/],
+    ['office.coefficient', f.office.coefficient, /^KOEFISIEN$/],
+    ['office.price', f.office.price, /^HARGA SATUAN/],
+    ['office.amount', f.office.amount, /^JUMLAH HARGA/],
+    ['binaMarga.component', f.binaMarga.component, /^KOMPONEN\b/],
+    ['binaMarga.unit', f.binaMarga.unit, /^SATUAN$/],
+    ['binaMarga.quantity', f.binaMarga.quantity, /^(PERKIRAAN )?KUANTITAS\b/],
+    ['binaMarga.quantityFallback', f.binaMarga.quantityFallback, /^KOEF/],
+    ['binaMarga.price', f.binaMarga.price, /^HARGA SATUAN/],
+    ['binaMarga.amount', f.binaMarga.amount, /^JUMLAH HARGA/],
+    ['binaMarga.totalRow', f.binaMarga.totalRow, /^(TOTAL HARGA|HARGA SATUAN PEKERJAAN)/],
+    ['title.code', f.title.code, /^ITEM PEMBAYARAN/],
+    ['title.name', f.title.name, /^JENIS PEKERJAAN/],
+    ['title.unit', f.title.unit, /^SATUAN PEMBAYARAN/],
+    ['categories.LABOR', f.categories.LABOR, /^(TENAGA( KERJA)?|UPAH|PEKERJA)$/],
+    ['categories.MATERIAL', f.categories.MATERIAL, /^(BAHAN|MATERIAL)$/],
+    ['categories.EQUIPMENT', f.categories.EQUIPMENT, /^(PERALATAN|ALAT)$/],
+  ];
+  const formSamples = [
+    '', 'NO', 'NO.', 'NO. ', 'URAIAN', 'URAIAN ', ' URAIAN', 'SATUAN', 'SATUAN ', 'SATUAN PEMBAYARAN', 'KOEFISIEN', 'KOEFISIEN ', 'KOEF.',
+    'KOEF', 'HARGA SATUAN', 'HARGA SATUAN (RP)', 'HARGA  SATUAN', 'HARGA SATUAN PEKERJAAN', 'JUMLAH HARGA', 'JUMLAH HARGA (RP)', 'KOMPONEN',
+    'KOMPONEN ', 'KOMPONENX', 'KOMPONEN-1', 'KUANTITAS', 'KUANTITASNYA', 'PERKIRAAN KUANTITAS', 'PERKIRAAN  KUANTITAS', 'PERKIRAAN KUANTITAS.',
+    'TOTAL HARGA', 'TOTAL HARGA PEKERJAAN', 'ITEM PEMBAYARAN NO.', 'JENIS PEKERJAAN', 'JENIS PEKERJAAN :', 'TENAGA', 'TENAGA KERJA', 'TENAGA  KERJA',
+    'TENAGAKERJA', 'UPAH', 'UPAH ', 'PEKERJA', 'PEKERJAAN', 'BAHAN', 'BAHAN-BAHAN', 'MATERIAL', 'PERALATAN', 'ALAT', 'ALAT BERAT',
+  ];
+  it.each(formLegacy)('built-in form "%s" matches exactly what the old regex matched', (_, m, regex) => {
+    for (const s of formSamples) expect([s, matchesWord(s, m)]).toEqual([s, regex.test(s)]);
+  });
+  it('built-in form labels match like the old case-insensitive regex on the uppercased value', () => {
+    const old = /^(TOTAL HARGA|PERKIRAAN VOL|% THD|ITEM PEMBAYARAN|JENIS PEKERJAAN|SATUAN PEMBAYARAN|NO\. PAKET|NAMA PAKET)/i;
+    const values = [...formSamples, 'total harga', 'Perkiraan Vol.', '% thd biaya', '%THD', 'No. Paket', 'No Paket', 'nama paket', 'Jalan Raya', '1.20.(1)'];
+    for (const s of values) expect([s, matchesWord(s.toUpperCase(), f.title.formLabels)]).toEqual([s, old.test(s)]);
   });
 
   it.each([

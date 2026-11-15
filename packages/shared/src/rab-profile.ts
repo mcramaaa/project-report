@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 /**
  * Mapping profile of a RAB workbook (RAB_PLAYGROUND.md §4, stage 1). Declarative data: the office RAB reader
- * (rab-sheet.ts) takes its header words and total labels from it; the built-in profile reproduces the words the
- * reader matched before, so results do not change.
+ * (rab-sheet.ts) and the analysis form reader (analysis-block.ts) take their header words and labels from it; the
+ * built-in profile reproduces the words the readers matched before, so results do not change.
  */
 export const RAB_PROFILE_VERSION = 1 as const;
 export const RAB_PROFILE_ORIGINS = ['BAWAAN', 'MANUAL', 'AI'] as const;
@@ -60,23 +60,44 @@ export const rabProfileSchema = z.object({
     /** Rounded total ("DIBULATKAN"): reading stops after it. */
     rounded: wordMatcherSchema,
   }),
-  /**
-   * Analysis (AHSP) form words (analysis-block.ts). Not read yet.
-   * shortcut: plain word lists; one role mixes match modes (URAIAN prefix, KOMPONEN whole word), so give each form
-   * its own matchers when analysis-block.ts is switched to the profile.
-   */
+  /** Analysis (AHSP) forms read by analysis-block.ts. */
   analysisForm: z.object({
-    componentHeader: synonyms,
-    quantityHeader: synonyms,
-    unitHeader: synonyms,
-    priceHeader: synonyms,
-    amountHeader: synonyms,
-    titleLabels: synonyms,
+    /** Office form: label row "NO. | URAIAN | SATUAN | KOEFISIEN | HARGA SATUAN | JUMLAH HARGA". */
+    office: z.object({
+      no: wordMatcherSchema,
+      description: wordMatcherSchema,
+      unit: wordMatcherSchema,
+      coefficient: wordMatcherSchema,
+      price: wordMatcherSchema,
+      amount: wordMatcherSchema,
+    }),
+    /** Bina Marga form (D-091): label row starting at KOMPONEN; titles may run over two rows. */
+    binaMarga: z.object({
+      component: wordMatcherSchema,
+      unit: wordMatcherSchema,
+      quantity: wordMatcherSchema,
+      /** Tried only when no column matches `quantity`. */
+      quantityFallback: wordMatcherSchema,
+      price: wordMatcherSchema,
+      amount: wordMatcherSchema,
+      /** Label of the row holding the analysis price (F). */
+      totalRow: wordMatcherSchema,
+    }),
+    /** Labels above a Bina Marga block whose neighbour cell holds the code, name and unit. */
+    title: z.object({
+      code: wordMatcherSchema,
+      name: wordMatcherSchema,
+      unit: wordMatcherSchema,
+      /** Form labels that are never a title value. */
+      formLabels: wordMatcherSchema,
+    }),
+    /** Category label rows above the components. */
+    categories: z.object({ LABOR: wordMatcherSchema, MATERIAL: wordMatcherSchema, EQUIPMENT: wordMatcherSchema }),
   }),
 });
 export type RabProfile = z.infer<typeof rabProfileSchema>;
 
-/** Built-in profile: exactly the words and match modes the office reader used before profiles (D-044). */
+/** Built-in profile: exactly the words and match modes the readers used before profiles (D-044, D-051, D-091). */
 export const RAB_BUILTIN_PROFILE: RabProfile = {
   profileVersion: RAB_PROFILE_VERSION,
   name: 'Bawaan (kantor)',
@@ -98,11 +119,36 @@ export const RAB_BUILTIN_PROFILE: RabProfile = {
     rounded: { match: 'PREFIX', words: ['DIBULATKAN'] },
   },
   analysisForm: {
-    componentHeader: ['URAIAN', 'KOMPONEN'],
-    quantityHeader: ['KOEFISIEN', 'KUANTITAS', 'PERKIRAAN KUANTITAS', 'KOEF'],
-    unitHeader: ['SATUAN'],
-    priceHeader: ['HARGA SATUAN'],
-    amountHeader: ['JUMLAH HARGA'],
-    titleLabels: ['ITEM PEMBAYARAN', 'JENIS PEKERJAAN'],
+    office: {
+      no: { match: 'EXACT', words: ['NO', 'NO.'] },
+      description: { match: 'PREFIX', words: ['URAIAN'] },
+      unit: { match: 'EXACT', words: ['SATUAN'] },
+      coefficient: { match: 'EXACT', words: ['KOEFISIEN'] },
+      price: { match: 'PREFIX', words: ['HARGA SATUAN'] },
+      amount: { match: 'PREFIX', words: ['JUMLAH HARGA'] },
+    },
+    binaMarga: {
+      component: { match: 'WORD', words: ['KOMPONEN'] },
+      unit: { match: 'EXACT', words: ['SATUAN'] },
+      quantity: { match: 'WORD', words: ['PERKIRAAN KUANTITAS', 'KUANTITAS'] },
+      quantityFallback: { match: 'PREFIX', words: ['KOEF'] },
+      price: { match: 'PREFIX', words: ['HARGA SATUAN'] },
+      amount: { match: 'PREFIX', words: ['JUMLAH HARGA'] },
+      totalRow: { match: 'PREFIX', words: ['TOTAL HARGA', 'HARGA SATUAN PEKERJAAN'] },
+    },
+    title: {
+      code: { match: 'PREFIX', words: ['ITEM PEMBAYARAN'] },
+      name: { match: 'PREFIX', words: ['JENIS PEKERJAAN'] },
+      unit: { match: 'PREFIX', words: ['SATUAN PEMBAYARAN'] },
+      formLabels: {
+        match: 'PREFIX',
+        words: ['TOTAL HARGA', 'PERKIRAAN VOL', '% THD', 'ITEM PEMBAYARAN', 'JENIS PEKERJAAN', 'SATUAN PEMBAYARAN', 'NO. PAKET', 'NAMA PAKET'],
+      },
+    },
+    categories: {
+      LABOR: { match: 'EXACT', words: ['TENAGA', 'TENAGA KERJA', 'UPAH', 'PEKERJA'] },
+      MATERIAL: { match: 'EXACT', words: ['BAHAN', 'MATERIAL'] },
+      EQUIPMENT: { match: 'EXACT', words: ['PERALATAN', 'ALAT'] },
+    },
   },
 };
