@@ -1,9 +1,9 @@
 # RAB Playground — impor RAB dibantu AI (rancangan D-093)
 
 Status: **tahap 1 berjalan** (2026-11-15). Skema profil + profil bawaan ada di `packages/shared/src/rab-profile.ts`.
-Pembaca RAB kantor (`rab-sheet.ts`) dan formulir analisa kantor/Bina Marga (`analysis-block.ts`) sudah membaca kata
-header dan label dari profil; pembaca tanpa header (`headerless-sheet.ts`) belum, dan formulir analisa selalu memakai
-profil bawaan (belum dipilih per impor). `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
+Pembaca RAB kantor (`rab-sheet.ts`), pembaca berdasarkan kata header (`headerless-sheet.ts`), dan formulir analisa
+kantor/Bina Marga (`analysis-block.ts`) sudah membaca kata header dan label dari profil. Profil belum dipilih per
+impor (`build-draft.ts` selalu memakai profil bawaan), dan formulir analisa belum menerima profil sebagai parameter. `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
 menjawab sama persis dengan regex lama.
 
 ## 1. Masalah

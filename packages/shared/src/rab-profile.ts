@@ -10,8 +10,8 @@ export const RAB_PROFILE_ORIGINS = ['BAWAAN', 'MANUAL', 'AI'] as const;
 export type RabProfileOrigin = (typeof RAB_PROFILE_ORIGINS)[number];
 export const RAB_SHEET_ROLES = ['RAB', 'ANALISA', 'DAFTAR_HARGA', 'ABAIKAN'] as const;
 export type RabSheetRole = (typeof RAB_SHEET_ROLES)[number];
-/** EXACT: whole text; PREFIX: text starts with the word; WORD: starts with the word as a whole word. */
-export const WORD_MATCHES = ['EXACT', 'PREFIX', 'WORD'] as const;
+/** EXACT: whole text; PREFIX: text starts with the word; WORD: starts with the word as a whole word; CONTAINS: anywhere. */
+export const WORD_MATCHES = ['EXACT', 'PREFIX', 'WORD', 'CONTAINS'] as const;
 export type WordMatch = (typeof WORD_MATCHES)[number];
 
 /** Header words are stored uppercase, single-spaced (as the readers normalise cell text). */
@@ -23,12 +23,15 @@ const headerWord = z
 const synonyms = z.array(headerWord).min(1).max(20);
 export const wordMatcherSchema = z.object({ match: z.enum(WORD_MATCHES), words: synonyms });
 export type WordMatcher = z.infer<typeof wordMatcherSchema>;
+/** One role named by words matched in different ways (e.g. "NO. MATA…" as prefix, "KODE" as a whole word). */
+const matchers = z.array(wordMatcherSchema).min(1).max(10);
 
 const isWordChar = (ch: string | undefined) => ch !== undefined && /\w/.test(ch);
 /** Whether normalised (uppercase, single-spaced) cell text matches one of the words. Runs per cell: no RegExp build. */
 export function matchesWord(text: string, m: WordMatcher): boolean {
   return m.words.some((w) => {
     if (m.match === 'EXACT') return text === w;
+    if (m.match === 'CONTAINS') return text.includes(w);
     if (!text.startsWith(w)) return false;
     // WORD = regex /^w\b/: a word boundary right after w.
     return m.match === 'PREFIX' || isWordChar(w[w.length - 1]) !== isWordChar(text[w.length]);
@@ -59,6 +62,20 @@ export const rabProfileSchema = z.object({
     bareTotal: wordMatcherSchema,
     /** Rounded total ("DIBULATKAN"): reading stops after it. */
     rounded: wordMatcherSchema,
+  }),
+  /**
+   * RAB sheets read by header words (D-090, headerless-sheet.ts). A column matches when any matcher of its role does;
+   * the rightmost matching column wins.
+   */
+  headerless: z.object({
+    code: matchers,
+    description: matchers,
+    unit: matchers,
+    quantity: matchers,
+    price: matchers,
+    amount: matchers,
+    /** Division title rows without a code ("DIVISI 1. UMUM"), matched on the uppercased description. */
+    division: wordMatcherSchema,
   }),
   /** Analysis (AHSP) forms read by analysis-block.ts. */
   analysisForm: z.object({
@@ -117,6 +134,31 @@ export const RAB_BUILTIN_PROFILE: RabProfile = {
     grandTotal: { match: 'PREFIX', words: ['JUMLAH TOTAL'] },
     bareTotal: { match: 'EXACT', words: ['JUMLAH'] },
     rounded: { match: 'PREFIX', words: ['DIBULATKAN'] },
+  },
+  headerless: {
+    code: [
+      // = /^NO\.? ?MATA/, /^NO\.? ?ITEM/, /^NO\.? ?PEMBAYARAN/, /^ITEM PEMBAYARAN/
+      {
+        match: 'PREFIX',
+        words: [
+          ...['MATA', 'ITEM', 'PEMBAYARAN'].flatMap((w) => [`NO. ${w}`, `NO.${w}`, `NO ${w}`, `NO${w}`]),
+          'ITEM PEMBAYARAN',
+        ],
+      },
+      { match: 'WORD', words: ['KODE'] },
+    ],
+    description: [{ match: 'PREFIX', words: ['URAIAN', 'JENIS PEKERJAAN', 'ITEM PEKERJAAN', 'NAMA PEKERJAAN'] }],
+    unit: [{ match: 'EXACT', words: ['SATUAN', 'SAT'] }],
+    quantity: [
+      { match: 'CONTAINS', words: ['KUANTITAS'] },
+      { match: 'WORD', words: ['VOLUME', 'QTY'] },
+    ],
+    price: [
+      { match: 'PREFIX', words: ['HARGA SATUAN'] },
+      { match: 'WORD', words: ['HARGA SAT'] },
+    ],
+    amount: [{ match: 'PREFIX', words: ['JUMLAH', 'TOTAL HARGA', 'SUB JUMLAH', 'SUBJUMLAH'] }],
+    division: { match: 'WORD', words: ['DIVISI'] },
   },
   analysisForm: {
     office: {

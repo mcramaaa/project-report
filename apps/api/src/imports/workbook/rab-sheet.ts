@@ -58,7 +58,7 @@ const upper = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
 
 /** Sheets with a RAB header (VOLUME + NO. ANALISA) in the first 40 rows. */
 export function rabSheetCandidates(model: WorkbookModel, profile: RabProfile = RAB_BUILTIN_PROFILE): string[] {
-  return model.sheetNames().filter((s) => findHeaderRow(model, s, profile) !== null || detectHeaderless(model, s) !== null);
+  return model.sheetNames().filter((s) => findHeaderRow(model, s, profile) !== null || detectHeaderless(model, s, undefined, profile) !== null);
 }
 
 function findHeaderRow(model: WorkbookModel, sheet: string, profile: RabProfile): number | null {
@@ -152,11 +152,11 @@ export function readRabSheet(
   const sheet = model.sheetName(sheetName);
   if (!sheet) throw new RabSheetError(`Sheet "${sheetName}" tidak ada.`);
   // A reviewer-corrected mapping (D-090) is used as given; the reader still only takes rows with a code and values.
-  if (columns) return readHeaderlessSheet(model, sheet, columns);
+  if (columns) return readHeaderlessSheet(model, sheet, columns, profile);
   // Without the office header (VOLUME + NO. ANALISA), read the sheet by its header words (headerless-sheet.ts).
   if (findHeaderRow(model, sheet, profile) === null) {
-    const headerless = detectHeaderless(model, sheet);
-    if (headerless) return readHeaderlessSheet(model, sheet, headerless);
+    const headerless = detectHeaderless(model, sheet, undefined, profile);
+    if (headerless) return readHeaderlessSheet(model, sheet, headerless, profile);
   }
   const cols = detectRabColumns(model, sheet, target, mc, profile);
   const rows: RabSheetRow[] = [];

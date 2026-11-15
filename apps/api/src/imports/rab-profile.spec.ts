@@ -53,6 +53,29 @@ describe('RAB mapping profile (RAB_PLAYGROUND stage 1)', () => {
     for (const s of samples) expect([s, matchesWord(s, p[role])]).toEqual([s, regex.test(s)]);
   });
 
+  // Same guard for the header-word reader (headerless-sheet.ts before profiles): a role matches when any regex did.
+  const h = RAB_BUILTIN_PROFILE.headerless;
+  const headerlessLegacy: [string, WordMatcher[], RegExp[]][] = [
+    ['code', h.code, [/^NO\.? ?MATA/, /^KODE\b/, /^NO\.? ?ITEM/, /^ITEM PEMBAYARAN/, /^NO\.? ?PEMBAYARAN/]],
+    ['description', h.description, [/^URAIAN/, /^JENIS PEKERJAAN/, /^ITEM PEKERJAAN/, /^NAMA PEKERJAAN/]],
+    ['unit', h.unit, [/^SATUAN$/, /^SAT$/]],
+    ['quantity', h.quantity, [/KUANTITAS/, /^VOLUME\b/, /^QTY\b/]],
+    ['price', h.price, [/^HARGA SATUAN/, /^HARGA SAT\b/]],
+    ['amount', h.amount, [/^JUMLAH/, /^TOTAL HARGA/, /^SUB ?JUMLAH/]],
+  ];
+  const headerlessSamples = [
+    ...samples, 'NO. MATA PEMBAYARAN', 'NO.MATA', 'NO MATA', 'NOMATA', 'NO  MATA', 'KODE', 'KODE ITEM', 'KODEX', 'NO. ITEM', 'NOITEM',
+    'ITEM PEMBAYARAN NO.', 'NO. PEMBAYARAN', 'NO PEMBAYARAN', 'ITEM PEKERJAAN', 'NAMA PEKERJAAN', 'TOTAL KUANTITAS', 'KUANTITAS', 'PERKIRAAN KUANTITAS',
+    'VOLUME', 'VOLUMEX', 'QTY', 'QTY.', 'QTYS', 'HARGA SAT', 'HARGA SAT.', 'HARGA SATUAN (RP)', 'HARGA SATX', 'TOTAL HARGA (RP)', 'SUBJUMLAH', 'SUB JUMLAH',
+  ];
+  it.each(headerlessLegacy)('built-in headerless "%s" matches exactly what the old regexes matched', (_, role, regexes) => {
+    for (const s of headerlessSamples) expect([s, role.some((m) => matchesWord(s, m))]).toEqual([s, regexes.some((r) => r.test(s))]);
+  });
+  it('built-in division label matches like the old case-insensitive regex on the uppercased description', () => {
+    const values = ['DIVISI 1. UMUM', 'Divisi 2. Drainase', 'divisi', 'DIVISIONAL', 'Divisi-3', ' DIVISI 1', 'SUB DIVISI', 'divisi7'];
+    for (const s of values) expect([s, matchesWord(s.toUpperCase(), h.division)]).toEqual([s, /^DIVISI\b/i.test(s)]);
+  });
+
   // Same guard for the analysis forms (analysis-block.ts before profiles).
   const f = RAB_BUILTIN_PROFILE.analysisForm;
   const formLegacy: [string, WordMatcher, RegExp][] = [
@@ -131,5 +154,22 @@ describe('RAB mapping profile (RAB_PLAYGROUND stage 1)', () => {
     const sheet = readRabSheet(model, 'RAB', 'CONTRACT', 0, undefined, custom);
     expect(sheet.columns).toMatchObject({ description: 2, volume: 4 });
     expect(sheet.rows.find((r) => r.rowType === 'ITEM')).toMatchObject({ description: 'Pembersihan lokasi', volume: '10', sourceUnitPrice: '5000' });
+  });
+
+  it('reads a header-word sheet whose quantity title only a custom profile knows', () => {
+    const estimate: SheetSpec = {
+      B3: 'No. Mata Pembayaran', D3: 'Uraian', E3: 'Satuan', F3: 'Banyaknya', G3: 'Harga Satuan', H3: 'Jumlah Harga',
+      B4: '1.2', D4: 'Mobilisasi', E4: 'LS', F4: 1, G4: 2500000, H4: ['F4*G4', 2500000],
+    };
+    const model = workbookOf({ BOQ: estimate });
+    expect(() => readRabSheet(model, 'BOQ', 'CONTRACT')).toThrow();
+    const custom = rabProfileSchema.parse({
+      ...RAB_BUILTIN_PROFILE,
+      origin: 'MANUAL',
+      headerless: { ...RAB_BUILTIN_PROFILE.headerless, quantity: [{ match: 'PREFIX', words: ['BANYAKNYA'] }] },
+    });
+    const sheet = readRabSheet(model, 'BOQ', 'CONTRACT', 0, undefined, custom);
+    expect(sheet.headerless).toMatchObject({ code: 2, description: 4, unit: 5, quantity: 6, price: 7, amount: 8 });
+    expect(sheet.rows).toMatchObject([{ rowType: 'ITEM', displayNumber: '1.2', description: 'Mobilisasi', volume: '1', sourceUnitPrice: '2500000' }]);
   });
 });

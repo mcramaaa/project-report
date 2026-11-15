@@ -1,5 +1,5 @@
 import { Decimal } from '@laporan-proyek/calc';
-import type { RabColumnMap } from '@laporan-proyek/shared';
+import { matchesWord, RAB_BUILTIN_PROFILE, type RabColumnMap, type RabProfile, type WordMatcher } from '@laporan-proyek/shared';
 import type { FormulaNode } from './formula';
 import type { RabColumns, RabSheet, RabSheetRow } from './rab-sheet';
 import { excelDecimal, type WorkbookModel } from './workbook-model';
@@ -14,13 +14,6 @@ import { excelDecimal, type WorkbookModel } from './workbook-model';
 /** Same shape as the reviewer's mapping (shared `rabColumnMapSchema`, D-090). */
 export type HeaderlessColumns = RabColumnMap;
 
-const CODE = [/^NO\.? ?MATA/, /^KODE\b/, /^NO\.? ?ITEM/, /^ITEM PEMBAYARAN/, /^NO\.? ?PEMBAYARAN/];
-const DESCRIPTION = [/^URAIAN/, /^JENIS PEKERJAAN/, /^ITEM PEKERJAAN/, /^NAMA PEKERJAAN/];
-const UNIT = [/^SATUAN$/, /^SAT$/];
-const QUANTITY = [/KUANTITAS/, /^VOLUME\b/, /^QTY\b/];
-const PRICE = [/^HARGA SATUAN/, /^HARGA SAT\b/];
-const AMOUNT = [/^JUMLAH/, /^TOTAL HARGA/, /^SUB ?JUMLAH/];
-
 /** Item codes: "1.2", "1.20.(1)", "1.22.(1a)", "2.3.(23a3)". Group codes: "1", "1.20" (no unit, no quantity). */
 const NUMERIC_CODE = /^\d+(\.\d+)*\.?\s*(\([^)]*\))?[a-z0-9]*$/i;
 const upper = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
@@ -30,30 +23,36 @@ const upper = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
  * column, plus a quantity and a price column. Returns null unless the sheet also holds priced item rows, so an
  * analysis sheet that happens to contain "Uraian" is not mistaken for a RAB.
  */
-export function detectHeaderless(model: WorkbookModel, sheet: string, maxHeaderRow = 40): HeaderlessColumns | null {
+export function detectHeaderless(
+  model: WorkbookModel,
+  sheet: string,
+  maxHeaderRow = 40,
+  profile: RabProfile = RAB_BUILTIN_PROFILE,
+): HeaderlessColumns | null {
+  const p = profile.headerless;
   const width = Math.min(60, model.columnCount(sheet));
   for (let r = 1; r <= Math.min(maxHeaderRow, model.rowCount(sheet)); r++) {
     // Header text of each column over the window (this row and the next), built once per row.
     const labels: string[] = [];
     for (let c = 1; c <= width; c++) labels[c] = upper([0, 1].map((d) => model.text(sheet, r + d, c)).filter(Boolean).join(' '));
-    const find = (patterns: RegExp[]) => {
+    const find = (role: WordMatcher[]) => {
       let found: number | null = null;
-      for (let c = 1; c <= width; c++) if (labels[c] && patterns.some((p) => p.test(labels[c]!))) found = c; // rightmost wins (incl. PPN copies)
+      for (let c = 1; c <= width; c++) if (labels[c] && role.some((m) => matchesWord(labels[c]!, m))) found = c; // rightmost wins (incl. PPN copies)
       return found;
     };
-    const code = find(CODE);
-    const description = find(DESCRIPTION);
-    const quantity = find(QUANTITY);
-    const price = find(PRICE);
+    const code = find(p.code);
+    const description = find(p.description);
+    const quantity = find(p.quantity);
+    const price = find(p.price);
     if (code === null || description === null || quantity === null || price === null) continue;
     const cols: HeaderlessColumns = {
       headerRow: r + 1,
       code,
       description,
-      unit: find(UNIT),
+      unit: find(p.unit),
       quantity,
       price,
-      amount: find(AMOUNT),
+      amount: find(p.amount),
     };
     if (countPricedItems(model, sheet, cols, maxHeaderRow) >= 1) return cols;
   }
@@ -142,8 +141,6 @@ function isItemCode(code: string): boolean {
 const GROUP_CODE = /^\d+(\.\d+)+$/;
 /** "1", "2", "3a", "5": a short sub-heading inside a group (e.g. the SMKK lists under 1.22). */
 const SUBHEADING_CODE = /^\d+[a-z]?$/i;
-/** Division titles carry no code: "DIVISI 1. UMUM". */
-const DIVISION = /^DIVISI\b/i;
 
 /**
  * Reads the rows under the header into the RAB hierarchy:
@@ -154,7 +151,7 @@ const DIVISION = /^DIVISI\b/i;
  * Rows without a code (other than divisions), without a description, or without any value are skipped;
  * headings with no item under them are dropped.
  */
-export function readHeaderlessSheet(model: WorkbookModel, sheet: string, cols: HeaderlessColumns): RabSheet {
+export function readHeaderlessSheet(model: WorkbookModel, sheet: string, cols: HeaderlessColumns, profile: RabProfile = RAB_BUILTIN_PROFILE): RabSheet {
   const rows: RabSheetRow[] = [];
   let section: number | null = null;
   let subsection: number | null = null;
@@ -182,7 +179,8 @@ export function readHeaderlessSheet(model: WorkbookModel, sheet: string, cols: H
     };
 
     if (!code) {
-      if (DIVISION.test(description)) {
+      // Division titles carry no code: "DIVISI 1. UMUM".
+      if (matchesWord(description.toUpperCase(), profile.headerless.division)) {
         rows.push({ ...base, rowType: 'SECTION', parentRow: null });
         [section, subsection, parentItem] = [r, null, null];
       }
