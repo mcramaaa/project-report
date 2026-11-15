@@ -1,5 +1,5 @@
 import { Decimal } from '@laporan-proyek/calc';
-import { matchesWord, RAB_BUILTIN_PROFILE, type AhspCategory, type WordMatcher } from '@laporan-proyek/shared';
+import { matchesWord, RAB_BUILTIN_PROFILE, type AhspCategory, type RabProfile, type WordMatcher } from '@laporan-proyek/shared';
 import { formatAddress, type FormulaNode } from './formula';
 import type { TraceResult } from './trace';
 import { excelDecimal, type CellInfo, type WorkbookModel } from './workbook-model';
@@ -64,11 +64,10 @@ export interface AnalysisBlock {
   components: BlockComponent[];
 }
 
-// shortcut: always the built-in profile's form words; pass a profile in once build-draft chooses one per import.
-const FORM = RAB_BUILTIN_PROFILE.analysisForm;
-const LABELS: Record<keyof BlockColumns, WordMatcher> = FORM.office;
-const CATEGORY = Object.entries(FORM.categories) as [AhspCategory, WordMatcher][];
-const isCategoryLabel = (label: string) => CATEGORY.some(([, m]) => matchesWord(label, m));
+/** Analysis form words of a mapping profile (D-094); every reader defaults to the built-in profile. */
+export type AnalysisForm = RabProfile['analysisForm'];
+const BUILTIN_FORM: AnalysisForm = RAB_BUILTIN_PROFILE.analysisForm;
+const categories = (form: AnalysisForm) => Object.entries(form.categories) as [AhspCategory, WordMatcher][];
 
 export class BlockError extends Error {}
 
@@ -85,18 +84,18 @@ export function roundingCall(node: FormulaNode | null): { rounding: SourceRoundi
 }
 
 /** Label row of a block directly below `headerRow`, or null when the row is not an analysis header. */
-export function blockColumns(model: WorkbookModel, sheet: string, headerRow: number): BlockColumns | null {
+export function blockColumns(model: WorkbookModel, sheet: string, headerRow: number, form: AnalysisForm = BUILTIN_FORM): BlockColumns | null {
   const labelRow = headerRow + 1;
   const found: Partial<BlockColumns> = {};
   const last = Math.min(model.columnCount(sheet), 40);
   for (let c = 1; c <= last; c++) {
     const label = model.text(sheet, labelRow, c).toUpperCase();
     if (!label) continue;
-    for (const [key, matcher] of Object.entries(LABELS) as [keyof BlockColumns, WordMatcher][]) {
+    for (const [key, matcher] of Object.entries(form.office) as [keyof BlockColumns, WordMatcher][]) {
       if (found[key] === undefined && matchesWord(label, matcher)) found[key] = c;
     }
   }
-  return Object.keys(LABELS).every((k) => found[k as keyof BlockColumns] !== undefined) ? (found as BlockColumns) : null;
+  return Object.keys(form.office).every((k) => found[k as keyof BlockColumns] !== undefined) ? (found as BlockColumns) : null;
 }
 
 /**
@@ -104,10 +103,10 @@ export function blockColumns(model: WorkbookModel, sheet: string, headerRow: num
  * titles over two rows, beside an assumptions part on the left ("No. | URAIAN | KODE | KOEF. | SATUAN"). Columns
  * are taken right of KOMPONEN only, so the left part never matches. `no` = description column (no code column).
  */
-export function binaMargaColumns(model: WorkbookModel, sheet: string, labelRow: number): BlockColumns | null {
+export function binaMargaColumns(model: WorkbookModel, sheet: string, labelRow: number, form: AnalysisForm = BUILTIN_FORM): BlockColumns | null {
   const last = Math.min(model.columnCount(sheet), 40);
   let description = 0;
-  const bm = FORM.binaMarga;
+  const bm = form.binaMarga;
   for (let c = 1; c <= last && !description; c++) if (matchesWord(model.text(sheet, labelRow, c).toUpperCase().trim(), bm.component)) description = c;
   if (!description) return null;
   // Titles run over two rows, downwards ("HARGA" / "SATUAN" under the KOMPONEN row) or upwards ("PERKIRAAN" above
@@ -128,22 +127,22 @@ export function binaMargaColumns(model: WorkbookModel, sheet: string, labelRow: 
 const AMOUNT_SPAN = 3;
 
 /** Bina Marga block containing `cell` in its amount column: the nearest label row above it. */
-function binaMargaBlockAt(model: WorkbookModel, sheet: string, row: number, col: number): number | null {
+function binaMargaBlockAt(model: WorkbookModel, sheet: string, row: number, col: number, form: AnalysisForm): number | null {
   for (let r = row - 1; r >= Math.max(1, row - 150); r--) {
-    const cols = binaMargaColumns(model, sheet, r);
+    const cols = binaMargaColumns(model, sheet, r, form);
     if (cols) return col >= cols.amount && col <= cols.amount + AMOUNT_SPAN ? r : null;
   }
   return null;
 }
 
 /** Columns of a Bina Marga block with the amount column moved to where the values are (the total row's formula). */
-function binaMargaBlock(model: WorkbookModel, sheet: string, labelRow: number): { cols: BlockColumns; totalRow: number } | null {
-  const cols = binaMargaColumns(model, sheet, labelRow);
+function binaMargaBlock(model: WorkbookModel, sheet: string, labelRow: number, form: AnalysisForm): { cols: BlockColumns; totalRow: number } | null {
+  const cols = binaMargaColumns(model, sheet, labelRow, form);
   if (!cols) return null;
   for (let r = labelRow + 2; r <= Math.min(model.rowCount(sheet), labelRow + 200); r++) {
-    if (binaMargaColumns(model, sheet, r)) return null;
+    if (binaMargaColumns(model, sheet, r, form)) return null;
     const label = [cols.description, cols.description + 1, cols.description + 2, cols.description + 3].map((c) => model.text(sheet, r, c).toUpperCase()).find(Boolean) ?? '';
-    if (!matchesWord(label, FORM.binaMarga.totalRow)) continue;
+    if (!matchesWord(label, form.binaMarga.totalRow)) continue;
     for (let c = cols.amount; c <= cols.amount + AMOUNT_SPAN; c++) if (model.formulaOf(model.cell(sheet, r, c))) return { cols: { ...cols, amount: c }, totalRow: r };
   }
   return null;
@@ -156,13 +155,14 @@ function binaMargaBlock(model: WorkbookModel, sheet: string, labelRow: number): 
 export function analysisHeaderIn(
   model: WorkbookModel,
   trace: TraceResult,
+  form: AnalysisForm = BUILTIN_FORM,
 ): { sheet: string; headerRow: number; stepIndex: number; endRounding?: SourceRounding } | null {
   for (let i = trace.steps.length - 1; i >= 0; i--) {
     const m = /^(.*)!([A-Z]+)(\d+)$/.exec(trace.steps[i]!.cell);
     if (!m) continue;
     const sheet = m[1]!;
     const row = Number(m[3]);
-    if (blockColumns(model, sheet, row)) return { sheet, headerRow: row, stepIndex: i };
+    if (blockColumns(model, sheet, row, form)) return { sheet, headerRow: row, stepIndex: i };
   }
   const end = trace.terminal;
   const sheet = model.sheetName(end.address.sheet);
@@ -174,12 +174,12 @@ export function analysisHeaderIn(
     candidates.push({ row: wrapped.inner.ref.row, col: wrapped.inner.ref.col, endRounding: wrapped.rounding });
   }
   for (const c of candidates) {
-    const labelRow = binaMargaBlockAt(model, sheet, c.row, c.col);
-    const block = labelRow !== null ? binaMargaBlock(model, sheet, labelRow) : null;
+    const labelRow = binaMargaBlockAt(model, sheet, c.row, c.col, form);
+    const block = labelRow !== null ? binaMargaBlock(model, sheet, labelRow, form) : null;
     if (labelRow !== null && block && block.totalRow === c.row && block.cols.amount === c.col) {
       return { sheet, headerRow: labelRow, stepIndex: trace.steps.length - 1, ...(c.endRounding ? { endRounding: c.endRounding } : {}) };
     }
-    const officeHeader = officeBlockAt(model, sheet, c.row, c.col);
+    const officeHeader = officeBlockAt(model, sheet, c.row, c.col, form);
     if (officeHeader !== null) {
       return { sheet, headerRow: officeHeader, stepIndex: trace.steps.length - 1, ...(c.endRounding ? { endRounding: c.endRounding } : {}) };
     }
@@ -188,29 +188,35 @@ export function analysisHeaderIn(
 }
 
 /** Office-label block whose F (by label) is the given cell: the title row above its label row. */
-function officeBlockAt(model: WorkbookModel, sheet: string, row: number, col: number): number | null {
+function officeBlockAt(model: WorkbookModel, sheet: string, row: number, col: number, form: AnalysisForm): number | null {
   for (let r = row - 2; r >= Math.max(1, row - 150); r--) {
-    const cols = blockColumns(model, sheet, r);
+    const cols = blockColumns(model, sheet, r, form);
     if (!cols) continue;
-    return cols.amount === col && officeTotalRow(model, sheet, r, cols) === row ? r : null;
+    return cols.amount === col && officeTotalRow(model, sheet, r, cols, form) === row ? r : null;
   }
   return null;
 }
 
 /** Title of the Bina Marga block whose amount column holds `cell` (e.g. its D row used as another analysis' price). */
-export function binaMargaTitleAt(model: WorkbookModel, sheet: string, row: number, col: number): { code: string | null; name: string } | null {
-  const labelRow = binaMargaBlockAt(model, sheet, row, col);
+export function binaMargaTitleAt(
+  model: WorkbookModel,
+  sheet: string,
+  row: number,
+  col: number,
+  form: AnalysisForm = BUILTIN_FORM,
+): { code: string | null; name: string } | null {
+  const labelRow = binaMargaBlockAt(model, sheet, row, col, form);
   if (labelRow === null) return null;
-  const { code, name } = binaMargaTitle(model, sheet, labelRow);
+  const { code, name } = binaMargaTitle(model, sheet, labelRow, form);
   return name || code ? { code, name } : null;
 }
 
 /** "ITEM PEMBAYARAN NO." / "JENIS PEKERJAAN" / "SATUAN PEMBAYARAN" values above a Bina Marga label row. */
-function binaMargaTitle(model: WorkbookModel, sheet: string, labelRow: number): { code: string | null; name: string; unit: string | null } {
+function binaMargaTitle(model: WorkbookModel, sheet: string, labelRow: number, form: AnalysisForm): { code: string | null; name: string; unit: string | null } {
   // Nearest title above the label row: the form repeats it top-left and beside the cost table.
   // Copies beside the cost table are filled by formulas that are sometimes swapped (code under "JENIS PEKERJAAN");
   // a value must look like what its label promises, and other form labels are never values.
-  const t0 = FORM.title;
+  const t0 = form.title;
   const looksLikeCode = (t: string) => /\d/.test(t) && !/\s{1}\S+\s/.test(t) && t.length <= 30;
   const value = (label: WordMatcher, accept: (t: string) => boolean): string | null => {
     const last = Math.min(model.columnCount(sheet), 40);
@@ -276,21 +282,21 @@ function overheadPercentOf(model: WorkbookModel, sheet: string, cell: { row: num
   return v === null ? null : cell.fraction ? new Decimal(v).times(100).toFixed() : v;
 }
 
-export function readAnalysisBlock(model: WorkbookModel, sheet: string, headerRow: number): AnalysisBlock {
-  const cols = blockColumns(model, sheet, headerRow);
+export function readAnalysisBlock(model: WorkbookModel, sheet: string, headerRow: number, form: AnalysisForm = BUILTIN_FORM): AnalysisBlock {
+  const cols = blockColumns(model, sheet, headerRow, form);
   if (!cols) {
     // Bina Marga form: `headerRow` is the label row; F is the "TOTAL HARGA PEKERJAAN" cell (D-091).
-    if (!binaMargaColumns(model, sheet, headerRow)) throw new BlockError(`baris ${headerRow} bukan kepala analisa`);
-    const bm = binaMargaBlock(model, sheet, headerRow);
+    if (!binaMargaColumns(model, sheet, headerRow, form)) throw new BlockError(`baris ${headerRow} bukan kepala analisa`);
+    const bm = binaMargaBlock(model, sheet, headerRow, form);
     if (!bm) throw new BlockError(`baris TOTAL HARGA PEKERJAAN analisa baris ${headerRow} tidak ditemukan`);
-    return readBlockFrom(model, sheet, headerRow, bm.cols, model.cell(sheet, bm.totalRow, bm.cols.amount), binaMargaTitle(model, sheet, headerRow), headerRow + 1);
+    return readBlockFrom(model, sheet, headerRow, bm.cols, model.cell(sheet, bm.totalRow, bm.cols.amount), binaMargaTitle(model, sheet, headerRow, form), headerRow + 1, form);
   }
   const header = model.cell(sheet, headerRow, cols.amount);
   const fRef = model.formulaOf(header);
   // The header's price cell points at F ("Harga Satuan Pekerjaan"); a title row without a price (Cipta Karya
   // analyses) has F found by its label instead (D-091).
   const pointsAtF = !!fRef && fRef.kind === 'ref' && (!fRef.ref.sheet || model.sheetName(fRef.ref.sheet) === model.sheetName(sheet));
-  const fByLabel = pointsAtF ? null : officeTotalRow(model, sheet, headerRow, cols);
+  const fByLabel = pointsAtF ? null : officeTotalRow(model, sheet, headerRow, cols, form);
   if (!pointsAtF && fByLabel === null) {
     throw new BlockError(`harga kepala analisa ${formatAddress(header.address)} tidak merujuk sel harga satuan pekerjaan`);
   }
@@ -303,7 +309,7 @@ export function readAnalysisBlock(model: WorkbookModel, sheet: string, headerRow
   })();
   const title = officeTitle(model.text(sheet, headerRow, cols.no), model.text(sheet, headerRow, cols.description), unit);
   const fCell = fByLabel !== null ? model.cell(sheet, fByLabel, cols.amount) : model.cell(sheet, (fRef as Extract<FormulaNode, { kind: 'ref' }>).ref.row, (fRef as Extract<FormulaNode, { kind: 'ref' }>).ref.col);
-  return readBlockFrom(model, sheet, headerRow, cols, fCell, title, headerRow);
+  return readBlockFrom(model, sheet, headerRow, cols, fCell, title, headerRow, form);
 }
 
 /** Office title: NO + URAIAN cells; a title written whole in the first cell ("11.7.1.2 Pemasangan …") is split. */
@@ -314,9 +320,9 @@ function officeTitle(no: string, description: string, unit: string | null): { co
 }
 
 /** Row of F in an office-label block: "F | Harga Satuan Pekerjaan" with a formula in the amount column. */
-function officeTotalRow(model: WorkbookModel, sheet: string, headerRow: number, cols: BlockColumns): number | null {
+function officeTotalRow(model: WorkbookModel, sheet: string, headerRow: number, cols: BlockColumns, form: AnalysisForm): number | null {
   for (let r = headerRow + 2; r <= Math.min(model.rowCount(sheet), headerRow + 200); r++) {
-    if (blockColumns(model, sheet, r)) return null;
+    if (blockColumns(model, sheet, r, form)) return null;
     const label = `${model.text(sheet, r, cols.no)} ${model.text(sheet, r, cols.description)}`.toUpperCase().trim();
     // Kept as a regex: "\s+" accepts any spacing after "F." only, which a word list cannot say without loosening the rest.
     if (/^(F\.?\s+)?HARGA SATUAN PEKERJAAN\b/.test(label) && model.formulaOf(model.cell(sheet, r, cols.amount))) return r;
@@ -336,6 +342,7 @@ function readBlockFrom(
   fCell: CellInfo,
   title: { code: string | null; name: string; unit: string | null },
   categoryFloor: number,
+  form: AnalysisForm,
 ): AnalysisBlock {
   let f = model.formulaOf(fCell);
   if (!f) throw new BlockError(`sel harga ${formatAddress(fCell.address)} tidak berumus`);
@@ -373,7 +380,7 @@ function readBlockFrom(
   // Without overhead in F's chain, an E row of the block may still compute D × pct from the cell used.
   let unusedOverhead: AnalysisBlock['unusedOverhead'] = null;
   if (overheadPercent === null) {
-    for (let r = fCell.address.row + 1; r <= Math.min(model.rowCount(sheet), fCell.address.row + 10) && !blockColumns(model, sheet, r) && !binaMargaColumns(model, sheet, r); r++) {
+    for (let r = fCell.address.row + 1; r <= Math.min(model.rowCount(sheet), fCell.address.row + 10) && !blockColumns(model, sheet, r, form) && !binaMargaColumns(model, sheet, r, form); r++) {
       const node = model.formulaOf(model.cell(sheet, r, cols.amount));
       const pct = node ? overheadCell(node, fCell.address.row, fCell.address.col) : null;
       const percent = pct ? overheadPercentOf(model, sheet, pct) : null;
@@ -406,7 +413,7 @@ function readBlockFrom(
     if (!node) return; // empty or literal slot: no component
     if (isProduct(node)) {
       seen.add(row);
-      const comp = readComponent(model, sheet, categoryFloor, row, cols);
+      const comp = readComponent(model, sheet, categoryFloor, row, cols, form);
       if (comp) components.push(comp);
       return;
     }
@@ -454,7 +461,7 @@ const isProduct = (n: FormulaNode): boolean =>
   n.kind === 'unary' && n.op === '+' ? isProduct(n.operand) : n.kind === 'binary' && n.op === '*';
 
 /** null for category label rows that carry a product formula but no coefficient ("PERALATAN"). */
-function readComponent(model: WorkbookModel, sheet: string, headerRow: number, row: number, cols: BlockColumns): BlockComponent | null {
+function readComponent(model: WorkbookModel, sheet: string, headerRow: number, row: number, cols: BlockColumns, form: AnalysisForm): BlockComponent | null {
   const amount = model.cell(sheet, row, cols.amount);
   const node = model.formulaOf(amount)!;
   const factors: { row: number; col: number }[] = [];
@@ -475,7 +482,7 @@ function readComponent(model: WorkbookModel, sheet: string, headerRow: number, r
   if (!hasCoef || !hasPrice) throw new BlockError(`nilai komponen ${formatAddress(amount.address)} tidak memakai kolom harga dan koefisien`);
   const description = model.text(sheet, row, cols.description);
   const coefValue = model.cell(sheet, row, cols.coefficient).value;
-  if ((coefValue === null || coefValue === '') && (!description || isCategoryLabel(description.toUpperCase()))) return null;
+  if ((coefValue === null || coefValue === '') && (!description || categories(form).some(([, m]) => matchesWord(description.toUpperCase(), m)))) return null;
   // Excel evaluates a blank coefficient as 0; the component stays with coefficient 0 (D-046).
   const blankCoefficient = coefValue === null || coefValue === '';
   const coefficient = blankCoefficient ? '0' : excelDecimal(coefValue);
@@ -484,7 +491,7 @@ function readComponent(model: WorkbookModel, sheet: string, headerRow: number, r
   let category: AhspCategory | null = null;
   for (let r = row - 1; r > headerRow && !category; r--) {
     const label = model.text(sheet, r, cols.description).toUpperCase();
-    for (const [cat, m] of CATEGORY) if (matchesWord(label, m)) category = cat;
+    for (const [cat, m] of categories(form)) if (matchesWord(label, m)) category = cat;
   }
   if (!category) throw new BlockError(`kategori komponen baris ${row} tidak dikenali`);
 
@@ -503,12 +510,12 @@ function readComponent(model: WorkbookModel, sheet: string, headerRow: number, r
 }
 
 /** Header rows of every analysis block in a sheet (to report what the import left out). */
-export function countAnalysisBlocks(model: WorkbookModel, sheet: string): number {
+export function countAnalysisBlocks(model: WorkbookModel, sheet: string, form: AnalysisForm = BUILTIN_FORM): number {
   let n = 0;
   for (let r = 1; r < model.rowCount(sheet); r++) {
-    const office = blockColumns(model, sheet, r);
+    const office = blockColumns(model, sheet, r, form);
     if (office && model.formulaOf(model.cell(sheet, r, office.amount))) n++;
-    else if (!office && binaMargaBlock(model, sheet, r)) n++;
+    else if (!office && binaMargaBlock(model, sheet, r, form)) n++;
   }
   return n;
 }

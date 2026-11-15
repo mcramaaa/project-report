@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { matchesWord, RAB_BUILTIN_PROFILE, rabProfileSchema, type RabProfile, type WordMatcher } from '@laporan-proyek/shared';
+import { buildDraft } from './build-draft';
 import { detectRabColumns, readRabSheet } from './workbook/rab-sheet';
-import { workbookOf, type SheetSpec } from './test-workbook';
+import { analysisBlock, rabSheet, recap, workbookOf, type SheetSpec } from './test-workbook';
 
 const p = RAB_BUILTIN_PROFILE.rab;
 
@@ -154,6 +155,50 @@ describe('RAB mapping profile (RAB_PLAYGROUND stage 1)', () => {
     const sheet = readRabSheet(model, 'RAB', 'CONTRACT', 0, undefined, custom);
     expect(sheet.columns).toMatchObject({ description: 2, volume: 4 });
     expect(sheet.rows.find((r) => r.rowType === 'ITEM')).toMatchObject({ description: 'Pembersihan lokasi', volume: '10', sourceUnitPrice: '5000' });
+  });
+
+  it('buildDraft reads analysis forms with the run profile (D-094)', () => {
+    const block = analysisBlock(5, {
+      seq: 1,
+      code: 'A.1',
+      name: '1 M3 GALIAN TANAH BIASA MANUAL',
+      unit: 'm3',
+      components: [
+        { category: 'TENAGA', name: 'Pekerja', unit: 'OH', coef: 0.75, price: ['VLOOKUP(C8,UPAH!B$2:C$20,2,FALSE)', 140000] },
+        { category: 'TENAGA', name: 'Mandor', unit: 'OH', coef: 0.025, price: ['VLOOKUP(C9,UPAH!B$2:C$20,2,FALSE)', 220000] },
+      ],
+    });
+    // A form the built-in profile does not know: "KOEF." over the coefficients, "TENAGA HARIAN" as the category.
+    const analysis = { ...block.cells, F6: 'KOEF.', C7: 'TENAGA HARIAN' };
+    const model = workbookOf({
+      'RAB + PPN': rabSheet([
+        { no: 'A', desc: 'PEKERJAAN TANAH' },
+        { no: 1, desc: 'Galian', vol: 10, unit: 'm3', code: 'A.1', price: [`IFERROR(VLOOKUP(F14,'REKAP ANALISA'!B$6:E$100,4,FALSE),0)`, Math.round(block.price)] },
+      ]),
+      'REKAP ANALISA': recap([{ seq: 1, code: 'A.1', price: block.price }]),
+      ANALISA: analysis,
+      UPAH: { B2: 'Pekerja', C2: 140000, B3: 'Mandor', C3: 220000 },
+    });
+    const sources = [{ model, documentId: 'd1', filename: 'f', sha256: 's' }];
+    const ctx = { targetVersionType: 'CONTRACT' as const, officialAnalyses: [], previousItems: [] };
+    expect(buildDraft(sources, ctx).analyses).toEqual([]);
+
+    const form = RAB_BUILTIN_PROFILE.analysisForm;
+    const profile = rabProfileSchema.parse({
+      ...RAB_BUILTIN_PROFILE,
+      origin: 'MANUAL',
+      analysisForm: {
+        ...form,
+        office: { ...form.office, coefficient: { match: 'EXACT', words: ['KOEFISIEN', 'KOEF.'] } },
+        categories: { ...form.categories, LABOR: { match: 'EXACT', words: [...form.categories.LABOR.words, 'TENAGA HARIAN'] } },
+      },
+    });
+    const draft = buildDraft(sources, { ...ctx, profile });
+    expect(draft.analyses).toHaveLength(1);
+    expect(draft.analyses[0]!.components.map((c) => [c.category, c.coefficient])).toEqual([['LABOR', '0.75'], ['LABOR', '0.025']]);
+    // 0.75×140000 + 0.025×220000 = 110500; +10% = 121550
+    expect(draft.analyses[0]!.computed).toMatchObject({ directCost: '110500', price: '121550' });
+    expect(draft.issues.filter((i) => i.severity === 'BLOCKING')).toEqual([]);
   });
 
   it('reads a header-word sheet whose quantity title only a custom profile knows', () => {

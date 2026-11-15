@@ -3,8 +3,8 @@
 Status: **tahap 1 berjalan** (2026-11-15). Skema profil + profil bawaan ada di `packages/shared/src/rab-profile.ts`.
 Pembaca RAB kantor (`rab-sheet.ts`), pembaca berdasarkan kata header (`headerless-sheet.ts`), dan formulir analisa
 kantor/Bina Marga (`analysis-block.ts`) sudah membaca kata header dan label dari profil. Profil disimpan per proyek
-dan dipilih per run impor (D-094, `/rab-profiles`, `mappingProfileId`); formulir analisa masih selalu memakai profil
-bawaan, dan belum ada UI (tahap 2). `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
+dan dipilih per run impor (D-094, `/rab-profiles`, `mappingProfileId`) untuk sheet RAB dan formulir analisa. Belum:
+kandidat sheet saat upload memakai profil bawaan, dan belum ada UI (tahap 2). `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
 menjawab sama persis dengan regex lama.
 
 ## 1. Masalah

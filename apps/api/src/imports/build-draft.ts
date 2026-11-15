@@ -13,14 +13,14 @@ import type {
 } from '@laporan-proyek/shared';
 import { GUIDE_VERSION } from './guide/rab-import-guide';
 import { applySourceFormula, formulaMatches, formulaNote } from './price-formula';
-import { analysisHeaderIn, binaMargaTitleAt, blockColumns, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock } from './workbook/analysis-block';
+import { analysisHeaderIn, binaMargaTitleAt, blockColumns, BlockError, countAnalysisBlocks, readAnalysisBlock, type AnalysisBlock, type AnalysisForm } from './workbook/analysis-block';
 import { columnLetters, formatAddress, type FormulaNode } from './workbook/formula';
 import { headerLabels, type HeaderlessColumns } from './workbook/headerless-sheet';
 import { readRabSheet, rabSheetCandidates, RabSheetError } from './workbook/rab-sheet';
 import { isBlocking, traceCell, traceExpression, type TraceResult } from './workbook/trace';
 import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
-export const PARSER_VERSION = 'rab-parser@7'; // @7: RAB sheet header words from the mapping profile (D-094); @6: header-word sheets + column mapping (D-090), Bina Marga/Cipta Karya analyses (D-091), HPS price formula (D-092); @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
+export const PARSER_VERSION = 'rab-parser@7'; // @7: header words and labels of RAB sheets and analysis forms from the mapping profile (D-094); @6: header-word sheets + column mapping (D-090), Bina Marga/Cipta Karya analyses (D-091), HPS price formula (D-092); @2: item/total reconciliation, unused overhead (D-063); @3: analysis blocks in sources (D-065); @4: MC-n blocks (D-069); @5: RAB row locators carry the volume/description cell
 
 export interface DraftSource {
   model: WorkbookModel;
@@ -60,11 +60,7 @@ export interface DraftContext {
   officialAnalyses: OfficialAnalysis[];
   /** Items of the latest approved RAB version, for work item candidates of non-contract imports. */
   previousItems: PreviousItem[];
-  /**
-   * D-094: mapping profile for the RAB sheets; absent = built-in profile.
-   * shortcut: analysis blocks always read with the built-in profile; thread it into analysis-block.ts when a project
-   * needs its own analysis form words.
-   */
+  /** D-094: mapping profile for the RAB sheets and analysis forms; absent = built-in profile. */
   profile?: RabProfile;
 }
 
@@ -145,6 +141,7 @@ interface PendingAnalysis {
  * the RAB rows reference becomes part of the draft (D-046); nothing is written to official data here.
  */
 export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImportDraft {
+  const form = ctx.profile?.analysisForm;
   const issues: ImportIssue[] = [];
   const rows: DraftRow[] = [];
   const analyses = new Map<string, PendingAnalysis>();
@@ -161,7 +158,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       for (const sheet of src.model.sheetNames()) {
         let found = false;
         for (let r = 1; r < src.model.rowCount(sheet); r++) {
-          const cols = blockColumns(src.model, sheet, r);
+          const cols = blockColumns(src.model, sheet, r, form);
           if (!cols || !src.model.formulaOf(src.model.cell(sheet, r, cols.amount))) continue;
           found = true;
           const code = src.model.text(sheet, r, cols.no);
@@ -249,10 +246,10 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       const t = traceCell(src.model, r.priceCell.sheet, r.priceCell.row, r.priceCell.col);
       base.price.evidence = evidence(t);
       for (const p of t.problems.filter((x) => !isBlocking(x))) issues.push({ code: 'DUPLICATE_LOOKUP_KEY', severity: 'WARNING', message: p.message, rowKey: key });
-      const header = analysisHeaderIn(src.model, t);
+      const header = analysisHeaderIn(src.model, t, form);
       if (header) {
         const analysisKey = `${docIndex}:${header.sheet}:${header.headerRow}`;
-        const pending = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow);
+        const pending = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow, form);
         // Roundings that are not the app's half-up analysis rounding (ROUNDUP/ROUNDDOWN in F, a "Dibulatkan" row) are
         // part of how the source price is formed: kept in the row's source price formula, inner first (D-092).
         const sourceRoundings = [pending.block?.sourceRounding, header.endRounding].filter((x): x is NonNullable<typeof x> => !!x);
@@ -314,7 +311,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
     const key = row.price.stoppedAt?.lookupKey ?? row.analysisCode;
     if (typeof key !== 'string') continue;
     for (const hit of supportIndex.get(normalizeText(key)) ?? []) {
-      const pending = registerAnalysis(analyses, prices, analysisSheets, issues, hit.src, hit.docIndex, hit.sheet, hit.headerRow);
+      const pending = registerAnalysis(analyses, prices, analysisSheets, issues, hit.src, hit.docIndex, hit.sheet, hit.headerRow, form);
       offered.set(row.key, [...(offered.get(row.key) ?? []), pending.key]);
     }
   }
@@ -365,7 +362,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
   checkRowPrices(rows, draftAnalyses, issues);
 
   let analysesInWorkbook = 0;
-  for (const { model, sheet } of analysisSheets.values()) analysesInWorkbook += countAnalysisBlocks(model, sheet);
+  for (const { model, sheet } of analysisSheets.values()) analysesInWorkbook += countAnalysisBlocks(model, sheet, form);
   sourceInfo.forEach((info, docIndex) => {
     if (info.role === 'RAB') info.analysisSheets = [...analysisSheets.keys()].filter((k) => k.startsWith(`${docIndex}:`)).map((k) => k.slice(k.indexOf(':') + 1));
   });
@@ -390,7 +387,7 @@ export function buildDraft(sources: DraftSource[], ctx: DraftContext): RabImport
       components: imported.reduce((n, a) => n + a.components.length, 0),
       pricesImported: new Set(imported.flatMap((a) => a.components.flatMap((c) => (c.source.kind === 'PRICE_ITEM' ? [c.source.priceKey] : [])))).size,
       // Every sheet, referenced or not: a source with analyses is never replaced by inheritance (D-058, D-065).
-      analysisBlocksInSources: sources.reduce((n, s) => n + s.model.sheetNames().reduce((m, sheet) => m + countAnalysisBlocks(s.model, sheet), 0), 0),
+      analysisBlocksInSources: sources.reduce((n, s) => n + s.model.sheetNames().reduce((m, sheet) => m + countAnalysisBlocks(s.model, sheet, form), 0), 0),
     },
     issues,
   };
@@ -425,6 +422,7 @@ function registerAnalysis(
   docIndex: number,
   sheet: string,
   headerRow: number,
+  form: AnalysisForm | undefined,
 ): PendingAnalysis {
   const key = `${docIndex}:${sheet}:${headerRow}`;
   const existing = analyses.get(key);
@@ -443,7 +441,7 @@ function registerAnalysis(
   analyses.set(key, pending);
   analysisSheets.set(`${docIndex}:${sheet}`, { model: src.model, sheet });
   try {
-    pending.block = readAnalysisBlock(src.model, sheet, headerRow);
+    pending.block = readAnalysisBlock(src.model, sheet, headerRow, form);
   } catch (err) {
     if (!(err instanceof BlockError)) throw err;
     issues.push({ code: 'ANALYSIS_STRUCTURE', severity: 'BLOCKING', message: `Analisa ${sheet}!${headerRow}: ${err.message}.`, analysisKey: key });
@@ -460,9 +458,9 @@ function registerAnalysis(
       issues.push({ code: 'BLANK_COEFFICIENT', severity: 'WARNING', message: `Analisa ${pending.block.code ?? key}, "${comp.description}": koefisien kosong (Excel menghitung 0).`, analysisKey: key });
     }
     pending.components.push(pc);
-    const header = analysisHeaderIn(src.model, t);
+    const header = analysisHeaderIn(src.model, t, form);
     if (header && !(header.sheet === pending.block.sheet && header.headerRow === headerRow)) {
-      const sub = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow);
+      const sub = registerAnalysis(analyses, prices, analysisSheets, issues, src, docIndex, header.sheet, header.headerRow, form);
       sub.usedByAnalyses.add(key);
       const own = sub.block?.priceRounding ?? null;
       const rounded = t.roundings.length > 0 || own !== null;
@@ -533,7 +531,7 @@ function registerAnalysis(
       t.terminalKind !== 'EMPTY' &&
       t.problems.every((p) => !isBlocking(p)) &&
       excelDecimal(t.terminal.value) !== null &&
-      priceName(src.model, t.terminal.address.sheet, t.terminal.address.row, t.terminal.address.col)
+      priceName(src.model, t.terminal.address.sheet, t.terminal.address.row, t.terminal.address.col, form)
     ) {
       // D-091: a price reached through plain references (Bina Marga sheets: =N24 → ='4-Basic Price'!H8) is a list
       // price named by its own row ("Pekerja"); the reference chain is the evidence, the cached value is used as is.
@@ -550,7 +548,7 @@ function registerAnalysis(
       if (!prices.has(priceKey)) {
         prices.set(priceKey, {
           key: priceKey,
-          name: priceName(src.model, end.sheet, end.row, end.col)!,
+          name: priceName(src.model, end.sheet, end.row, end.col, form)!,
           unit: comp.unit,
           price: excelDecimal(t.terminal.value)!,
           locator: { documentId: src.documentId, sheet: end.sheet, cell: formatAddress({ ...end, sheet: null }) },
@@ -624,9 +622,9 @@ function constantValue(node: FormulaNode | null): string | null {
 }
 
 /** Price-row name; inside another analysis block (its D row used as a price) the analysis is named too. */
-function priceName(model: WorkbookModel, sheet: string, row: number, col: number): string | null {
+function priceName(model: WorkbookModel, sheet: string, row: number, col: number, form: AnalysisForm | undefined): string | null {
   const own = rowName(model, sheet, row, col);
-  const block = binaMargaTitleAt(model, sheet, row, col);
+  const block = binaMargaTitleAt(model, sheet, row, col, form);
   if (!block) return own;
   return `Analisa ${[block.code, block.name].filter(Boolean).join(' ')}${own ? `: ${own}` : ''}`.slice(0, 255);
 }
