@@ -256,6 +256,8 @@ export interface RabProfileDto {
   id: string;
   name: string;
   origin: RabProfileOrigin;
+  /** D-096: the profile new runs use when they name none. */
+  isDefault: boolean;
   profile: RabProfile;
   createdBy: { id: string; name: string };
   createdAt: string;
@@ -341,3 +343,35 @@ export const RAB_BUILTIN_PROFILE: RabProfile = {
     },
   },
 };
+
+/** D-096: chat about one import run. The reviewer writes; the assistant answers and may propose profile words. */
+export const rabImportChatSchema = z.object({ message: z.string().trim().min(1).max(2000) });
+export type RabImportChatInput = z.infer<typeof rabImportChatSchema>;
+
+/** Applying a proposal creates a new run with a saved profile; the name labels that profile. */
+export const applyRabImportChatSchema = z.object({ name: z.string().trim().min(1).max(120).optional() });
+export type ApplyRabImportChatInput = z.infer<typeof applyRabImportChatSchema>;
+
+/** A proposal as the server proved it: accepted words with their cells, rejected ones with the reason. */
+export interface RabChatProposals {
+  accepted: RabProfileAssistDto['accepted'];
+  rejected: RabProfileAssistDto['rejected'];
+  /** The profile with the accepted words (name and origin are added when a run is created). */
+  profile: Omit<RabProfile, 'origin' | 'name'>;
+  model: string | null;
+}
+
+export interface RabImportChatMessageDto {
+  id: string;
+  role: 'USER' | 'ASSISTANT';
+  content: string;
+  proposals: RabChatProposals | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+export interface RabImportChatTurnDto {
+  user: RabImportChatMessageDto;
+  assistant: RabImportChatMessageDto;
+}
+

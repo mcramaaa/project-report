@@ -132,6 +132,11 @@ GET  /projects/:projectId/rab-profiles                                 rabImport
 POST /projects/:projectId/rab-profiles   { profile }                   rabImport.review -> 201, baris baru asal MANUAL (D-094)
 POST /projects/:projectId/rab-profiles/preview  { targetVersionType, targetRevisionNumber?, sources, profile }  rabImport.review -> 200 { error, sources, counts, reconciliation, issues[+cell] }; tidak menyimpan, tanpa AI (tahap 2)
 POST /projects/:projectId/rab-profiles/assist   { ...preview, message }   rabImport.review -> 200 { reply, accepted, rejected, profile, before, after, sent }; 409 tanpa 9router, 502 bila AI gagal (D-095)
+POST /projects/:projectId/rab-profiles/:profileId/default   rabImport.approve -> 200, profil default proyek (D-096)
+DELETE /projects/:projectId/rab-profiles/default   rabImport.approve -> 204, kembali ke profil bawaan (D-096)
+GET  /projects/:projectId/rab-imports/:importId/chat   rabImport.review | rabImport.approve -> riwayat chat run (D-096)
+POST /projects/:projectId/rab-imports/:importId/chat   { message }   rabImport.review -> 200 { user, assistant }; hanya run NEEDS_REVIEW; 409 tanpa 9router (D-096)
+POST /projects/:projectId/rab-imports/:importId/chat/:messageId/apply   { name? }   rabImport.review -> 201 run baru dengan profil tersimpan (D-096)
 ```
 
 - `rabSheet` wajib bila dokumen RAB punya lebih dari satu kandidat sheet; dokumen `SUPPORT` tidak perlu sheet RAB (D-055)

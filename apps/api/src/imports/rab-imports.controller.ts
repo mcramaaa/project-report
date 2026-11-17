@@ -7,6 +7,10 @@ import {
   type CreateRabProfileInput,
   previewRabProfileSchema,
   type PreviewRabProfileInput,
+  rabImportChatSchema,
+  type RabImportChatInput,
+  applyRabImportChatSchema,
+  type ApplyRabImportChatInput,
   assistRabProfileSchema,
   type AssistRabProfileInput,
   rabImportDecisionsSchema,
@@ -39,6 +43,21 @@ export class RabProfilesController {
   @RequireProjectPermission('rabImport.review')
   create(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Body(new ZodPipe(createRabProfileSchema)) body: CreateRabProfileInput) {
     return this.imports.createProfile(auth.user, projectId, body);
+  }
+
+  /** D-096: the profile new runs use when they name none. Manager decision (rabImport.approve). */
+  @Post(':profileId/default')
+  @RequireProjectPermission('rabImport.approve')
+  @HttpCode(200)
+  setDefault(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string, @Param('profileId', uuid) profileId: string) {
+    return this.imports.setDefaultProfile(auth.user, projectId, profileId);
+  }
+
+  @Delete('default')
+  @RequireProjectPermission('rabImport.approve')
+  @HttpCode(204)
+  clearDefault(@CurrentAuth() auth: AuthContext, @Param('projectId') projectId: string) {
+    return this.imports.clearDefaultProfile(auth.user, projectId);
   }
 
   /** Stage 2 playground: read documents with an unsaved profile; stores nothing, calls no AI. */
@@ -111,6 +130,38 @@ export class RabImportsController {
     @Body(new ZodPipe(confirmProposalsSchema)) body: ConfirmProposalsInput,
   ) {
     return this.imports.confirmProposals(auth.user, projectId, importId, body);
+  }
+
+  /** D-096: the chat about this run's draft. */
+  @Get(':importId/chat')
+  @RequireProjectPermission('rabImport.review', 'rabImport.approve')
+  listChat(@Param('projectId') projectId: string, @Param('importId', uuid) importId: string) {
+    return this.imports.listChat(projectId, importId);
+  }
+
+  @Post(':importId/chat')
+  @RequireProjectPermission('rabImport.review')
+  @HttpCode(200)
+  chat(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('importId', uuid) importId: string,
+    @Body(new ZodPipe(rabImportChatSchema)) body: RabImportChatInput,
+  ) {
+    return this.imports.chatWithImport(auth.user, projectId, importId, body);
+  }
+
+  /** D-096: turns a proven proposal into a new run that reads with a saved profile. */
+  @Post(':importId/chat/:messageId/apply')
+  @RequireProjectPermission('rabImport.review')
+  apply(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('importId', uuid) importId: string,
+    @Param('messageId', uuid) messageId: string,
+    @Body(new ZodPipe(applyRabImportChatSchema)) body: ApplyRabImportChatInput,
+  ) {
+    return this.imports.applyChat(auth.user, projectId, importId, messageId, body);
   }
 
   @Post(':importId/retry')

@@ -27,6 +27,11 @@ import {
   type RabProfilePreviewDto,
   type AssistRabProfileInput,
   type RabProfileAssistDto,
+  type RabImportChatInput,
+  type RabImportChatMessageDto,
+  type RabImportChatTurnDto,
+  type RabChatProposals,
+  type ApplyRabImportChatInput,
   type RabVersionType,
   type SourceLocator,
 } from '@laporan-proyek/shared';
@@ -41,7 +46,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { nextWorkItemNumber, RabService, workItemCode } from '../rab/rab.service';
 import { buildDraft, DraftInputError, looseText, PARSER_VERSION, type DraftSource, type OfficialAnalysis } from './build-draft';
 import { assistContext, proveChanges, type EditableProfile } from './profile-assist';
-import { PROFILE_ASSIST_INSTRUCTION, PROFILE_ASSIST_RESPONSE_FORMAT, PROFILE_ASSIST_VERSION, profileAssistResponseSchema } from './guide/profile-assist-guide';
+import { PROFILE_ASSIST_INSTRUCTION, PROFILE_ASSIST_RESPONSE_FORMAT, PROFILE_ASSIST_VERSION, RAB_IMPORT_CHAT_INSTRUCTION, RAB_IMPORT_CHAT_VERSION, profileAssistResponseSchema } from './guide/profile-assist-guide';
 import { blockingIssues, evaluateImport, latestDecisions, type DecisionRecord, type OfficialVersion } from './evaluate';
 import { proposePackage, type BaseItem } from './proposals';
 import { AI_CANDIDATE_RESPONSE_FORMAT, aiCandidateResponseSchema, GUIDE_VERSION, SYSTEM_INSTRUCTION } from './guide/rab-import-guide';
@@ -67,8 +72,33 @@ function profileOf(snapshot: unknown): RabProfile {
 }
 
 /** Stored profiles were validated on save (createProfile); runs re-validate their snapshot in profileOf. */
-function profileDto(r: { id: string; name: string; origin: RabProfileDto['origin']; profile: unknown; createdAt: Date; creator: { id: string; name: string } }): RabProfileDto {
-  return { id: r.id, name: r.name, origin: r.origin, profile: r.profile as RabProfile, createdBy: r.creator, createdAt: r.createdAt.toISOString() };
+function profileDto(r: { id: string; name: string; origin: RabProfileDto['origin']; profile: unknown; createdAt: Date; creator: { id: string; name: string } }, isDefault: boolean): RabProfileDto {
+  return { id: r.id, name: r.name, origin: r.origin, isDefault, profile: r.profile as RabProfile, createdBy: r.creator, createdAt: r.createdAt.toISOString() };
+}
+
+function chatDto(r: { id: string; role: 'USER' | 'ASSISTANT'; content: string; proposals: unknown; createdAt: Date; creator: { id: string; name: string } | null }): RabImportChatMessageDto {
+  return {
+    id: r.id,
+    role: r.role,
+    content: r.content,
+    proposals: (r.proposals as RabChatProposals | null) ?? null,
+    createdBy: r.creator,
+    createdAt: r.createdAt.toISOString(),
+  };
+}
+
+/** Editable part of a profile: what the proof and the playground change (no origin, no name). */
+function editableOf(p: RabProfile): EditableProfile {
+  const copy: Partial<RabProfile> = structuredClone(p);
+  delete copy.origin;
+  delete copy.name;
+  return copy as EditableProfile;
+}
+
+/** Cell text of a locator as "Sheet!F14" (or the row/sheet when the reader has no cell). */
+function locatorText(l: SourceLocator | undefined): string | null {
+  if (!l) return null;
+  return l.cell ? `${l.sheet}!${l.cell}` : l.row ? `${l.sheet} baris ${l.row}` : l.sheet;
 }
 
 const USER_REF = { select: { id: true, name: true } } as const;
@@ -170,10 +200,10 @@ export class RabImportsService implements OnModuleInit {
       } else if (input.targetRevisionNumber !== undefined) {
         throw new BadRequestException('Nomor hanya untuk MC.');
       }
-      const mapping = input.mappingProfileId
-        ? await tx.rabMappingProfile.findFirst({ where: { id: input.mappingProfileId, projectId }, select: { id: true, profile: true } })
-        : null;
-      if (input.mappingProfileId && !mapping) throw new BadRequestException('Profil pemetaan tidak ditemukan di proyek ini.');
+      // D-096: absent = the project default (if any); null = built-in; a value = that profile of this project.
+      const profileId = input.mappingProfileId !== undefined ? input.mappingProfileId : ((await tx.rabMappingProfileDefault.findUnique({ where: { projectId }, select: { profileId: true } }))?.profileId ?? null);
+      const mapping = profileId ? await tx.rabMappingProfile.findFirst({ where: { id: profileId, projectId }, select: { id: true, profile: true } }) : null;
+      if (profileId && !mapping) throw new BadRequestException('Profil pemetaan tidak ditemukan di proyek ini.');
       const attempt = previousImportId ? ((await tx.rabImport.findUnique({ where: { id: previousImportId }, select: { attemptNumber: true } }))?.attemptNumber ?? 0) + 1 : 1;
       const created = await tx.rabImport.create({
         data: {
@@ -231,7 +261,7 @@ export class RabImportsService implements OnModuleInit {
         targetVersionType: old.targetVersionType,
         targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined,
         sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap) })),
-        mappingProfileId: old.mappingProfileId ?? undefined,
+        mappingProfileId: old.mappingProfileId ?? null,
       },
       old.id,
     );
@@ -266,7 +296,7 @@ export class RabImportsService implements OnModuleInit {
           rabSheet: d.rabSheet ?? undefined,
           columns: mapped.get(d.documentId) ?? columnMapOf(d.columnMap),
         })),
-        mappingProfileId: old.mappingProfileId ?? undefined,
+        mappingProfileId: old.mappingProfileId ?? null,
       },
       old.id,
     );
@@ -458,10 +488,189 @@ export class RabImportsService implements OnModuleInit {
     };
   }
 
+  /** D-096: messages of one run, oldest first. */
+  async listChat(projectId: string, importId: string): Promise<RabImportChatMessageDto[]> {
+    await this.find(this.prisma, projectId, importId);
+    const rows = await this.prisma.rabImportChatMessage.findMany({ where: { importId }, include: { creator: USER_REF }, orderBy: { createdAt: 'asc' } });
+    return rows.map(chatDto);
+  }
+
+  /**
+   * D-096: the reviewer asks about the draft of one run. The assistant sees the run's own machine result and problem
+   * cells (never the whole workbook), may propose profile words, and every proposal is proven against the cells it cites
+   * before it is stored. Nothing is applied here: applyChat creates a new run from a proposal the reviewer chose.
+   */
+  async chatWithImport(actor: AuthUser, projectId: string, importId: string, input: RabImportChatInput): Promise<RabImportChatTurnDto> {
+    if (!this.ai) throw new ConflictException('Asisten AI belum dikonfigurasi di server (9router).');
+    const run = await this.find(this.prisma, projectId, importId);
+    if (run.status !== 'NEEDS_REVIEW' || !run.draft) throw new ConflictException('Chat hanya untuk impor yang sudah dibaca dan belum disetujui.');
+    const draft = run.draft as unknown as RabImportDraft;
+    const profile = editableOf(profileOf(run.mappingProfile));
+    const sources = await this.loadSources(
+      projectId,
+      run.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap), document: d.document })),
+    );
+
+    // What the machine says about this run, with the cells it stopped on.
+    const evaluation = this.evaluate({ draft }, await this.decisions(importId), await this.officialVersions(projectId));
+    const issues = [...evaluation.issues].sort((a, b) => Number(b.severity === 'BLOCKING') - Number(a.severity === 'BLOCKING'));
+    const locators = new Map<string, SourceLocator>([...draft.rows.map((r) => [r.key, r.locator] as const), ...draft.analyses.map((a) => [a.key, a.locator] as const)]);
+    const items = draft.rows.filter((r) => r.rowType === 'ITEM');
+    const unresolved = items.filter((r) => r.price.kind === 'UNRESOLVED' || r.price.kind === 'NONE');
+    const count = (kind: DraftRow['price']['kind']) => items.filter((r) => r.price.kind === kind).length;
+    const issueCells = issues.map((i) => locatorText(locators.get(i.rowKey ?? i.analysisKey ?? '')));
+    const unresolvedCells = unresolved.map((r) => locatorText(r.locator));
+    const machine = [
+      `Item ${items.length}, tertaut analisa ${count('ANALYSIS')}, harga langsung ${count('DIRECT')}, belum tertaut ${unresolved.length}.`,
+      ...issues.slice(0, 25).map((i, n) => `${i.severity} ${i.code}${issueCells[n] ? ` (${issueCells[n]})` : ''}: ${i.message}`),
+      ...unresolved.slice(0, 15).map((r) => `BELUM TERTAUT ${r.displayNumber ?? ''} ${r.description} (${locatorText(r.locator) ?? '-'})`),
+    ].join('\n');
+
+    // Earlier turns give the assistant the thread; each is cut so the history cannot crowd out the workbook.
+    const earlier = (await this.prisma.rabImportChatMessage.findMany({ where: { importId }, orderBy: { createdAt: 'desc' }, take: 6 })).reverse();
+    const thread = earlier.map((m) => `${m.role === 'USER' ? 'Reviewer' : 'Asisten'}: ${m.content.slice(0, 500)}`).join('\n');
+    const userRow = await this.prisma.rabImportChatMessage.create({
+      data: { importId, projectId, role: 'USER', content: input.message, createdBy: actor.id },
+      include: { creator: USER_REF },
+    });
+
+    const context = assistContext({
+      sources: sources.map((s) => ({ model: s.model, filename: s.filename, role: s.role ?? 'RAB', rabSheet: s.rabSheet })),
+      profile,
+      machine,
+      problemCells: [...issueCells, ...unresolvedCells].filter((c): c is string => c !== null),
+      message: thread ? `RIWAYAT CHAT:\n${thread}\n\nPERTANYAAN BARU:\n${input.message}` : input.message,
+    });
+    const { result, model, attempts } = await this.ai.completeJson(profileAssistResponseSchema, [
+      { role: 'system', content: RAB_IMPORT_CHAT_INSTRUCTION },
+      { role: 'user', content: `Format jawaban: ${PROFILE_ASSIST_RESPONSE_FORMAT}\n\n${context.text}` },
+    ]);
+    await this.prisma.rabProfileAiRun.createMany({
+      data: attempts.map((a) => ({
+        projectId,
+        createdBy: actor.id,
+        instructionVersion: RAB_IMPORT_CHAT_VERSION,
+        model: a.model,
+        attempt: a.attempt,
+        status: a.status,
+        error: a.error,
+        request: { importId, message: input.message, characters: context.characters, sheets: context.sheets, content: context.text },
+        response: (a.response ?? undefined) as Prisma.InputJsonValue | undefined,
+        startedAt: a.startedAt,
+        finishedAt: a.finishedAt,
+      })),
+    });
+
+    let assistant;
+    if (!result || !model) {
+      assistant = await this.prisma.rabImportChatMessage.create({
+        data: { importId, projectId, role: 'ASSISTANT', content: 'Asisten AI tidak memberi jawaban yang valid. Kirim ulang pertanyaan Anda.', proposals: undefined },
+        include: { creator: USER_REF },
+      });
+    } else {
+      // Proven against the workbook of this run, with the run's own profile as the starting point.
+      const proved = proveChanges(sources.map((s) => s.model), profile, result.changes);
+      const proposals: RabChatProposals = { accepted: proved.accepted, rejected: proved.rejected, profile: proved.profile, model };
+      assistant = await this.prisma.rabImportChatMessage.create({
+        data: { importId, projectId, role: 'ASSISTANT', content: result.reply, proposals: proposals as unknown as Prisma.InputJsonValue },
+        include: { creator: USER_REF },
+      });
+    }
+    return { user: chatDto(userRow), assistant: chatDto(assistant) };
+  }
+
+  /**
+   * D-096: a proposal the reviewer chose becomes a saved profile (origin MANUAL) and a new run that reads with it, linked
+   * like a remap. The old run leaves the list when it was still waiting for review (D-066). The reviewer may then make
+   * the profile the project default, so later runs read with it without being asked.
+   */
+  async applyChat(actor: AuthUser, projectId: string, importId: string, messageId: string, input: ApplyRabImportChatInput): Promise<RabImportSummaryDto> {
+    const old = await this.find(this.prisma, projectId, importId);
+    if (!['FAILED', 'REJECTED', 'NEEDS_REVIEW'].includes(old.status)) {
+      throw new ConflictException('Usulan hanya dapat dipakai pada impor yang gagal, ditolak, atau belum disetujui.');
+    }
+    if (old.rabVersionId || old.priceListId) throw new ConflictException('Impor sudah digunakan untuk data resmi.');
+    const message = await this.prisma.rabImportChatMessage.findFirst({ where: { id: messageId, importId, role: 'ASSISTANT' } });
+    const proposals = message?.proposals as RabChatProposals | null | undefined;
+    if (!proposals || proposals.accepted.length === 0) throw new ConflictException('Pesan ini tidak punya usulan yang terbukti.');
+    const name = input.name ?? `Hasil chat ${importId.slice(0, 8)}`;
+    const profile = rabProfileSchema.parse({ ...proposals.profile, name, origin: 'MANUAL' });
+
+    const saved = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.rabMappingProfile.create({
+        data: { projectId, name, origin: 'MANUAL', profile: profile as unknown as Prisma.InputJsonValue, createdBy: actor.id },
+      });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'CREATE_RAB_MAPPING_PROFILE',
+        entityType: 'RAB_MAPPING_PROFILE',
+        entityId: row.id,
+        projectId,
+        newValue: { name, origin: 'MANUAL', fromRun: importId, fromMessage: messageId },
+      });
+      return row;
+    });
+    const run = await this.create(
+      actor,
+      projectId,
+      {
+        targetVersionType: old.targetVersionType,
+        targetRevisionNumber: old.targetVersionType === 'MC' ? old.targetRevisionNumber : undefined,
+        sources: old.documents.map((d) => ({ documentId: d.documentId, role: d.role, rabSheet: d.rabSheet ?? undefined, columns: columnMapOf(d.columnMap) })),
+        mappingProfileId: saved.id,
+      },
+      old.id,
+    );
+    if (old.status === 'NEEDS_REVIEW') await this.remove(actor, projectId, old.id);
+    await this.prisma.$transaction((tx) =>
+      writeAudit(tx, {
+        actorId: actor.id,
+        action: 'APPLY_RAB_IMPORT_CHAT',
+        entityType: 'RAB_IMPORT',
+        entityId: importId,
+        projectId,
+        newValue: { messageId, profileId: saved.id, newImportId: run.id },
+      }),
+    );
+    return run;
+  }
+
+  /** D-096: the profile new runs use when they name none. Changing it is a manager decision and is audited. */
+  async setDefaultProfile(actor: AuthUser, projectId: string, profileId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const profile = await tx.rabMappingProfile.findFirst({ where: { id: profileId, projectId }, select: { id: true, name: true } });
+      if (!profile) throw new NotFoundException('Profil tidak ditemukan di proyek ini.');
+      await tx.rabMappingProfileDefault.upsert({
+        where: { projectId },
+        create: { projectId, profileId, setBy: actor.id },
+        update: { profileId, setBy: actor.id, setAt: new Date() },
+      });
+      await writeAudit(tx, {
+        actorId: actor.id,
+        action: 'SET_RAB_PROFILE_DEFAULT',
+        entityType: 'RAB_MAPPING_PROFILE',
+        entityId: profile.id,
+        projectId,
+        newValue: { name: profile.name },
+      });
+    });
+  }
+
+  /** D-096: back to the built-in profile for new runs. */
+  async clearDefaultProfile(actor: AuthUser, projectId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.rabMappingProfileDefault.deleteMany({ where: { projectId } });
+      if (count > 0) {
+        await writeAudit(tx, { actorId: actor.id, action: 'CLEAR_RAB_PROFILE_DEFAULT', entityType: 'RAB_MAPPING_PROFILE', projectId });
+      }
+    });
+  }
+
   /** D-094: saved mapping profiles of the project, newest first. */
   async listProfiles(projectId: string): Promise<RabProfileDto[]> {
     const rows = await this.prisma.rabMappingProfile.findMany({ where: { projectId }, include: { creator: USER_REF }, orderBy: { createdAt: 'desc' } });
-    return rows.map(profileDto);
+    const defaultId = (await this.prisma.rabMappingProfileDefault.findUnique({ where: { projectId }, select: { profileId: true } }))?.profileId;
+    return rows.map((r) => profileDto(r, r.id === defaultId));
   }
 
   /** D-094: saves a profile by hand as a new row (origin MANUAL); existing rows are never changed. */
@@ -485,7 +694,7 @@ export class RabImportsService implements OnModuleInit {
       });
       return created;
     });
-    return profileDto(row);
+    return profileDto(row, false);
   }
 
   /** Waits for background processing (tests, seed). */

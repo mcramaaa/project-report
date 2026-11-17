@@ -1652,3 +1652,22 @@ sekitar masalah"; anggaran = "Tanpa batas di aplikasi").
 - Asisten tidak menyimpan profil dan tidak membuat run; reviewer memakai usulan di editor lalu menyimpan sendiri.
 - Setiap percobaan dicatat di `rab_profile_ai_runs` beserta isi yang dikirim (audit data keluar). Tidak ada batas token
   di aplikasi; biaya dibatasi oleh 9router. Tanpa konfigurasi 9router endpoint menjawab 409.
+
+## D-096 Chat per run impor dan belajar lewat profil default
+
+Status: berlaku. Sumber: user, 2026-11-17 ("setuju saran B"; "AI aplikasi juga harus belajar bagaimana cara membaca RAB
+untuk run selanjutnya").
+
+- Chat per run impor (`/rab-imports/:id/chat`, izin `rabImport.review`) hanya untuk run yang sudah dibaca dan belum
+  disetujui. Asisten menerima masalah hasil sistem, baris yang belum tertaut, sel di sekitarnya, dan 6 pesan terakhir,
+  dibatasi `ASSIST_CONTEXT_CHARS` seperti D-095. Riwayat tersimpan di `rab_import_chat_messages`.
+- Usulan asisten hanya kata judul per role dengan sel bukti, dan dibuktikan sistem sebelum disimpan. Usulan yang tidak
+  terbukti disimpan dengan alasannya. Chat tidak menulis ke draft, RAB, atau profil.
+- Menerapkan usulan (`/chat/:messageId/apply`): sistem membuat profil baru (origin MANUAL, nama dari reviewer), lalu run
+  baru yang membacanya, tertaut seperti remap (run lama keluar dari daftar bila belum disetujui, D-066). Tidak ada yang
+  berubah pada RAB resmi; approval tetap lewat review biasa.
+- "Belajar" = profil default proyek (`rab_mapping_profile_defaults`, satu baris per proyek). Menetapkan atau menghapus
+  default butuh `rabImport.approve` dan tercatat di audit. Run baru tanpa `mappingProfileId` memakai default; `null` berarti
+  profil bawaan; retry dan remap mempertahankan pilihan run asalnya.
+- Batas: AI belajar hanya dari kata judul profil. Koreksi rumus, analisa, atau keputusan baris belum dipelajari dan tetap
+  lewat review manusia.

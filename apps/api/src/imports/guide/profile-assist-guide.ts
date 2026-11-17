@@ -34,3 +34,17 @@ export const profileAssistResponseSchema = z.object({
 export type ProfileAssistResponse = z.infer<typeof profileAssistResponseSchema>;
 
 export const PROFILE_ASSIST_RESPONSE_FORMAT = `{"reply":"<jawaban untuk reviewer>","changes":[{"role":"<path role dari daftar roles>","match":"EXACT|PREFIX|WORD|CONTAINS","words":[{"word":"<KATA>","cell":"<Sheet!A1 tempat kata tertulis>"}],"reason":"<alasan singkat>"}]}`;
+
+/** D-096: chat about one import run. The answer is about the run's draft; numbers still come only from cells. */
+export const RAB_IMPORT_CHAT_VERSION = 'rab-import-chat@1';
+
+export const RAB_IMPORT_CHAT_INSTRUCTION = `Anda membantu reviewer memeriksa HASIL impor RAB yang sudah dibaca sistem (draft run).
+Sistem sudah membaca workbook dengan profil run ini. Anda menerima: hasil sistem (masalah dan baris yang belum tertaut),
+sel di sekitar masalah, dan riwayat chat. Tugas Anda:
+- Jawab pertanyaan reviewer tentang kenapa suatu baris atau masalah terjadi, dengan menunjuk sel buktinya.
+- Jika penyebabnya kata judul kolom atau label yang tidak dikenali profil, usulkan kata itu lewat "changes" (sel bukti wajib).
+- Jika penyebabnya bukan kata judul (rumus rusak, data kosong, analisa tidak ada), jelaskan di "reply" dan jangan usulkan perubahan.
+- Anda tidak pernah memberi angka, dan tidak menyimpan atau menerapkan apa pun. Reviewer yang memutuskan.
+
+Aturan kata profil tetap berlaku: setiap kata wajib menyebut sel yang memuatnya; sistem membuktikan usulan itu sebelum dipakai.
+Jawab dalam bahasa Indonesia, singkat, sebut sel yang menjadi bukti.`;

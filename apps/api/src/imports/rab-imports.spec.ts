@@ -1582,3 +1582,99 @@ describe('mapping profiles (D-094)', () => {
     expect(await t.prisma.rabImport.count({ where: { projectId: project.id } })).toBe(0);
   });
 });
+
+describe('run chat and profile learning (D-096)', () => {
+  /** BOQ whose quantity title only a project profile knows; the unit "LS" is what the assistant can prove. */
+  const boqSheet = () => ({
+    B3: 'No. Mata Pembayaran', D3: 'Uraian', E3: 'Satuan', F3: 'Banyaknya', G3: 'Harga Satuan', H3: 'Jumlah Harga',
+    B4: '1.2', D4: 'Mobilisasi', E4: 'LS', F4: 1, G4: 2500000, H4: ['F4*G4', 2500000] as [string, number],
+    B5: '1.3', D5: 'Pengukuran', E5: 'LS', F5: 2, G5: 750000, H5: ['F5*G5', 1500000] as [string, number],
+  });
+  const projectProfile = () => ({
+    profile: {
+      ...RAB_BUILTIN_PROFILE,
+      name: 'BOQ dinas',
+      headerless: { ...RAB_BUILTIN_PROFILE.headerless, quantity: [{ match: 'PREFIX', words: ['BANYAKNYA'] }] },
+    },
+  });
+
+  it('a saved default profile is used by new runs until it is cleared, and null means built-in (D-096)', async () => {
+    const doc = await upload(admin, 'boq-default.xlsx', await xlsxOf({ BOQ: boqSheet() }));
+    const saved = await admin.post(`/projects/${project.id}/rab-profiles`, projectProfile());
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+    const profiles = `/projects/${project.id}/rab-profiles`;
+
+    const filler = await member('FILLER');
+    expect((await filler.post(`${profiles}/${saved.body.id}/default`, {})).status).toBe(403);
+    expect((await admin.post(`${profiles}/${saved.body.id}/default`, {})).status).toBe(200);
+    expect((await admin.get(profiles)).body).toEqual([expect.objectContaining({ id: saved.body.id, isDefault: true })]);
+    expect(await t.prisma.auditLog.count({ where: { action: 'SET_RAB_PROFILE_DEFAULT', entityId: saved.body.id } })).toBe(1);
+
+    // No mapping named: the default applies, so the quantity title is read.
+    const byDefault = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }] });
+    expect(byDefault.import.status, byDefault.import.errorMessage).toBe('NEEDS_REVIEW');
+    expect(await t.prisma.rabImport.findUniqueOrThrow({ where: { id: byDefault.import.id } })).toMatchObject({ mappingProfileId: saved.body.id });
+
+    // null names the built-in profile explicitly: the same workbook fails there.
+    const builtIn = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], mappingProfileId: null });
+    expect(builtIn.import.status).toBe('FAILED');
+    expect(await t.prisma.rabImport.findUniqueOrThrow({ where: { id: builtIn.import.id } })).toMatchObject({ mappingProfileId: null });
+
+    expect((await admin.delete(`${profiles}/default`)).status).toBe(204);
+    expect(await t.prisma.rabMappingProfileDefault.count({ where: { projectId: project.id } })).toBe(0);
+    expect(await t.prisma.auditLog.count({ where: { action: 'CLEAR_RAB_PROFILE_DEFAULT' } })).toBe(1);
+  });
+
+  it('a chat answer proposes only proven words; applying one creates a saved profile and a new run; chat is refused on a failed run', async () => {
+    const doc = await upload(admin, 'boq-chat.xlsx', await xlsxOf({ BOQ: boqSheet() }));
+    const saved = await admin.post(`/projects/${project.id}/rab-profiles`, projectProfile());
+    const first = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], mappingProfileId: saved.body.id });
+    expect(first.import.status, first.import.errorMessage).toBe('NEEDS_REVIEW');
+    const chat = `${base}/${first.import.id}/chat`;
+
+    const filler = await member('FILLER');
+    expect((await filler.post(chat, { message: 'Apa itu?' })).status).toBe(403);
+
+    aiReply = () => ({
+      reply: 'Satuan item 1.2 di BOQ!E4 adalah "LS". Kata itu belum dikenali profil.',
+      changes: [
+        { role: 'headerless.unit', match: 'EXACT', words: [{ word: 'LS', cell: 'BOQ!E4' }], reason: 'satuan di E4' },
+        { role: 'headerless.unit', match: 'EXACT', words: [{ word: 'NOPE', cell: 'BOQ!E4' }], reason: 'tebakan' },
+      ],
+    });
+    const turn = await admin.post(chat, { message: 'Kenapa satuan 1.2 tidak terbaca?' });
+    expect(turn.status, JSON.stringify(turn.body)).toBe(200);
+    expect(turn.body.user).toMatchObject({ role: 'USER', content: 'Kenapa satuan 1.2 tidak terbaca?' });
+    expect(turn.body.assistant).toMatchObject({ role: 'ASSISTANT', proposals: { accepted: [{ words: ['LS'], cells: ['BOQ!E4'] }], rejected: [{ words: ['NOPE'] }] } });
+    expect(turn.body.assistant.proposals.profile.headerless.unit).toEqual([{ match: 'EXACT', words: ['SATUAN', 'SAT', 'LS'] }]);
+
+    const history = await admin.get(chat);
+    expect(history.body.map((m: { role: string }) => m.role)).toEqual(['USER', 'ASSISTANT']);
+    expect((await filler.get(chat)).status).toBe(403);
+
+    // A question is not a proposal; a user message carries none; an unknown message is not found.
+    expect((await admin.post(`${base}/${first.import.id}/chat/${turn.body.user.id}/apply`, {})).status).toBe(409);
+    expect((await admin.post(`${base}/${first.import.id}/chat/${turn.body.assistant.id}/apply`, { name: 'LS untuk BOQ' })).status).toBe(201);
+
+    // Applying: a new profile (MANUAL, named by the reviewer), a new run that reads with it, the old run leaves the list.
+    const applied = await admin.get(base);
+    const newRun = applied.body.find((r: { id: string }) => r.id !== first.import.id);
+    expect(newRun).toMatchObject({ status: 'NEEDS_REVIEW', previousImportId: first.import.id });
+    const newRow = await t.prisma.rabImport.findUniqueOrThrow({ where: { id: newRun.id } });
+    const profile = await t.prisma.rabMappingProfile.findUniqueOrThrow({ where: { id: newRow.mappingProfileId! } });
+    expect(profile).toMatchObject({ name: 'LS untuk BOQ', origin: 'MANUAL' });
+    expect((profile.profile as { headerless: { unit: unknown } }).headerless.unit).toEqual([{ match: 'EXACT', words: ['SATUAN', 'SAT', 'LS'] }]);
+    expect(await t.prisma.rabImport.findUniqueOrThrow({ where: { id: first.import.id } })).toMatchObject({ deletedAt: expect.any(Date) });
+    expect(await t.prisma.auditLog.count({ where: { action: 'APPLY_RAB_IMPORT_CHAT', entityId: first.import.id } })).toBe(1);
+    // The superseded run left the list (D-066): asking it anything is not found; the new run has its own chat.
+    expect((await admin.post(chat, { message: 'Lagi?' })).status).toBe(404);
+  });
+
+  it('chat only starts on a run that was read and is not yet approved', async () => {
+    const doc = await upload(admin, 'boq-failed.xlsx', await xlsxOf({ BOQ: boqSheet() }));
+    const failed = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], mappingProfileId: null });
+    expect(failed.import.status).toBe('FAILED');
+    aiReply = () => ({ reply: 'x', changes: [] });
+    expect((await admin.post(`${base}/${failed.import.id}/chat`, { message: 'Kenapa gagal?' })).status).toBe(409);
+  });
+});

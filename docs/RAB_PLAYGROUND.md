@@ -5,7 +5,8 @@ Pembaca RAB kantor (`rab-sheet.ts`), pembaca berdasarkan kata header (`headerles
 kantor/Bina Marga (`analysis-block.ts`) sudah membaca kata header dan label dari profil. Profil disimpan per proyek
 dan dipilih per run impor (D-094, `/rab-profiles`, `mappingProfileId`) untuk sheet RAB dan formulir analisa. Tahap 2 berjalan:
 halaman `Impor RAB → Profil pemetaan` (pilih dokumen dan semua sheet, editor profil, pratinjau tanpa menyimpan dan
-tanpa AI, simpan profil, buat run impor dengan profil); form impor biasa dapat memilih profil tersimpan. Tahap 3 berjalan (D-095): panel Asisten AI di playground mengusulkan kata
+tanpa AI, simpan profil, buat run impor dengan profil); form impor biasa dapat memilih profil tersimpan. Chat per run impor berjalan (D-096): reviewer bertanya tentang hasil impor di halaman run; usulan kata yang
+terbukti bisa dijadikan run baru dengan profil tersimpan, dan profil bisa dijadikan default proyek. Tahap 3 berjalan (D-095): panel Asisten AI di playground mengusulkan kata
 per role dengan sel buktinya; sistem membuktikan dan mempratinjau ulang; reviewer yang memakai dan menyimpan. `apps/api/src/imports/rab-profile.spec.ts` membuktikan profil bawaan
 menjawab sama persis dengan regex lama.
 

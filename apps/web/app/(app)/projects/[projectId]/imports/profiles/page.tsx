@@ -36,6 +36,7 @@ export default async function RabProfilesPage({ params }: { params: Promise<{ pr
         <ProfilePlayground
           projectId={project.id}
           closed={project.status === 'CLOSED'}
+          canApprove={can('rabImport.approve')}
           documents={documents.data}
           initialProfiles={profiles.data}
         />

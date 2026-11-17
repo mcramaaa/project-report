@@ -71,11 +71,14 @@ const ISSUES_SHOWN = 200;
 export function ProfilePlayground({
   projectId,
   closed,
+  canApprove,
   documents,
   initialProfiles,
 }: {
   projectId: string;
   closed: boolean;
+  /** D-096: only managers change the project default. */
+  canApprove: boolean;
   documents: DocumentDto[];
   initialProfiles: RabProfileDto[];
 }) {
@@ -109,6 +112,7 @@ export function ProfilePlayground({
           return `${r?.label ?? (i.path.join('.') || 'Profil')}: ${i.code === 'too_small' ? 'isi minimal satu kata' : i.message}`;
         });
   const nameMissing = profile.name.trim() === '';
+  const selected = profiles.find((p) => p.id === baseId);
   const chosen = Object.entries(sources);
   const savedClean = baseId !== null && !dirty;
 
@@ -203,6 +207,20 @@ export function ProfilePlayground({
       setBaseId(saved.id);
       setDirty(false);
       setNotice({ kind: 'success', text: `Profil "${saved.name}" disimpan. Profil tersimpan tidak pernah diubah; simpan lagi untuk versi baru.` });
+    });
+
+  /** D-096: new runs read with this profile unless they name another. */
+  const setDefault = (isDefault: boolean) =>
+    act(async () => {
+      if (isDefault) {
+        await api('POST', `/projects/${projectId}/rab-profiles/${baseId}/default`, {});
+        setProfiles((list) => list.map((p) => ({ ...p, isDefault: p.id === baseId })));
+        setNotice({ kind: 'success', text: `"${selected?.name}" menjadi profil default proyek. Run baru memakainya kecuali dipilih lain.` });
+      } else {
+        await api('DELETE', `/projects/${projectId}/rab-profiles/default`);
+        setProfiles((list) => list.map((p) => ({ ...p, isDefault: false })));
+        setNotice({ kind: 'success', text: 'Default proyek dihapus. Run baru kembali memakai profil bawaan.' });
+      }
     });
 
   const createImport = () =>
@@ -338,7 +356,7 @@ export function ProfilePlayground({
                 <option value="">Profil bawaan</option>
                 {profiles.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} · {formatDate(p.createdAt.slice(0, 10))} · {p.createdBy.name}
+                    {p.name}{p.isDefault ? ' · default proyek' : ''} · {formatDate(p.createdAt.slice(0, 10))} · {p.createdBy.name}
                   </option>
                 ))}
               </Select>
@@ -421,6 +439,16 @@ export function ProfilePlayground({
               <Button variant="secondary" disabled={busy || closed || chosen.length === 0 || !savedClean} onClick={createImport}>
                 Buat run impor dengan profil ini
               </Button>
+              {canApprove && savedClean && !selected?.isDefault && (
+                <Button variant="secondary" disabled={busy || closed} onClick={() => setDefault(true)}>
+                  Jadikan default proyek
+                </Button>
+              )}
+              {canApprove && selected?.isDefault && (
+                <Button variant="secondary" disabled={busy || closed} onClick={() => setDefault(false)}>
+                  Hapus default proyek
+                </Button>
+              )}
             </div>
           </div>
         </div>

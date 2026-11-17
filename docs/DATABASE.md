@@ -178,6 +178,20 @@ Satu percobaan asisten profil pemetaan (D-095).
 - request JSON — pesan reviewer, sheet, jumlah karakter, dan isi yang dikirim ke model
 - response JSON nullable, started_at, finished_at
 
+### rab_mapping_profile_defaults
+
+Profil default proyek untuk run baru (D-096). Satu baris per proyek; diubah dengan audit.
+
+- project_id (PK) → projects, profile_id → rab_mapping_profiles, set_by → users, set_at
+
+### rab_import_chat_messages
+
+Chat tentang satu run impor (D-096). Pesan asisten menyimpan usulan yang sudah dibuktikan sistem.
+
+- id, import_id → rab_imports, project_id → projects
+- role — USER | ASSISTANT; content text; proposals JSON nullable (accepted, rejected, profile, model)
+- created_by → users nullable (asisten = null), created_at
+
 ### rab_import_documents
 
 - import_id → rab_imports, document_id → project_documents (PK keduanya)
