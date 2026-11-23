@@ -32,6 +32,8 @@ import {
   type RabImportChatTurnDto,
   type RabChatProposals,
   type ApplyRabImportChatInput,
+  type RabVersionDetailDto,
+  updateRabItemSchema,
   type RabVersionType,
   type SourceLocator,
 } from '@laporan-proyek/shared';
@@ -45,8 +47,8 @@ import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { nextWorkItemNumber, RabService, workItemCode } from '../rab/rab.service';
 import { buildDraft, DraftInputError, looseText, PARSER_VERSION, type DraftSource, type OfficialAnalysis } from './build-draft';
-import { assistContext, proveChanges, type EditableProfile } from './profile-assist';
-import { PROFILE_ASSIST_INSTRUCTION, PROFILE_ASSIST_RESPONSE_FORMAT, PROFILE_ASSIST_VERSION, RAB_IMPORT_CHAT_INSTRUCTION, RAB_IMPORT_CHAT_VERSION, profileAssistResponseSchema } from './guide/profile-assist-guide';
+import { assistContext, proveChanges, proveEdits, type EditableProfile } from './profile-assist';
+import { PROFILE_ASSIST_INSTRUCTION, PROFILE_ASSIST_RESPONSE_FORMAT, PROFILE_ASSIST_VERSION, RAB_IMPORT_CHAT_INSTRUCTION, RAB_IMPORT_CHAT_RESPONSE_FORMAT, RAB_IMPORT_CHAT_VERSION, profileAssistResponseSchema, rabImportChatResponseSchema } from './guide/profile-assist-guide';
 import { blockingIssues, evaluateImport, latestDecisions, type DecisionRecord, type OfficialVersion } from './evaluate';
 import { proposePackage, type BaseItem } from './proposals';
 import { AI_CANDIDATE_RESPONSE_FORMAT, aiCandidateResponseSchema, GUIDE_VERSION, SYSTEM_INSTRUCTION } from './guide/rab-import-guide';
@@ -503,7 +505,7 @@ export class RabImportsService implements OnModuleInit {
   async chatWithImport(actor: AuthUser, projectId: string, importId: string, input: RabImportChatInput): Promise<RabImportChatTurnDto> {
     if (!this.ai) throw new ConflictException('Asisten AI belum dikonfigurasi di server (9router).');
     const run = await this.find(this.prisma, projectId, importId);
-    if (run.status !== 'NEEDS_REVIEW' || !run.draft) throw new ConflictException('Chat hanya untuk impor yang sudah dibaca dan belum disetujui.');
+    if (!['NEEDS_REVIEW', 'APPROVED'].includes(run.status) || !run.draft) throw new ConflictException('Chat hanya untuk impor yang sudah dibaca.');
     const draft = run.draft as unknown as RabImportDraft;
     const profile = editableOf(profileOf(run.mappingProfile));
     const sources = await this.loadSources(
@@ -541,9 +543,9 @@ export class RabImportsService implements OnModuleInit {
       problemCells: [...issueCells, ...unresolvedCells].filter((c): c is string => c !== null),
       message: thread ? `RIWAYAT CHAT:\n${thread}\n\nPERTANYAAN BARU:\n${input.message}` : input.message,
     });
-    const { result, model, attempts } = await this.ai.completeJson(profileAssistResponseSchema, [
+    const { result, model, attempts } = await this.ai.completeJson(rabImportChatResponseSchema, [
       { role: 'system', content: RAB_IMPORT_CHAT_INSTRUCTION },
-      { role: 'user', content: `Format jawaban: ${PROFILE_ASSIST_RESPONSE_FORMAT}\n\n${context.text}` },
+      { role: 'user', content: `Format jawaban: ${RAB_IMPORT_CHAT_RESPONSE_FORMAT}\n\n${context.text}` },
     ]);
     await this.prisma.rabProfileAiRun.createMany({
       data: attempts.map((a) => ({
@@ -570,7 +572,15 @@ export class RabImportsService implements OnModuleInit {
     } else {
       // Proven against the workbook of this run, with the run's own profile as the starting point.
       const proved = proveChanges(sources.map((s) => s.model), profile, result.changes);
-      const proposals: RabChatProposals = { accepted: proved.accepted, rejected: proved.rejected, profile: proved.profile, model };
+      const edited = proveEdits(draft, sources.map((x) => x.model), result.edits ?? []);
+      const proposals: RabChatProposals = {
+        accepted: proved.accepted,
+        rejected: proved.rejected,
+        profile: proved.profile,
+        model,
+        edits: edited.accepted,
+        rejectedEdits: edited.rejected,
+      };
       assistant = await this.prisma.rabImportChatMessage.create({
         data: { importId, projectId, role: 'ASSISTANT', content: result.reply, proposals: proposals as unknown as Prisma.InputJsonValue },
         include: { creator: USER_REF },
@@ -633,6 +643,33 @@ export class RabImportsService implements OnModuleInit {
       }),
     );
     return run;
+  }
+
+  /**
+   * D-096: applies one proven item change to the RAB version of this run through the normal item update (rab.edit: the
+   * same rules, reason and audit as a hand edit; an approved version must be reopened first, as before).
+   */
+  async applyChatEdit(actor: AuthUser, projectId: string, importId: string, messageId: string, index: number, reason: string | undefined): Promise<RabVersionDetailDto> {
+    const run = await this.find(this.prisma, projectId, importId);
+    if (!run.rabVersionId) throw new ConflictException('Impor belum menjadi RAB. Setujui impor dulu, lalu terapkan usulan di halaman RAB.');
+    const message = await this.prisma.rabImportChatMessage.findFirst({ where: { id: messageId, importId, role: 'ASSISTANT' } });
+    const proposals = message?.proposals as RabChatProposals | null | undefined;
+    const edit = proposals?.edits?.[index];
+    if (!proposals || !edit) throw new NotFoundException('Usulan tidak ditemukan.');
+    if (edit.applied) throw new ConflictException('Usulan ini sudah diterapkan.');
+    const item = await this.prisma.rabVersionItem.findFirst({ where: { rabVersionId: run.rabVersionId, rowType: 'ITEM', displayNumber: edit.itemCode } });
+    if (!item) throw new ConflictException(`Item ${edit.itemCode} tidak ada di RAB ini.`);
+    const input = updateRabItemSchema.parse({ [edit.field]: edit.value, reason: reason ?? edit.reason });
+    const detail = await this.rab.updateItem(actor, projectId, run.rabVersionId, item.id, input);
+    proposals.edits[index] = { ...edit, applied: true };
+    await this.prisma.rabImportChatMessage.update({ where: { id: messageId }, data: { proposals: proposals as unknown as Prisma.InputJsonValue } });
+    return detail;
+  }
+
+  /** D-096: the import run that produced this RAB version, for the floating assistant; null for versions made by hand. */
+  async importOfVersion(projectId: string, versionId: string): Promise<{ run: RabImportSummaryDto | null }> {
+    const row = await this.prisma.rabImport.findFirst({ where: { projectId, rabVersionId: versionId, deletedAt: null }, include: IMPORT_INCLUDE });
+    return { run: row ? this.summary(row, 0) : null };
   }
 
   /** D-096: the profile new runs use when they name none. Changing it is a manager decision and is audited. */

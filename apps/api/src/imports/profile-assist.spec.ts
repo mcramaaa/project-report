@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RAB_BUILTIN_PROFILE } from '@laporan-proyek/shared';
-import { assistContext, proveChanges, type EditableProfile } from './profile-assist';
+import { RabImportDraft } from '@laporan-proyek/shared';
+import { assistContext, proveChanges, proveEdits, type EditableProfile } from './profile-assist';
 import { workbookOf } from './test-workbook';
 
 const base = (): EditableProfile => {
@@ -82,5 +83,51 @@ describe('assistant context stays within RAB_PLAYGROUND §6 (D-095)', () => {
     expect(small.characters).toBeLessThanOrEqual(400);
     expect(small.text).toContain('Kolom kuantitas berjudul Banyaknya');
     expect(small.text).not.toContain('ISI AWAL');
+  });
+});
+
+describe('item edits are proven against the cell that holds the value (D-096)', () => {
+  const sheet = {
+    B4: '1.2', D4: 'Mobilisasi', E4: 'LS', F4: 1,
+    B5: '1.3', D5: 'Pengukuran', E5: 'LS', F5: 2,
+  };
+  const draft = (rows: { displayNumber: string; row: number; sheet?: string }[]) =>
+    ({
+      rows: rows.map((r) => ({ rowType: 'ITEM', displayNumber: r.displayNumber, locator: { documentId: 'd', sheet: r.sheet ?? 'BOQ', row: r.row } })),
+    }) as unknown as RabImportDraft;
+  const edit = (itemCode: string, field: 'volume' | 'unit' | 'taxPercent' | 'description', value: string, cell: string) =>
+    ({ itemCode, field, value, cell, reason: 'cek sel' });
+
+  it('accepts a value the cell holds (numbers as decimals, text ignoring case and spacing)', () => {
+    const models = [workbookOf({ BOQ: sheet })];
+    const d = draft([{ displayNumber: '1.2', row: 4 }, { displayNumber: '1.3', row: 5 }]);
+    const { accepted, rejected } = proveEdits(d, models, [
+      edit('1.2', 'volume', '1', 'BOQ!F4'),
+      edit('1.2', 'volume', '1.000', 'BOQ!F4'),
+      edit('1.3', 'unit', ' ls ', 'BOQ!E5'),
+    ]);
+    expect(rejected).toEqual([]);
+    expect(accepted.map((a) => [a.itemCode, a.field, a.value])).toEqual([['1.2', 'volume', '1'], ['1.2', 'volume', '1.000'], ['1.3', 'unit', ' ls ']]);
+    expect(accepted.every((a) => a.applied === false)).toBe(true);
+  });
+
+  it('rejects a value the cell does not hold, a cell on another row, an unknown or ambiguous code', () => {
+    const models = [workbookOf({ BOQ: sheet })];
+    const d = draft([{ displayNumber: '1.2', row: 4 }, { displayNumber: '1.3', row: 5 }, { displayNumber: '1.3', row: 9 }]);
+    const { accepted, rejected } = proveEdits(d, models, [
+      edit('1.2', 'volume', '9', 'BOQ!F4'),
+      edit('1.2', 'volume', '2', 'BOQ!F5'),
+      edit('9.9', 'volume', '1', 'BOQ!F4'),
+      edit('1.3', 'volume', '2', 'BOQ!F5'),
+      edit('1.2', 'description', 'Mobilisasi', 'NOSHEET!D4'),
+    ]);
+    expect(accepted).toEqual([]);
+    expect(rejected.map((r) => r.reason)).toEqual([
+      'sel BOQ!F4 berisi "1", bukan "9"',
+      'sel BOQ!F5 bukan baris item 1.2',
+      'kode item tidak ada di draft',
+      'kode item ganda di draft',
+      'sel NOSHEET!D4 bukan baris item 1.2',
+    ]);
   });
 });

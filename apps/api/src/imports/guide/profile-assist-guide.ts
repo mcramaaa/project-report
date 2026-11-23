@@ -36,7 +36,7 @@ export type ProfileAssistResponse = z.infer<typeof profileAssistResponseSchema>;
 export const PROFILE_ASSIST_RESPONSE_FORMAT = `{"reply":"<jawaban untuk reviewer>","changes":[{"role":"<path role dari daftar roles>","match":"EXACT|PREFIX|WORD|CONTAINS","words":[{"word":"<KATA>","cell":"<Sheet!A1 tempat kata tertulis>"}],"reason":"<alasan singkat>"}]}`;
 
 /** D-096: chat about one import run. The answer is about the run's draft; numbers still come only from cells. */
-export const RAB_IMPORT_CHAT_VERSION = 'rab-import-chat@1';
+export const RAB_IMPORT_CHAT_VERSION = 'rab-import-chat@2';
 
 export const RAB_IMPORT_CHAT_INSTRUCTION = `Anda membantu reviewer memeriksa HASIL impor RAB yang sudah dibaca sistem (draft run).
 Sistem sudah membaca workbook dengan profil run ini. Anda menerima: hasil sistem (masalah dan baris yang belum tertaut),
@@ -46,5 +46,26 @@ sel di sekitar masalah, dan riwayat chat. Tugas Anda:
 - Jika penyebabnya bukan kata judul (rumus rusak, data kosong, analisa tidak ada), jelaskan di "reply" dan jangan usulkan perubahan.
 - Anda tidak pernah memberi angka, dan tidak menyimpan atau menerapkan apa pun. Reviewer yang memutuskan.
 
+Usulan "edits" mengubah satu item RAB: volume, satuan, PPN, atau deskripsi. Nilai harus sama dengan isi sel yang Anda sebut
+di "cell", dan hanya untuk item yang kodenya ada di daftar masalah atau baris belum tertaut. Harga tidak pernah diedit lewat usulan.
 Aturan kata profil tetap berlaku: setiap kata wajib menyebut sel yang memuatnya; sistem membuktikan usulan itu sebelum dipakai.
 Jawab dalam bahasa Indonesia, singkat, sebut sel yang menjadi bukti.`;
+
+/** D-096: a chat answer: profile words (as stage 3) plus item edits the workbook cell must prove. */
+export const rabImportChatResponseSchema = profileAssistResponseSchema.extend({
+  edits: z
+    .array(
+      z.object({
+        itemCode: z.string().trim().min(1).max(30),
+        field: z.enum(['volume', 'unit', 'taxPercent', 'description']),
+        value: z.string().trim().min(1).max(1000),
+        cell: z.string().max(140),
+        reason: z.string().max(1000),
+      }),
+    )
+    .max(10)
+    .default([]),
+});
+export type RabImportChatResponse = z.infer<typeof rabImportChatResponseSchema>;
+
+export const RAB_IMPORT_CHAT_RESPONSE_FORMAT = `{"reply":"<jawaban untuk reviewer>","changes":[{"role":"<path role>","match":"EXACT|PREFIX|WORD|CONTAINS","words":[{"word":"<KATA>","cell":"<Sheet!A1>"}],"reason":"<alasan>"}],"edits":[{"itemCode":"<kode item seperti ditampilkan RAB>","field":"volume|unit|taxPercent|description","value":"<nilai yang benar>","cell":"<Sheet!A1 tempat nilai itu ada di workbook>","reason":"<alasan>"}]}`;

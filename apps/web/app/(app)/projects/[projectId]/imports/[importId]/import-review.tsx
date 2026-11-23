@@ -22,7 +22,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { InlineReasonForm } from '@/components/corrections';
-import { ImportChat } from './import-chat';
 import { Alert, Badge, Button, EmptyState, Field, Select } from '@/components/ui';
 import { GridTools } from '@/components/grid-tools';
 import { api, errorMessage } from '@/lib/api';
@@ -502,9 +501,6 @@ export function ImportReview({
           </ul>
         </section>
       )}
-
-      {/* D-096: chat about this run's draft; it works only while the run waits for review. */}
-      {canReview && <ImportChat projectId={projectId} importId={run.id} enabled={run.status === 'NEEDS_REVIEW'} />}
 
       {/* Only when an action or hint applies; an approved run otherwise rendered an empty card. */}
       {(canApprove || canReview) &&

@@ -1678,3 +1678,69 @@ describe('run chat and profile learning (D-096)', () => {
     expect((await admin.post(`${base}/${failed.import.id}/chat`, { message: 'Kenapa gagal?' })).status).toBe(409);
   });
 });
+
+describe('floating assistant on an approved RAB (D-096)', () => {
+  const sheet = () => ({
+    B3: 'No. Mata Pembayaran', D3: 'Uraian', E3: 'Satuan', F3: 'Banyaknya', G3: 'Harga Satuan', H3: 'Jumlah Harga',
+    B4: '1.2', D4: 'Mobilisasi', E4: 'LS', F4: 1, G4: 2500000, H4: ['F4*G4', 2500000] as [string, number],
+    B5: '1.3', D5: 'Pengukuran', E5: 'LS', F5: 2, G5: 750000, H5: ['F5*G5', 1500000] as [string, number],
+  });
+
+  it('chat works on the approved run; a proven item change is applied once through the RAB item update', async () => {
+    const saved = await admin.post(`/projects/${project.id}/rab-profiles`, {
+      profile: {
+        ...RAB_BUILTIN_PROFILE,
+        name: 'BOQ dinas',
+        headerless: { ...RAB_BUILTIN_PROFILE.headerless, quantity: [{ match: 'PREFIX', words: ['BANYAKNYA'] }] },
+      },
+    });
+    const doc = await upload(admin, 'boq-approved.xlsx', await xlsxOf({ BOQ: sheet() }));
+    const run = await runImport(admin, { targetVersionType: 'CONTRACT', sources: [{ documentId: doc.id, rabSheet: 'BOQ' }], mappingProfileId: saved.body.id });
+    expect(run.import.status, run.import.errorMessage).toBe('NEEDS_REVIEW');
+    expect((await admin.post(`${base}/${run.import.id}/approve`)).status).toBe(200);
+    const version = await t.prisma.rabVersion.findFirstOrThrow({ where: { projectId: project.id } });
+    expect((await admin.post(`/projects/${project.id}/rab-versions/${version.id}/approve`, { acknowledgeWarnings: true })).status).toBe(200);
+
+    // The floating assistant finds the run behind this RAB.
+    const byVersion = await admin.get(`${base}/by-version/${version.id}`);
+    expect(byVersion.body.run).toMatchObject({ id: run.import.id, status: 'APPROVED' });
+
+    aiReply = (content) =>
+      content.includes('BOQ!F4')
+        ? {
+            reply: 'Volume 1.2 di BOQ!F4 adalah 1; volume 1.3 di BOQ!F5 adalah 2.',
+            changes: [],
+            edits: [
+              { itemCode: '1.2', field: 'volume', value: '1', cell: 'BOQ!F4', reason: 'volume sesuai sel' },
+              { itemCode: '1.3', field: 'volume', value: '9', cell: 'BOQ!F5', reason: 'salah ketik' },
+            ],
+          }
+        : null;
+    const chat = `${base}/${run.import.id}/chat`;
+    const turn = await admin.post(chat, { message: 'Cek volume 1.2 dan 1.3' });
+    expect(turn.status, JSON.stringify(turn.body)).toBe(200);
+    expect(turn.body.assistant.proposals).toMatchObject({
+      edits: [{ itemCode: '1.2', field: 'volume', value: '1', applied: false }],
+      rejectedEdits: [{ itemCode: '1.3', field: 'volume', value: '9', reason: 'sel BOQ!F5 berisi "2", bukan "9"' }],
+    });
+
+    // An approved RAB is changed only after it is reopened (RAB_CORRECTIONS.md), exactly as a hand edit would be.
+    const filler = await member('FILLER');
+    expect((await filler.post(`${chat}/${turn.body.assistant.id}/edits/0/apply`, {})).status).toBe(403);
+    expect((await admin.post(`${chat}/${turn.body.assistant.id}/edits/0/apply`, {})).status).toBe(409);
+    expect((await admin.post(`/projects/${project.id}/rab-versions/${version.id}/reopen`, { reason: 'Koreksi dari chat' })).status).toBe(200);
+    // A hand edit makes the item differ from the workbook, so the proven value has something to correct.
+    const itemId = (await t.prisma.rabVersionItem.findFirstOrThrow({ where: { rabVersionId: version.id, displayNumber: '1.2' } })).id;
+    expect((await admin.patch(`/projects/${project.id}/rab-versions/${version.id}/items/${itemId}`, { volume: '5', reason: 'Salah input' })).status).toBe(200);
+    const applied = await admin.post(`${chat}/${turn.body.assistant.id}/edits/0/apply`, { reason: 'Dicek di Excel' });
+    expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+    const item = await t.prisma.rabVersionItem.findFirstOrThrow({ where: { rabVersionId: version.id, displayNumber: '1.2' } });
+    expect(Number(item.volume)).toBe(1);
+    // Manual edit and the proven correction are both audited corrections of the reopened RAB.
+    expect(await t.prisma.auditLog.count({ where: { action: 'CORRECT_RAB_ITEM' } })).toBe(2);
+    expect((await admin.get(chat)).body.find((m: { id: string }) => m.id === turn.body.assistant.id).proposals.edits[0]).toMatchObject({ applied: true });
+
+    // The same proposal cannot be applied twice.
+    expect((await admin.post(`${chat}/${turn.body.assistant.id}/edits/0/apply`, {})).status).toBe(409);
+  });
+});

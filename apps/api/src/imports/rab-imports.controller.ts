@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import {
   confirmProposalsSchema,
   type ConfirmProposalsInput,
@@ -11,6 +11,8 @@ import {
   type RabImportChatInput,
   applyRabImportChatSchema,
   type ApplyRabImportChatInput,
+  applyRabChatEditSchema,
+  type ApplyRabChatEditInput,
   assistRabProfileSchema,
   type AssistRabProfileInput,
   rabImportDecisionsSchema,
@@ -152,6 +154,28 @@ export class RabImportsController {
   }
 
   /** D-096: turns a proven proposal into a new run that reads with a saved profile. */
+  /** D-096: the floating assistant on a RAB page: the import run behind this version (null when none). */
+  @Get('by-version/:versionId')
+  @RequireProjectPermission('rabImport.review')
+  importOfVersion(@Param('projectId') projectId: string, @Param('versionId', uuid) versionId: string) {
+    return this.imports.importOfVersion(projectId, versionId);
+  }
+
+  /** D-096: applies one proven item change to the RAB; the same rules, reason and audit as a hand edit (rab.edit). */
+  @Post(':importId/chat/:messageId/edits/:index/apply')
+  @RequireProjectPermission('rab.edit')
+  @HttpCode(200)
+  applyEdit(
+    @CurrentAuth() auth: AuthContext,
+    @Param('projectId') projectId: string,
+    @Param('importId', uuid) importId: string,
+    @Param('messageId', uuid) messageId: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Body(new ZodPipe(applyRabChatEditSchema)) body: ApplyRabChatEditInput,
+  ) {
+    return this.imports.applyChatEdit(auth.user, projectId, importId, messageId, index, body.reason);
+  }
+
   @Post(':importId/chat/:messageId/apply')
   @RequireProjectPermission('rabImport.review')
   apply(

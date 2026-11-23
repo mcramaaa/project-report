@@ -7,9 +7,11 @@ import {
   type WordMatch,
   type WordMatcher,
 } from '@laporan-proyek/shared';
-import type { ProfileAssistResponse } from './guide/profile-assist-guide';
+import { Decimal } from '@laporan-proyek/calc';
+import type { RabChatEdit, RabChatProposals, RabImportDraft } from '@laporan-proyek/shared';
+import type { ProfileAssistResponse, RabImportChatResponse } from './guide/profile-assist-guide';
 import { columnLetters } from './workbook/formula';
-import type { WorkbookModel } from './workbook/workbook-model';
+import { excelDecimal, type WorkbookModel } from './workbook/workbook-model';
 
 /**
  * RAB_PLAYGROUND stage 3 (D-095): what the assistant may see, and the mechanical proof of what it proposes. The assistant
@@ -207,4 +209,66 @@ export function proveChanges(
     });
   }
   return { profile: current, accepted, rejected };
+}
+
+/** Column letters to a 1-based number ("F" → 6, "AB" → 28). */
+function columnNumber(letters: string): number {
+  return [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+}
+
+const squash = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * D-096: an item change is accepted only when the cell it cites holds exactly the proposed value, and the cell sits on the
+ * row of that item (its code is the item's displayed number). Numbers compare as decimals, text ignores case and spacing.
+ */
+export function proveEdits(
+  draft: RabImportDraft,
+  models: WorkbookModel[],
+  edits: RabImportChatResponse['edits'],
+): { accepted: RabChatEdit[]; rejected: RabChatProposals['rejectedEdits'] } {
+  const items = draft.rows.filter((r) => r.rowType === 'ITEM');
+  const accepted: RabChatEdit[] = [];
+  const rejected: RabChatProposals['rejectedEdits'] = [];
+  for (const e of edits) {
+    const reject = (reason: string) => rejected.push({ itemCode: e.itemCode, field: e.field, value: e.value, reason });
+    const matching = items.filter((r) => (r.displayNumber ?? '').trim() === e.itemCode.trim());
+    if (matching.length !== 1) {
+      reject(matching.length === 0 ? 'kode item tidak ada di draft' : 'kode item ganda di draft');
+      continue;
+    }
+    const row = matching[0]!;
+    const m = /^(.+)!\$?([A-Z]{1,3})\$?(\d+)$/.exec(e.cell.trim());
+    if (!m) {
+      reject(`sel ${e.cell} tidak dikenali`);
+      continue;
+    }
+    const [, sheetText, letters, rowText] = m as unknown as [string, string, string, string];
+    const cellRow = Number(rowText);
+    if (row.locator.sheet !== sheetText || (row.locator.row !== undefined && row.locator.row !== cellRow)) {
+      reject(`sel ${e.cell} bukan baris item ${e.itemCode}`);
+      continue;
+    }
+    const model = models.find((x) => x.sheetName(sheetText));
+    const sheet = model?.sheetName(sheetText);
+    if (!model || !sheet) {
+      reject(`sheet ${sheetText} tidak ada di dokumen`);
+      continue;
+    }
+    const value = model.cell(sheet, cellRow, columnNumber(letters)).value;
+    const same =
+      e.field === 'volume' || e.field === 'taxPercent'
+        ? (() => {
+            const cached = excelDecimal(value);
+            const proposed = /^-?\d+(\.\d+)?$/.test(e.value.replace(',', '.')) ? e.value.replace(',', '.') : null;
+            return cached !== null && proposed !== null && new Decimal(cached).equals(new Decimal(proposed));
+          })()
+        : squash(String(value ?? '')) === squash(e.value);
+    if (!same) {
+      reject(`sel ${e.cell} berisi "${String(value ?? '')}", bukan "${e.value}"`);
+      continue;
+    }
+    accepted.push({ itemCode: e.itemCode.trim(), field: e.field, value: e.value, cell: e.cell, reason: e.reason, applied: false });
+  }
+  return { accepted, rejected };
 }

@@ -353,12 +353,29 @@ export const applyRabImportChatSchema = z.object({ name: z.string().trim().min(1
 export type ApplyRabImportChatInput = z.infer<typeof applyRabImportChatSchema>;
 
 /** A proposal as the server proved it: accepted words with their cells, rejected ones with the reason. */
+/** D-096: a change to one RAB item the workbook cell proves. Applied one by one by the reviewer (rab.edit). */
+export const RAB_CHAT_EDIT_FIELDS = ['volume', 'unit', 'taxPercent', 'description'] as const;
+export type RabChatEditField = (typeof RAB_CHAT_EDIT_FIELDS)[number];
+export interface RabChatEdit {
+  /** The item's code as the RAB shows it (displayNumber), e.g. "1.2". */
+  itemCode: string;
+  field: RabChatEditField;
+  value: string;
+  /** The cell that holds the value in the workbook ("BOQ!F5"). */
+  cell: string;
+  reason: string;
+  applied: boolean;
+}
+
 export interface RabChatProposals {
   accepted: RabProfileAssistDto['accepted'];
   rejected: RabProfileAssistDto['rejected'];
   /** The profile with the accepted words (name and origin are added when a run is created). */
   profile: Omit<RabProfile, 'origin' | 'name'>;
   model: string | null;
+  /** Item changes the workbook proves; empty when the answer proposes none. */
+  edits: RabChatEdit[];
+  rejectedEdits: { itemCode: string; field: string; value: string; reason: string }[];
 }
 
 export interface RabImportChatMessageDto {
@@ -375,3 +392,7 @@ export interface RabImportChatTurnDto {
   assistant: RabImportChatMessageDto;
 }
 
+
+/** D-096: applying one proven item change; the reason is optional (the proposal's own reason is used otherwise). */
+export const applyRabChatEditSchema = z.object({ reason: z.string().trim().max(1000).optional() });
+export type ApplyRabChatEditInput = z.infer<typeof applyRabChatEditSchema>;
